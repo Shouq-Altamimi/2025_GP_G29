@@ -22,7 +22,7 @@ The platform is especially valuable for sensitive medicines like insulin and vac
 ## Launching Instructions (Briefly)  
 1. **Clone the repository & install dependencies:**  
    ```bash
-   git clone https://github.com/your-username/2025_GP_GroupNumber.git  
+   git clone https://github.com/Shouq-Altamimi/2025_GP_G29.git  
    cd trustdose  
    npm i
    ```  
