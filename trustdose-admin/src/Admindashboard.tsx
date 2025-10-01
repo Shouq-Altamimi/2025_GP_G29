@@ -100,9 +100,16 @@ function Header({ onOpenAdd }: { onOpenAdd: (type: EntityType) => void }) {
   return (
     <div className="sticky top-0 z-40 mb-6 border-b border-zinc-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:border-zinc-800 dark:bg-zinc-950/80">
       <div className="mx-auto flex max-w-7xl items-center gap-3 p-4">
-        <div className="flex items-center gap-2 text-zinc-900 dark:text-zinc-50">
-          <div className="grid h-8 w-8 place-items-center rounded-xl bg-violet-600 text-white">TD</div>
-          <span className="text-base font-semibold">TrustDose Admin</span>
+      <div className="flex items-center gap-2 text-zinc-900 dark:text-zinc-50">
+      <a href="/" className="flex items-center gap-2 text-zinc-900 dark:text-zinc-50">
+      <img
+        src="/TrustDose fi-01.png"
+        alt="TrustDose"
+        className="h-12 w-12 object-contain" 
+        />
+      <span className="text-base font-semibold hidden sm:inline"></span>
+      </a>
+
         </div>
         <div className="ml-auto flex items-center gap-2">
           <div className="hidden items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-600 md:flex dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
