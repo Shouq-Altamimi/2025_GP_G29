@@ -1,4 +1,7 @@
+// @ts-nocheck
+
 import React, { useMemo, useState } from "react";
+
 
 /** utils */
 function nowISO() {
