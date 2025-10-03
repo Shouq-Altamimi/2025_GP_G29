@@ -1,0 +1,12 @@
+{
+  "name": "2025_GP_G29",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "firebase": "^12.3.0"
+  },
+  "scripts": {
+    "test:firestore": "node testFirestore.js",
+    "test:write": "node testWriteRead.js"
+  }
+}
