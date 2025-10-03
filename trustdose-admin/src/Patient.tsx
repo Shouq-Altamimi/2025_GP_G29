@@ -8,7 +8,7 @@ import React, { useEffect, useMemo, useState } from "react";
  * - Optional Sign Up creates a new patient and auto-logs in
  * - My Prescriptions (Delivery only): timeline (Received → Nearby → Delivered) + pharmacy + 3-day doses
  * - Pharmacies tab with City dropdown
- * - Notifications tab with sample alerts
+ * - Notifications tab with sample alerts (no re-dispense, no dispensed)
  * - Profile tab
  */
 export default function PatientPortalPreview() {
@@ -55,12 +55,11 @@ export default function PatientPortalPreview() {
       notes: "Before breakfast & dinner",
       type: "Delivery",
       city: "Riyadh",
-      status: "Pending Delivery", // New | Dispensed | Pending Delivery | Delivered | Cancelled | Re-dispensed
+      status: "Pending Delivery", // New | Pending Delivery | Delivered | Cancelled
       createdAt: "2025-09-25 09:15",
       pharmacy: { name: "Nahdi - Olaya", address: "Olaya St.", phone: "+96611-111-1111" },
       history: [
         { t: "2025-09-25 09:15", label: "New" },
-        { t: "2025-09-25 09:40", label: "Dispensed" },
         { t: "2025-09-25 10:10", label: "Pending Delivery" },
       ],
     },
@@ -79,7 +78,6 @@ export default function PatientPortalPreview() {
       pharmacy: { name: "Nahdi - Al Andalus", address: "Andalus St.", phone: "+96612-333-3333" },
       history: [
         { t: "2025-08-15 10:05", label: "New" },
-        { t: "2025-08-15 12:00", label: "Dispensed" },
         { t: "2025-08-16 09:30", label: "Pending Delivery" },
         { t: "2025-08-16 12:15", label: "Delivered" },
       ],
@@ -253,7 +251,7 @@ function PatientApp({ me, prescriptions, pharmaciesByCity, onSignupClick }) {
               <div>
                 <div className="text-xs text-gray-600 mb-1">Status</div>
                 <select className="h-10 px-2 rounded-lg border w-full" value={statusFilter} onChange={(e)=>setStatusFilter(e.target.value)}>
-                  {['All','New','Dispensed','Pending Delivery','Delivered','Cancelled','Re-dispensed'].map((s)=>(<option key={s} value={s}>{s}</option>))}
+                  {["All","New","Pending Delivery","Delivered","Cancelled"].map((s)=>(<option key={s} value={s}>{s}</option>))}
                 </select>
               </div>
               <div>
@@ -332,7 +330,7 @@ function PatientApp({ me, prescriptions, pharmaciesByCity, onSignupClick }) {
         {tab === "Notifications" && (
           <section className="space-y-3">
             <h1 className="text-2xl font-bold">Notifications</h1>
-            <NotifCard title="Re-dispensed (after 48h)" body="Your prescription RX-0003 was re-dispensed after 48 hours for continuity of therapy." time="2h ago" />
+            {/* Re-dispense and Dispensed notifications removed per requirement */}
             <NotifCard title="Unsafe temperature" body="Temperature spike detected during delivery for RX-0001. Pharmacy is verifying product integrity." time="5h ago" severity="warning" />
           </section>
         )}
@@ -405,7 +403,7 @@ function mapStatusToIndex(status) {
   const s = (status || "").toLowerCase();
   if (s.includes("delivered")) return 2;
   if (s.includes("pending delivery") || s.includes("out")) return 1;
-  return 0; // New / Dispensed / Re-dispensed / Cancelled → Received (for preview)
+  return 0; // New / Cancelled → Received (for preview)
 }
 
 /* ===================== HELPERS ===================== */
