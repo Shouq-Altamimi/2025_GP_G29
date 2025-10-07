@@ -2,7 +2,47 @@
 "use client";
 import React, { useMemo, useState, useEffect } from "react";
 import { db } from "../firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  setDoc,
+  doc,
+  serverTimestamp,
+  Timestamp,
+  getDoc,
+} from "firebase/firestore";
+
+/* =========================
+   أدوات الهاش (PBKDF2-SHA256)
+   ========================= */
+async function pbkdf2Hash(password, saltBase64, iterations = 100_000) {
+  const enc = new TextEncoder();
+  const pwKey = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveBits"]
+  );
+
+  const salt = Uint8Array.from(atob(saltBase64), c => c.charCodeAt(0));
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
+    pwKey,
+    256 // 32 bytes
+  );
+  const hashBytes = new Uint8Array(bits);
+  // إلى Base64 للتخزين
+  return btoa(String.fromCharCode(...hashBytes));
+}
+
+function genSaltBase64(len = 16) {
+  const buf = new Uint8Array(len);
+  crypto.getRandomValues(buf);
+  return btoa(String.fromCharCode(...buf));
+}
 
 export default function TrustDoseAuth() {
   const [mode, setMode] = useState("signin");
@@ -10,11 +50,18 @@ export default function TrustDoseAuth() {
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(true);
 
+  // Sign in
   const [accountId, setAccountId] = useState("");
   const [password, setPassword] = useState("");
+
+  // Sign up (Patient)
   const [nationalId, setNationalId] = useState("");
   const [phone, setPhone] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [name, setName] = useState("");
+  const [gender, setGender] = useState(""); // "M" | "F"
+  const [birthDate, setBirthDate] = useState("");
+  const [location, setLocation] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem("td_auth_id");
@@ -30,30 +77,23 @@ export default function TrustDoseAuth() {
     [mode]
   );
 
-  /** يحدد المجموعة وحقل المعرف بناءً على شكل الـID */
+  /** يحدد المصدر وأسماء الحقول المحتملة للمعرّف */
   function detectSource(id) {
     const clean = String(id || "").trim();
 
-    // دكتور: Dr-001 أو Dr123
     if (/^dr[-_]?\w+/i.test(clean)) {
-      return { coll: "doctors", idField: "DoctorID", role: "doctor" };
+      return { coll: "doctors", idFields: ["DoctorID"], role: "doctor" };
     }
-
-    // صيدلية: BranchID مثل B-1 أو Phar_*
     if (/^(phar|b[-_]?)/i.test(clean)) {
-      return { coll: "pharmacies", idField: "BranchID", role: "pharmacy" };
+      return { coll: "pharmacies", idFields: ["BranchID"], role: "pharmacy" };
     }
-
-    // مريض: رقم وطني (10–12 رقمًا احتياطًا)
     if (/^\d{10,12}$/.test(clean)) {
-      return { coll: "patients", idField: "nationalID", role: "patient" };
+      return { coll: "patients", idFields: ["nationalID", "nationalId"], role: "patient" };
     }
-
-    // لوجستيات: الشركة بالاسم أو vehicleId لاحقًا
-    return { coll: "logistics", idField: "companyName", role: "logistics" };
+    return { coll: "logistics", idFields: ["companyName"], role: "logistics" };
   }
 
-  // ===== تسجيل الدخول =====
+  // ===== Sign in =====
   async function handleSignIn(e) {
     e.preventDefault();
     setMsg("");
@@ -64,47 +104,67 @@ export default function TrustDoseAuth() {
       const pass = password.trim();
       if (!id) throw new Error("Please enter your ID");
 
-      // نحدد المصدر
-      const { coll, idField, role } = detectSource(id);
+      const { coll, idFields, role } = detectSource(id);
 
-      // استعلام مباشر على الحقل المناسب
-      const q = query(collection(db, coll), where(idField, "==", id));
-      const snap = await getDocs(q);
+      let user = null;
 
-      if (snap.empty) {
+      // للمرضى: جرّب getDoc مباشرة على Ph_<id>
+      if (role === "patient") {
+        try {
+          const p = await getDoc(doc(db, "patients", `Ph_${id}`));
+          if (p.exists()) user = p.data();
+        } catch {}
+      }
+
+      // لو ما لقيناه نجرّب where
+      if (!user) {
+        for (const f of idFields) {
+          try {
+            const q = query(collection(db, coll), where(f, "==", id));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+              user = snap.docs[0].data();
+              break;
+            }
+          } catch {}
+        }
+      }
+
+      if (!user) {
         setMsg("❌ No account found with this ID.");
         return;
       }
 
-      const doc = snap.docs[0];
-      const data = doc.data();
-
-      // تحقق كلمة المرور إن وُجد الحقل
-      if (Object.prototype.hasOwnProperty.call(data, "password")) {
+      // التحقق من كلمة المرور:
+      // 1) إذا عندنا passwordHash + passwordSalt → قارن PBKDF2
+      // 2) وإلا لو عندنا password نصي (قديم) → قارن نصي (توافق للخلف)
+      if ("passwordHash" in user && "passwordSalt" in user) {
         if (!pass) {
           setMsg("Please enter your password.");
           return;
         }
-        if (String(data.password) !== pass) {
+        const derived = await pbkdf2Hash(pass, user.passwordSalt, 100_000);
+        if (derived !== user.passwordHash) {
+          setMsg("❌ ID or password incorrect.");
+          return;
+        }
+      } else if ("password" in user) {
+        // دعم مؤقت لحسابات قديمة
+        if (!pass || String(user.password) !== pass) {
           setMsg("❌ ID or password incorrect.");
           return;
         }
       } else {
-        // ما عندنا حقل password — نسمح مؤقتًا وننبّه
-        console.warn(
-          `[Auth] '${coll}/${doc.id}' has no 'password' field. Allowed login without password (dev mode).`
-        );
+        // ما فيه كلمة مرور محفوظة
+        console.warn(`[Auth] user has no password fields (allowed in dev).`);
       }
 
-      // نجاح
-      const displayName = data.name || data.companyName || id;
+      const displayName = user.name || user.companyName || id;
       localStorage.setItem("userId", id);
       localStorage.setItem("userRole", role);
 
       setMsg(`✅ Logged in as ${role}. Welcome ${displayName}!`);
-      console.log("User data:", { role, idField, id, ...data });
-      // هنا لاحقًا: توجيه حسب الدور navigate("/doctor") ... إلخ
-
+      console.log("User data:", { role, id, ...user });
     } catch (err) {
       console.error(err);
       setMsg(`⚠️ Error: ${err?.message || err}`);
@@ -113,23 +173,79 @@ export default function TrustDoseAuth() {
     }
   }
 
-  // ===== تسجيل مريض جديد (Mock حالياً) =====
+  // ===== Patient Sign up (with full schema) =====
   async function handleSignUp(e) {
     e.preventDefault();
     setMsg("");
     setLoading(true);
 
     try {
-      if (!nationalId || !phone || !password || !confirmPassword)
-        throw new Error("Please fill all fields.");
-      if (password !== confirmPassword) throw new Error("Passwords do not match.");
+      const nid = String(nationalId).trim();
+      const phoneNum = String(phone).trim();
+      const pass = String(password).trim();
+      const pass2 = String(confirmPassword).trim();
+      const nm = name.trim();
+      const g = gender.trim().toUpperCase(); // M | F
+      const loc = location.trim();
+      const bdate = birthDate.trim(); // yyyy-mm-dd
 
-      // لاحقاً: addDoc(collection(db, "patients"), { nationalID, phone, password, ... })
-      setMsg("🎉 Account created successfully (mock). You can sign in now.");
+      // Basic checks
+      if (!nid || !phoneNum || !pass || !pass2 || !nm || !g || !bdate || !loc) {
+        throw new Error("Please fill all fields.");
+      }
+      if (!/^\d{10,12}$/.test(nid)) throw new Error("National ID should be 10–12 digits.");
+      if (!/^\+?\d{8,15}$/.test(phoneNum))
+        throw new Error("Phone should be digits only (e.g. +9665xxxxxxx).");
+      if (!["M", "F"].includes(g)) throw new Error("Gender must be M or F.");
+      if (pass.length < 4) throw new Error("Password must be at least 4 characters.");
+      if (pass !== pass2) throw new Error("Passwords do not match.");
+
+      // birthDate validity
+      const bdObj = new Date(bdate);
+      if (Number.isNaN(bdObj.getTime())) throw new Error("Invalid birth date.");
+      const now = new Date();
+      if (bdObj > now) throw new Error("Birth date cannot be in the future.");
+
+      // تأكد ما فيه حساب بنفس الهوية
+      const docId = `Ph_${nid}`;
+      const existsSnap = await getDoc(doc(db, "patients", docId));
+      if (existsSnap.exists()) {
+        throw new Error("An account with this National ID already exists.");
+      }
+
+      // هاش كلمة المرور + ملح
+      const saltB64 = genSaltBase64(16);
+      const hashB64 = await pbkdf2Hash(pass, saltB64, 100_000);
+
+      // Write document
+      await setDoc(doc(db, "patients", docId), {
+        // required by schema
+        Location: loc,
+        birthDate: Timestamp.fromDate(bdObj),
+        contact: phoneNum,
+        gender: g,
+        name: nm,
+        nationalID: nid,
+        nationalId: nid,
+
+        // تخزين آمن
+        passwordHash: hashB64,
+        passwordSalt: saltB64,
+        passwordAlgo: "PBKDF2-SHA256-100k",
+
+        // meta
+        createdAt: serverTimestamp(),
+      });
+
+      setMsg("🎉 Patient account created successfully. You can sign in now.");
       setMode("signin");
-      setAccountId(nationalId);
+      setAccountId(nid);
       setPassword("");
       setConfirmPassword("");
+      setName("");
+      setGender("");
+      setBirthDate("");
+      setLocation("");
     } catch (err) {
       setMsg(`❌ ${err?.message || err}`);
     } finally {
@@ -148,7 +264,7 @@ export default function TrustDoseAuth() {
     >
       <div
         style={{
-          width: 420,
+          width: 460,
           background: "#fff",
           padding: 24,
           borderRadius: 16,
@@ -182,14 +298,7 @@ export default function TrustDoseAuth() {
               style={inputStyle}
             />
 
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                margin: "8px 0 16px",
-              }}
-            >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 16px" }}>
               <input
                 id="remember"
                 type="checkbox"
@@ -226,6 +335,51 @@ export default function TrustDoseAuth() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+9665xxxxxxxx"
+              style={inputStyle}
+              required
+            />
+
+            <label>Name</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Full name"
+              style={inputStyle}
+              required
+            />
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <label>Gender</label>
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  style={{ ...inputStyle, paddingRight: 8 }}
+                  required
+                >
+                  <option value="">Select…</option>
+                  <option value="M">M</option>
+                  <option value="F">F</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Birth date</label>
+                <input
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  style={inputStyle}
+                  required
+                />
+              </div>
+            </div>
+
+            <label>Location</label>
+            <input
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="City, Area"
               style={inputStyle}
               required
             />
