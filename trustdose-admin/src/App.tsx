@@ -1,6 +1,6 @@
 import { Routes, Route, Link } from "react-router-dom";
 import Pharmacy from "./Pharmacy";
-import AdminDashboard from "./components/AdminDashboard";
+
 import Patient from "./Patient";
 import Doctor from "./Doctor";   // 👈 الاستيراد الجديد
 
@@ -13,7 +13,7 @@ export default function App() {
     <div>
       <nav style={{ padding: 10, background: "#eee" }}>
         <Link to="/pharmacy">Pharmacy</Link> |{" "}
-        <Link to="/Admindashboard">Admindashboard</Link> |{" "}
+   
         <Link to="/patient">Patient</Link> |{" "}
         <Link to="/doctor">Doctor</Link>   
       </nav>
@@ -21,8 +21,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/pharmacy" element={<Pharmacy />} />
-        <Route path="/Admindashboard" element={<Admindashboard />} />
-        <Route path="/patient" element={<Patient />} />
+       
+     <Route path="/patient" element={<Patient />} />
         <Route path="/doctor" element={<Doctor />} />  
       </Routes>
     </div>
