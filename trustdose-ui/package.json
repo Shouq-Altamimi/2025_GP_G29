@@ -8,6 +8,7 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
     "ethers": "^6.15.0",
+    "firebase": "^12.3.0",
     "lucide-react": "^0.544.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -16,8 +17,10 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
+    "abi:clean": "rimraf src/contracts",
+    "abi:copy": "shx mkdir -p src/contracts && copyfiles -u 2 ../build/contracts/*.json src/contracts/",
+    "start": "npm run abi:copy && react-scripts start",
+    "build": "npm run abi:copy && react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -41,7 +44,10 @@
   },
   "devDependencies": {
     "autoprefixer": "^10.4.21",
+    "copyfiles": "^2.4.1",
     "postcss": "^8.5.6",
+    "rimraf": "^6.0.1",
+    "shx": "^0.4.0",
     "tailwindcss": "^3.4.14"
   }
 }

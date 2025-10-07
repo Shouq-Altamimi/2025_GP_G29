@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { ethers } from "ethers";
-import AccessControl from "../build/contracts/AccessControl.json";
+import AccessControl from "./contracts/AccessControl.json";
 
 const ROLES = ["None", "Admin", "Doctor", "Pharmacy", "Logistics", "Patient"];
 
