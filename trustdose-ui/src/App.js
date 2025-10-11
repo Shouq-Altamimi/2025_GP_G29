@@ -49,7 +49,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 
 // الصفحات / الكومبوننتات
-import AdminDashboard from "./AdminDashboard";
+import AdminDashboard from "./pages/AdminDashboard";
 import DoctorHome from "./DoctorHome";
 import TrustDoseAuth from "./pages/Auth"; // صفحة تسجيل الدخول الجديدة
 
