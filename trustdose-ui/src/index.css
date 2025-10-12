@@ -2,75 +2,78 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ========= Identity (Lavender) ========= */
+/* -------- Theme (Gray Lavender) -------- */
 :root{
-  --td-primary:      #b18cc1;  /* زر أساسي */
-  --td-primary-600:  #a47ab8;  /* هوفر */
-  --td-heading:      #7c5a93;  /* عناوين رئيسية */
-  --td-soft:         #F6F2F9;  /* تبطين فاتح */
-  --td-line:         #e3d6ea;  /* خطوط خفيفة إن احتجنا */
-  --td-text:         #2D1F3A;  /* نص أساسي */
+  --td-primary: #9f76b4;        /* زر أساسي */
+  --td-primary-600: #8d63a4;    /* Hover */
+  --td-title: #7f5a98;          /* عناوين الكروت */
+  --td-soft: #f7f5f9;           /* خلفيات خفيفة اختيارية */
+  --td-line: #e7dff0;           /* حدود خفيفة */
+  --td-ink: #2d2134;            /* نص */
 }
 
-/* لا نريد أي لون يظهر عند سحب الصفحة للأعلى */
-html, body{
-  background: #fff;
-  overscroll-behavior: contain;
+/* لا نعدّل على عناصر عامة مثل body / button */
+
+/* -------- عناصر صفحة Doctor فقط -------- */
+
+/* input موحّد */
+.td-input {
+  @apply w-full rounded-lg border px-3 py-2 text-sm;
+  border-color: var(--td-line);
+  color: var(--td-ink);
+}
+.td-input:focus {
+  @apply outline-none ring-4;
+  box-shadow: none;
+  --tw-ring-color: color-mix(in oklab, var(--td-primary) 20%, transparent);
+  border-color: var(--td-primary);
 }
 
-/* بإمكانك وضع خلفية خفيفة للصفحة على الحاوية بدل body */
-.app-page{ background:#F9FAFB; }
+/* زر موحّد */
+.td-btn {
+  @apply inline-flex items-center justify-center h-9 px-4 rounded-md text-sm font-medium text-white shadow-sm transition;
+  background: var(--td-primary);
+}
+.td-btn:hover { background: var(--td-primary-600); }
+.td-btn:focus { @apply outline-none ring-2; --tw-ring-color: color-mix(in oklab, var(--td-primary) 35%, transparent); }
 
-/* ============ عناصر مشتركة ============ */
-@layer base {
-  body{ @apply text-[color:var(--td-text)] antialiased; }
+/* كارد كبير */
+.td-card {
+  @apply bg-white rounded-2xl p-7 md:p-8;
+  box-shadow: 0 18px 40px rgba(0,0,0,.06);
 }
 
-/* زر موحّد مبني على المتغيّرات (تستعمله مباشرة أو ضمن كلاس td-btn) */
-@layer components {
-  .td-btn{
-    @apply inline-flex items-center justify-center rounded-md
-           px-4 py-2 text-white text-sm font-medium shadow-sm
-           focus:outline-none focus:ring-2;
-    background: var(--td-primary);
-  }
-  .td-btn:hover{ background: var(--td-primary-600); }
-  .td-btn:focus{ box-shadow: 0 0 0 4px rgb(177 140 193 / .25); }
+/* عنوان الكارد */
+.td-title {
+  @apply mb-4 flex items-center gap-2 font-semibold;
+  font-size: 1.25rem;
+  color: var(--td-title);
+}
 
-  /* مدخلات موحّدة */
-  .td-input{
-    @apply w-full rounded-lg px-3 py-2 text-sm
-           border focus:outline-none;
-    border-color: var(--td-line);
-  }
-  .td-input:focus{
-    @apply ring-4;
-    --tw-ring-color: color-mix(in oklab, var(--td-primary) 20%, transparent);
-    border-color: var(--td-primary);
-  }
+/* شبكة المعلومات (بطاقات صغيرة) */
+.td-info-grid { @apply grid gap-3; }
+@media (min-width: 768px){  /* md */
+  .td-info-grid.cols-3 { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .td-info-grid.cols-2 { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 767px){
+  .td-info-grid.cols-3, .td-info-grid.cols-2 { grid-template-columns: 1fr; }
+}
 
-  /* كرت بدون حدود + ظل لطيف */
-  .td-card{
-    @apply bg-white rounded-2xl p-7 md:p-8;
-    box-shadow: 0 10px 28px rgba(0,0,0,.06);
-  }
+/* بطاقة المعلومة */
+.td-info-card {
+  @apply bg-white rounded-xl p-4;
+  box-shadow: 0 10px 24px rgba(0,0,0,.06);
+}
 
-  /* عنوان الكرت */
-  .td-title{
-    @apply mb-4 flex items-center gap-2;
-    color: var(--td-heading);
-    font-weight: 600;
-    font-size: clamp(1.25rem, 2vw, 1.6rem); /* أصغر بـ ~10% من الكبير جداً */
-    line-height: 1.1;
-  }
+/* عناوين الحقول (Name / National ID ...) */
+.td-info-label {
+  @apply text-sm;
+  color: #677485;
+}
 
-  /* عنوان حقل داخل الكرت (غير بولد) */
-  .td-label{
-    @apply text-gray-500 text-sm font-normal;
-  }
-
-  /* قيمة الحقل (غير بولد) */
-  .td-value{
-    @apply text-base font-normal;
-  }
+/* القيم */
+.td-info-value {
+  @apply mt-1;
+  color: var(--td-ink);
 }
