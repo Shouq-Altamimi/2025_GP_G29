@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity >=0.8.0 <0.8.20;
 
 contract AccessControl {
     enum Role { None, Admin, Doctor, Pharmacy, Logistics, Patient }
@@ -7,10 +7,12 @@ contract AccessControl {
     struct User {
         Role role;
         string accessId;
-        bytes32 tempPassHash; // <<— الباسورد المؤقت بشكل آمن (هاش)
+        bytes32 tempPassHash;
     }
 
+    // ✅ هنا التصحيح: بدون '>' وبدون 'Users'
     mapping(address => User) public users;
+
     address public owner;
 
     event UserAdded(address indexed user, Role role, string accessId, bytes32 tempPassHash);
@@ -29,10 +31,12 @@ contract AccessControl {
         _;
     }
 
-    function addUser(address _user, Role _role, string memory _accessId, string memory _tempPassword) 
-        external 
-        onlyAdmin 
-    {
+    function addUser(
+        address _user,
+        Role _role,
+        string memory _accessId,
+        string memory _tempPassword
+    ) external onlyAdmin {
         bytes32 hashed = keccak256(abi.encodePacked(_tempPassword));
         users[_user] = User(_role, _accessId, hashed);
         emit UserAdded(_user, _role, _accessId, hashed);
