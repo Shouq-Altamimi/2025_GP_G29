@@ -1,8 +1,14 @@
+// ===================== Admin Dashboard (Full, with Doctor Wallet/Password & On-chain) =====================
+"use client";
 import React, { useEffect, useMemo, useState } from 'react'
 import {
   Users, Activity, Settings, TrendingUp, Shield, FileText, AlertCircle, Plus, Search, Sun, Moon, Bell,
   ChevronDown, Download, Filter, Building2, Stethoscope, Truck, Thermometer, ClipboardList, ChevronRight
 } from 'lucide-react'
+
+// ADD: blockchain imports
+import { ethers } from "ethers";
+import AccessControl from "../contracts/AccessControl.json"; // عدّلي المسار لو مختلف
 
 // ========== small utils ==========
 function cx(...classes) { return classes.filter(Boolean).join(' ') }
@@ -106,7 +112,6 @@ function Header({ onOpenAdd }) {
           </div>
           <div className="relative">
             <Button variant="primary" size="sm" onClick={() => setDd(!dd)}><Plus className="mr-2 h-4 w-4" /> Add</Button>
-            
             <Dropdown open={dd} onClose={() => setDd(false)}>
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => onOpenAdd('Pharmacy')}><Building2 className="h-4 w-4 text-[#52B9C4]"/> Pharmacy</button>
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => onOpenAdd('Doctor')}><Stethoscope className="h-4 w-4 text-[#52B9C4]"/> Doctor</button>
@@ -122,7 +127,35 @@ function Header({ onOpenAdd }) {
   )
 }
 
-// ===================== Admin Dashboard (JS) =====================
+// ADD: blockchain helpers (roles & generators)
+const ROLE_DOCTOR = 2;
+function genTempPwd() {
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const A = letters[Math.floor(Math.random()*letters.length)];
+  const B = letters[Math.floor(Math.random()*letters.length)];
+  const num = Math.floor(1000 + Math.random()*9000);
+  return `${A}${B}-${num}`;
+}
+const connectMetaMask = async (setForm) => {
+  if (!window.ethereum) { alert("Install MetaMask"); return; }
+  const provider = new ethers.BrowserProvider(window.ethereum);
+  await provider.send("eth_requestAccounts", []);
+  const signer = await provider.getSigner();
+  const addr = await signer.getAddress();
+  setForm(f => ({ ...f, walletAddress: addr }));
+};
+const saveOnChain = async (contractAddress, doctorWallet, accessId) => {
+  if (!window.ethereum) throw new Error("MetaMask not found");
+  if (!ethers.isAddress(doctorWallet)) throw new Error("Invalid wallet address");
+  const provider = new ethers.BrowserProvider(window.ethereum);
+  const signer = await provider.getSigner();
+  const contract = new ethers.Contract(contractAddress, AccessControl.abi, signer);
+  const tx = await contract.addUser(doctorWallet, ROLE_DOCTOR, accessId);
+  const rc = await tx.wait();
+  return { txHash: tx.hash, block: rc.blockNumber };
+};
+
+// ===================== Admin Dashboard =====================
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('overview')
 
@@ -188,18 +221,50 @@ export default function AdminDashboard() {
   const [isAddOpen, setIsAddOpen] = useState(false)
   function genAccessId(){ return 'AC-' + Math.random().toString(36).slice(2,8).toUpperCase() }
   const [entityType, setEntityType] = useState('Doctor')
-  const [form, setForm] = useState({ name: '', email: '', role: 'User', status: 'Active', license: '', city: '', specialty: '', regId: '', company: '', contact: '', sla: '2h @ 2–8°C', accessId: genAccessId() })
-  const resetForm = () => setForm({ name: '', email: '', role: 'User', status: 'Active', license: '', city: '', specialty: '', regId: '', company: '', contact: '', sla: '2h @ 2–8°C', accessId: genAccessId() })
 
-  const onSubmitAdd = (e) => {
+  // REPLACED: form & resetForm to include wallet/temp/contract
+  const [form, setForm] = useState({
+    name: '', email: '', role: 'User', status: 'Active',
+    license: '', city: '', specialty: '', regId: '',
+    company: '', contact: '', sla: '2h @ 2–8°C',
+    accessId: genAccessId(),
+    walletAddress: '',
+    tempPassword: genTempPwd(),
+    contractAddress: ''
+  })
+  const resetForm = () => setForm({
+    name: '', email: '', role: 'User', status: 'Active',
+    license: '', city: '', specialty: '', regId: '',
+    company: '', contact: '', sla: '2h @ 2–8°C',
+    accessId: genAccessId(),
+    walletAddress: '',
+    tempPassword: genTempPwd(),
+    contractAddress: ''
+  })
+
+  // REPLACED: async + doctor on-chain
+  const onSubmitAdd = async (e) => {
     e.preventDefault()
     if (entityType === 'Pharmacy') {
       const id = pharmacies.length ? Math.max(...pharmacies.map(p => p.id)) + 1 : 100
       setPharmacies([{ id, name: form.name, license: form.license, city: form.city, status: 'Pending', accessId: form.accessId }, ...pharmacies])
       setActiveTab('pharmacies')
     } else if (entityType === 'Doctor') {
+      // basic checks
+      if (!form.contractAddress) { alert("أدخلي Contract Address"); return; }
+      if (!ethers.isAddress(form.walletAddress)) { alert("Wallet Address غير صالح"); return; }
+      if (!form.tempPassword) { alert("Temp Password مطلوب"); return; }
+
+      try {
+        const chain = await saveOnChain(form.contractAddress, form.walletAddress, form.accessId);
+        console.log("On-chain OK:", chain.txHash);
+      } catch (e2) {
+        alert("فشل الحفظ على السلسلة: " + (e2?.shortMessage || e2?.message));
+        return;
+      }
+
       const id = doctors.length ? Math.max(...doctors.map(d => d.id)) + 1 : 200
-      setDoctors([{ id, name: form.name, specialty: form.specialty, regId: form.regId, status: 'Active', accessId: form.accessId }, ...doctors])
+      setDoctors([{ id, name: form.name, specialty: form.specialty, regId: form.regId, status: 'Active', accessId: form.accessId, walletAddress: form.walletAddress }, ...doctors])
       setActiveTab('doctors')
     } else if (entityType === 'Logistics') {
       const id = logistics.length ? Math.max(...logistics.map(l => l.id)) + 1 : 300
@@ -436,6 +501,7 @@ export default function AdminDashboard() {
             <div/>
           </div>
 
+          {/* Pharmacy */}
           {entityType==='Pharmacy' && (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div><label className="mb-1 block text-sm font-medium text-[#4A2C59]">Name</label><input required value={form.name} onChange={e=>setForm({...form, name:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" /></div>
@@ -451,21 +517,79 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {/* Doctor (UPDATED with contract + wallet + temp password) */}
           {entityType==='Doctor' && (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div><label className="mb-1 block text-sm font-medium text-[#4A2C59]">Name</label><input required value={form.name} onChange={e=>setForm({...form, name:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" /></div>
-              <div><label className="mb-1 block text-sm font-medium text-[#4A2C59]">Specialty</label><input required value={form.specialty} onChange={e=>setForm({...form, specialty:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" /></div>
-              <div><label className="mb-1 block text-sm font-medium text-[#4A2C59]">MOH Reg</label><input required value={form.regId} onChange={e=>setForm({...form, regId:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" /></div>
+
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">AccessControl Contract Address</label>
+                <input
+                  required
+                  placeholder="0x... (Ganache)"
+                  value={form.contractAddress}
+                  onChange={e=>setForm({...form, contractAddress: e.target.value})}
+                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Name</label>
+                <input required value={form.name} onChange={e=>setForm({...form, name:e.target.value})}
+                       className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Specialty</label>
+                <input required value={form.specialty} onChange={e=>setForm({...form, specialty:e.target.value})}
+                       className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">MOH Reg</label>
+                <input required value={form.regId} onChange={e=>setForm({...form, regId:e.target.value})}
+                       className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Wallet Address</label>
+                <div className="flex gap-2">
+                  <input
+                    required
+                    placeholder="0x... (MetaMask)"
+                    value={form.walletAddress}
+                    onChange={e=>setForm({...form, walletAddress: e.target.value})}
+                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40"
+                  />
+                  <Button type="button" variant="outline" onClick={()=>connectMetaMask(setForm)}>Use MetaMask</Button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Temp Password</label>
+                <div className="flex gap-2">
+                  <input
+                    required
+                    placeholder="e.g. PX-4821"
+                    value={form.tempPassword}
+                    onChange={e=>setForm({...form, tempPassword: e.target.value})}
+                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40"
+                  />
+                  <Button type="button" variant="outline" onClick={()=>setForm(f=>({...f, tempPassword: genTempPwd()}))}>Regenerate</Button>
+                </div>
+               
+              </div>
+
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Access ID</label>
                 <div className="flex gap-2">
-                  <input readOnly value={form.accessId} className="w-full rounded-xl border border-zinc-300 bg-zinc-100 px-3 py-2 text-[#4A2C59]" />
-                  <Button type="button" variant="outline" onClick={() => setForm(f=>({...f, accessId: genAccessId()}))}>Regenerate</Button>
+                  <input readOnly value={form.accessId}
+                         className="w-full rounded-xl border border-zinc-300 bg-zinc-100 px-3 py-2 text-[#4A2C59]" />
+                  <Button type="button" variant="outline" onClick={()=>setForm(f=>({...f, accessId: genAccessId()}))}>Regenerate</Button>
                 </div>
               </div>
             </div>
           )}
 
+          {/* Logistics */}
           {entityType==='Logistics' && (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div><label className="mb-1 block text-sm font-medium text-[#4A2C59]">Company</label><input required value={form.company} onChange={e=>setForm({...form, company:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" /></div>
@@ -539,5 +663,3 @@ export default function AdminDashboard() {
     </div>
   )
 }
-
-
