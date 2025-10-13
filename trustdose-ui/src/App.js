@@ -5,17 +5,30 @@ import AdminDashboard from "./pages/AdminDashboard";
 import DoctorHome from "./DoctorHome";
 import TrustDoseAuth from "./pages/Auth";
 import Doctor from "./pages/Doctor";
-import Shell from "./pages/Shell";  // يضيف Header/Footer للمسارات اللي داخله فقط
+import Shell from "./pages/Shell";
+
+import Pharmacy from "./pages/pharmacy.jsx";
+
+import Patient from "./pages/Patient"; // ✅ إضافة صفحة المريض
 
 export default function App() {
   return (
     <BrowserRouter>
-      {/* تنقّل بسيط للتجربة */}
-      <nav style={{ padding: 12, borderBottom: "1px solid #eee", display: "flex", gap: 12 }}>
+      {/* شريط تنقل للتجربة */}
+      <nav
+        style={{
+          padding: 12,
+          borderBottom: "1px solid #eee",
+          display: "flex",
+          gap: 12,
+        }}
+      >
         <Link to="/auth">Login</Link>
         <Link to="/admin">Admin</Link>
         <Link to="/doctor-home">DoctorHome</Link>
         <Link to="/doctor">Doctor</Link>
+        <Link to="/pharmacy">Pharmacy</Link>
+        <Link to="/patient">Patient</Link> {/* ✅ رابط صفحة المريض */}
       </nav>
 
       <Routes>
@@ -24,12 +37,17 @@ export default function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/doctor-home" element={<DoctorHome />} />
 
-        {/* Doctor فقط داخل Shell (مع Header/Footer) */}
+        {/* الصفحات داخل Shell */}
         <Route element={<Shell />}>
           <Route path="/doctor" element={<Doctor />} />
+          <Route path="/pharmacy" element={<Pharmacy />} />
+          <Route path="/patient" element={<Patient />} /> {/* ✅ صفحة المريض */}
         </Route>
 
-        <Route path="*" element={<div style={{ padding: 24 }}>Page not found</div>} />
+        <Route
+          path="*"
+          element={<div style={{ padding: 24 }}>Page not found</div>}
+        />
       </Routes>
     </BrowserRouter>
   );
