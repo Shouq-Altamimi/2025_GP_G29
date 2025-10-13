@@ -30,7 +30,7 @@ contract AccessControl {
         require(users[msg.sender].role == Role.Admin, "Not admin");
         _;
     }
-
+    
     function addUser(
         address _user,
         Role _role,
