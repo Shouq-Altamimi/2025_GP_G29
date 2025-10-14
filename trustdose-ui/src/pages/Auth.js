@@ -27,14 +27,13 @@ async function pbkdf2Hash(password, saltBase64, iterations = 100_000) {
     ["deriveBits"]
   );
 
-  const salt = Uint8Array.from(atob(saltBase64), c => c.charCodeAt(0));
+  const salt = Uint8Array.from(atob(saltBase64), (c) => c.charCodeAt(0));
   const bits = await crypto.subtle.deriveBits(
     { name: "PBKDF2", hash: "SHA-256", salt, iterations },
     pwKey,
     256 // 32 bytes
   );
   const hashBytes = new Uint8Array(bits);
-  // إلى Base64 للتخزين
   return btoa(String.fromCharCode(...hashBytes));
 }
 
@@ -135,9 +134,7 @@ export default function TrustDoseAuth() {
         return;
       }
 
-      // التحقق من كلمة المرور:
-      // 1) إذا عندنا passwordHash + passwordSalt → قارن PBKDF2
-      // 2) وإلا لو عندنا password نصي (قديم) → قارن نصي (توافق للخلف)
+      // التحقق من كلمة المرور
       if ("passwordHash" in user && "passwordSalt" in user) {
         if (!pass) {
           setMsg("Please enter your password.");
@@ -149,13 +146,11 @@ export default function TrustDoseAuth() {
           return;
         }
       } else if ("password" in user) {
-        // دعم مؤقت لحسابات قديمة
         if (!pass || String(user.password) !== pass) {
           setMsg("❌ ID or password incorrect.");
           return;
         }
       } else {
-        // ما فيه كلمة مرور محفوظة
         console.warn(`[Auth] user has no password fields (allowed in dev).`);
       }
 
@@ -312,10 +307,36 @@ export default function TrustDoseAuth() {
               {loading ? "Signing in..." : "Sign in"}
             </button>
 
-            <div style={{ marginTop: 12, fontSize: 14 }}>
-              First time patient?{" "}
-              <a href="#signup" onClick={() => setMode("signup")}>
-                Create account
+            {/* روابط أسفل نموذج تسجيل الدخول */}
+            <div
+              style={{
+                marginTop: 12,
+                fontSize: 14,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <span>
+                First time patient?{" "}
+                <a
+                  href="#signup"
+                  onClick={() => setMode("signup")}
+                  style={linkStyle}
+                >
+                  Create account
+                </a>
+              </span>
+
+              <a
+                href="#forgot"
+                onClick={(e) => {
+                  e.preventDefault();
+                  alert("Password reset coming soon 🔒");
+                }}
+                style={linkStyle}
+              >
+                Forgot password?
               </a>
             </div>
           </form>
@@ -404,13 +425,19 @@ export default function TrustDoseAuth() {
               required
             />
 
+            {/* زر إنشاء الحساب بنفس التدرّج القديم */}
             <button type="submit" disabled={loading} style={buttonStyle}>
               {loading ? "Creating..." : "Create account"}
             </button>
 
+            {/* روابط أسفل نموذج إنشاء الحساب */}
             <div style={{ marginTop: 12, fontSize: 14 }}>
               Already have an account?{" "}
-              <a href="#signin" onClick={() => setMode("signin")}>
+              <a
+                href="#signin"
+                onClick={() => setMode("signin")}
+                style={linkStyle}
+              >
                 Sign in
               </a>
             </div>
@@ -441,4 +468,11 @@ const buttonStyle = {
   background: "linear-gradient(135deg,#B08CC1,#52B9C4)",
   color: "#fff",
   fontWeight: 600,
+};
+
+// لون موحد للروابط التكميلية
+const linkStyle = {
+  color: "#52B9C4",
+  fontWeight: 600,
+  textDecoration: "none",
 };
