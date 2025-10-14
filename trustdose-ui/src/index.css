@@ -3,77 +3,124 @@
 @tailwind utilities;
 
 /* -------- Theme (Gray Lavender) -------- */
-:root{
-  --td-primary: #9f76b4;        /* زر أساسي */
-  --td-primary-600: #8d63a4;    /* Hover */
-  --td-title: #7f5a98;          /* عناوين الكروت */
-  --td-soft: #f7f5f9;           /* خلفيات خفيفة اختيارية */
-  --td-line: #e7dff0;           /* حدود خفيفة */
-  --td-ink: #2d2134;            /* نص */
+:root {
+  /* أساسيات الثيم */
+  --td-primary:        #9f76b4;  /* Gray Lavender */
+  --td-primary-600:    #8a62a3;  /* hover/dark */
+  --td-primary-ink:    #7b5297;  /* للعناوين */
+  --td-surface:        #ffffff;
+  --td-bg:             #f7f8fb;  /* الخلفية العامة */
+  --td-border-soft:    #e9e1f0;
+  --td-success:        #22c55e;
+
+  /* 🔧 إضافات مطلوبة للتناسق */
+  --td-ink:            #2f2440;  /* نص أساسي أغمق قليل */
+  --td-line:           #e5e7eb;  /* حدود خفيفة افتراضية */
+  --td-muted:          #677485;  /* نص ثانوي */
+  --td-warning-bg:     #fff7e6;
+  --td-warning-line:   #f5d7a2;
+  --td-warning-ink:    #8a6d3b;
+
+  /* للحلقات (focus ring) – لون احتياطي بدون color-mix */
+  --td-ring-fallback:  rgba(159, 118, 180, 0.35);
 }
 
-/* لا نعدّل على عناصر عامة مثل body / button */
-
-/* -------- عناصر صفحة Doctor فقط -------- */
-
-/* input موحّد */
-.td-input {
-  @apply w-full rounded-lg border px-3 py-2 text-sm;
-  border-color: var(--td-line);
-  color: var(--td-ink);
+/* (اختياري) نمط الداكن لاحقاً
+@media (prefers-color-scheme: dark) {
+  :root {
+    --td-surface: #121212;
+    --td-bg: #0b0b0d;
+    --td-ink: #f4f4f5;
+    --td-border-soft: #2b2231;
+  }
 }
-.td-input:focus {
-  @apply outline-none ring-4;
-  box-shadow: none;
-  --tw-ring-color: color-mix(in oklab, var(--td-primary) 20%, transparent);
-  border-color: var(--td-primary);
-}
+*/
 
-/* زر موحّد */
-.td-btn {
-  @apply inline-flex items-center justify-center h-9 px-4 rounded-md text-sm font-medium text-white shadow-sm transition;
-  background: var(--td-primary);
-}
-.td-btn:hover { background: var(--td-primary-600); }
-.td-btn:focus { @apply outline-none ring-2; --tw-ring-color: color-mix(in oklab, var(--td-primary) 35%, transparent); }
+/* Utilities بسيطة */
+.bg-background { background: var(--td-bg); }
+/* ✨ عدّلنا اللون ليتطابق مع المتغير الصحيح */
+.td-title      { color: var(--td-primary-ink); }
 
-/* كارد كبير */
-.td-card {
-  @apply bg-white rounded-2xl p-7 md:p-8;
-  box-shadow: 0 18px 40px rgba(0,0,0,.06);
-}
+/* -------- Components Layer -------- */
+@layer components {
 
-/* عنوان الكارد */
-.td-title {
-  @apply mb-4 flex items-center gap-2 font-semibold;
-  font-size: 1.25rem;
-  color: var(--td-title);
-}
+  /* input موحّد */
+  .td-input {
+    @apply w-full rounded-lg border px-3 py-2 text-sm transition;
+    border-color: var(--td-line);
+    color: var(--td-ink);
+    background: var(--td-surface);
+  }
+  .td-input:focus {
+    @apply outline-none ring-4;
+    /* دعم حديث (color-mix) + احتياطي */
+    --tw-ring-color: color-mix(in oklab, var(--td-primary) 20%, transparent);
+    box-shadow: 0 0 0 0.5px var(--td-primary);
+    border-color: var(--td-primary);
+  }
+  @supports not (color: oklab(0 0 0)) {
+    .td-input:focus {
+      --tw-ring-color: var(--td-ring-fallback);
+    }
+  }
 
-/* شبكة المعلومات (بطاقات صغيرة) */
-.td-info-grid { @apply grid gap-3; }
-@media (min-width: 768px){  /* md */
-  .td-info-grid.cols-3 { grid-template-columns: repeat(3,minmax(0,1fr)); }
-  .td-info-grid.cols-2 { grid-template-columns: repeat(2,minmax(0,1fr)); }
-}
-@media (max-width: 767px){
-  .td-info-grid.cols-3, .td-info-grid.cols-2 { grid-template-columns: 1fr; }
-}
+  /* زر موحّد (تعريف واحد فقط) */
+  .td-btn {
+    @apply inline-flex items-center justify-center h-9 px-4 rounded-md text-sm font-medium text-white shadow-sm transition;
+    background: var(--td-primary);
+  }
+  .td-btn:hover   { background: var(--td-primary-600); }
+  .td-btn:focus   { @apply outline-none ring-2; --tw-ring-color: var(--td-ring-fallback); }
 
-/* بطاقة المعلومة */
-.td-info-card {
-  @apply bg-white rounded-xl p-4;
-  box-shadow: 0 10px 24px rgba(0,0,0,.06);
-}
+  /* كارد كبير */
+  .td-card {
+    @apply rounded-2xl p-7 md:p-8;
+    background: var(--td-surface);
+    box-shadow: 0 18px 40px rgba(0,0,0,.06);
+  }
 
-/* عناوين الحقول (Name / National ID ...) */
-.td-info-label {
-  @apply text-sm;
-  color: #677485;
-}
+  /* عنوان الكارد */
+  .td-card-title {
+    @apply mb-4 flex items-center gap-2 font-semibold;
+    font-size: 1.25rem;
+    color: var(--td-primary-ink);
+  }
 
-/* القيم */
-.td-info-value {
-  @apply mt-1;
-  color: var(--td-ink);
+  /* شبكة المعلومات (بطاقات صغيرة) */
+  .td-info-grid { @apply grid gap-3; }
+  @media (min-width: 768px){  /* md */
+    .td-info-grid.cols-3 { grid-template-columns: repeat(3,minmax(0,1fr)); }
+    .td-info-grid.cols-2 { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  }
+  @media (max-width: 767px){
+    .td-info-grid.cols-3, .td-info-grid.cols-2 { grid-template-columns: 1fr; }
+  }
+
+  /* بطاقة المعلومة */
+  .td-info-card {
+    @apply rounded-xl p-4;
+    background: var(--td-surface);
+    box-shadow: 0 10px 24px rgba(0,0,0,.06);
+    border: 1px solid var(--td-border-soft);
+  }
+
+  /* عناوين الحقول (Name / National ID ...) */
+  .td-info-label {
+    @apply text-sm;
+    color: var(--td-muted);
+  }
+
+  /* القيم */
+  .td-info-value {
+    @apply mt-1;
+    color: var(--td-ink);
+  }
+
+  /* شارة تنبيه/تحذير (اختياري) */
+  .td-callout-warning {
+    background: var(--td-warning-bg);
+    border: 1px solid var(--td-warning-line);
+    color: var(--td-warning-ink);
+    @apply rounded-lg p-3;
+  }
 }

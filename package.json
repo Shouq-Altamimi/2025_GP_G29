@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "dependencies": {
     "ethers": "^6.15.0",
-    "firebase": "^12.3.0",
+    "firebase": "^12.4.0",
     "lucide-react": "^0.545.0",
     "react-router-dom": "^7.9.4"
   },
