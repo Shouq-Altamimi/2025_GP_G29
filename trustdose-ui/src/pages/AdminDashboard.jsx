@@ -2,7 +2,7 @@
 "use client";
 import React, { useEffect, useMemo, useState } from 'react'
 import {
-  Users, Activity, Settings, TrendingUp, Shield, FileText, AlertCircle, Plus, Search, Sun, Moon, Bell,
+  Users, Activity, Settings, TrendingUp, Shield, FileText, AlertCircle, Plus, Search, Bell,
   ChevronDown, Download, Filter, Building2, Stethoscope, Truck, Thermometer, ClipboardList, ChevronRight
 } from 'lucide-react'
 
@@ -15,11 +15,11 @@ function cx(...classes) { return classes.filter(Boolean).join(' ') }
 
 // Card
 export function Card({ className, children }) {
-  return <div className={cx('rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900', className)}>{children}</div>
+  return <div className={cx('rounded-2xl border border-zinc-200 bg-white shadow-sm ', className)}>{children}</div>
 }
 export function CardHeader({ className, children }) { return <div className={cx('p-5', className)}>{children}</div> }
 export function CardTitle({ className, children }) { return <h3 className={cx('text-base font-semibold text-[#4A2C59]', className)}>{children}</h3> }
-export function CardDescription({ className, children }) { return <p className={cx('mt-1 text-sm text-zinc-500 dark:text-zinc-400', className)}>{children}</p> }
+export function CardDescription({ className, children }) { return <p className={cx('mt-1 text-sm text-zinc-500 ', className)}>{children}</p> }
 export function CardContent({ className, children }) { return <div className={cx('p-5 pt-0', className)}>{children}</div> }
 
 // Badge
@@ -28,10 +28,10 @@ export function Badge({ variant = 'default', className, children }) {
   const styles = {
     default: 'bg-[#B08CC1] text-white',
     secondary: 'bg-[#52B9C4] text-white',
-    outline: 'border border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200',
-    success: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-    destructive: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-    warning: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    outline: 'border border-zinc-300 text-zinc-700 ',
+    success: 'bg-emerald-100 text-emerald-700 ',
+    destructive: 'bg-rose-100 text-rose-700 ',
+    warning: 'bg-amber-100 text-amber-700 ',
     info: 'bg-[#52B9C4] text-white',
   }
   return <span className={cx(base, styles[variant], className)}>{children}</span>
@@ -39,14 +39,14 @@ export function Badge({ variant = 'default', className, children }) {
 
 // Button
 export function Button({ variant = 'default', size = 'md', className, children, ...props }) {
-  const base = 'inline-flex items-center justify-center rounded-xl font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none dark:focus:ring-zinc-700'
+  const base = 'inline-flex items-center justify-center rounded-xl font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none '
   const sizes = { sm: 'h-9 px-3 text-sm', md: 'h-10 px-4 text-sm', lg: 'h-11 px-5 text-base' }
   const variants = {
     default: 'bg-[#4A2C59] text-white hover:bg-[#3A2247] focus:ring-[#B08CC1]',
     primary: 'bg-[#B08CC1] text-white hover:bg-[#9b6dad] focus:ring-[#B08CC1]/40',
     secondary: 'bg-[#52B9C4] text-white hover:bg-[#46a5af] focus:ring-[#52B9C4]/40',
-    outline: 'border border-zinc-300 hover:bg-zinc-50 text-[#4A2C59] dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800',
-    ghost: 'text-[#4A2C59] hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800',
+    outline: 'border border-zinc-300 hover:bg-zinc-50 text-[#4A2C59] ',
+    ghost: 'text-[#4A2C59] hover:bg-zinc-100 ',
   }
   return <button className={cx(base, sizes[size], variants[variant], className)} {...props}>{children}</button>
 }
@@ -58,16 +58,16 @@ export function Table({ className, children }) {
 export function TableHeader({ children }) { return <thead>{children}</thead> }
 export function TableBody({ children }) { return <tbody>{children}</tbody> }
 export function TableRow({ className, children, ...rest }) {
-  return <tr className={cx('bg-white dark:bg-zinc-900', className)} {...rest}>{children}</tr>
+  return <tr className={cx('bg-white ', className)} {...rest}>{children}</tr>
 }
 export function TableHead({ children }) { return <th className="px-4 py-2 text-left text-xs font-semibold text-zinc-500">{children}</th> }
-export function TableCell({ className, children }) { return <td className={cx('px-4 py-3 align-middle text-sm text-zinc-700 dark:text-zinc-200', className)}>{children}</td> }
+export function TableCell({ className, children }) { return <td className={cx('px-4 py-3 align-middle text-sm text-zinc-700 ', className)}>{children}</td> }
 
 // Dropdown
 function Dropdown({ open, onClose, children }) {
   if (!open) return null
   return (
-    <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900" onClick={onClose}>
+    <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg " onClick={onClose}>
       {children}
     </div>
   )
@@ -80,10 +80,10 @@ function Modal({ open, onClose, children, title }) {
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="absolute inset-0 grid place-items-center p-4">
-        <div className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl ">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-[#4A2C59] dark:text-zinc-50">{title}</h3>
-            <button onClick={onClose} className="rounded-lg px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800">✕</button>
+            <h3 className="text-lg font-semibold text-[#4A2C59] ">{title}</h3>
+            <button onClick={onClose} className="rounded-lg px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100 ">✕</button>
           </div>
           {children}
         </div>
@@ -94,33 +94,30 @@ function Modal({ open, onClose, children, title }) {
 
 // Header
 function Header({ onOpenAdd }) {
-  const [dark, setDark] = useState(false)
-  useEffect(() => { const root = document.documentElement; dark ? root.classList.add('dark') : root.classList.remove('dark') }, [dark])
   const [dd, setDd] = useState(false)
   return (
-    <div className="sticky top-0 z-40 mb-6 border-b border-zinc-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:border-zinc-800 dark:bg-zinc-950/80">
+    <div className="sticky top-0 z-40 mb-6 border-b border-zinc-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 ">
       <div className="mx-auto flex max-w-7xl items-center gap-3 p-4">
-        <div className="flex items-center gap-2 text-[#4A2C59] dark:text-zinc-50">
-          <a href="/" className="flex items-center gap-2 text-[#4A2C59] dark:text-zinc-50">
+        <div className="flex items-center gap-2 text-[#4A2C59] ">
+          <a href="/" className="flex items-center gap-2 text-[#4A2C59] ">
             <img src="/TrustDose fi-01.png" alt="TrustDose" className="h-12 w-12 object-contain" />
           </a>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <div className="hidden items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-600 md:flex dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
+          <div className="hidden items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-600 md:flex ">
             <Search className="h-4 w-4" />
             <input className="w-56 bg-transparent outline-none placeholder:text-zinc-400" placeholder="Search…" />
           </div>
           <div className="relative">
             <Button variant="primary" size="sm" onClick={() => setDd(!dd)}><Plus className="mr-2 h-4 w-4" /> Add</Button>
             <Dropdown open={dd} onClose={() => setDd(false)}>
-              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => onOpenAdd('Pharmacy')}><Building2 className="h-4 w-4 text-[#52B9C4]"/> Pharmacy</button>
-              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => onOpenAdd('Doctor')}><Stethoscope className="h-4 w-4 text-[#52B9C4]"/> Doctor</button>
-              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => onOpenAdd('Logistics')}><Truck className="h-4 w-4 text-[#52B9C4]"/> Logistics</button>
+              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 " onClick={() => onOpenAdd('Pharmacy')}><Building2 className="h-4 w-4 text-[#52B9C4]"/> Pharmacy</button>
+              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 " onClick={() => onOpenAdd('Doctor')}><Stethoscope className="h-4 w-4 text-[#52B9C4]"/> Doctor</button>
+              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 " onClick={() => onOpenAdd('Logistics')}><Truck className="h-4 w-4 text-[#52B9C4]"/> Logistics</button>
             </Dropdown>
           </div>
           <Button variant="ghost" size="sm" aria-label="Notifications"><Bell className="h-5 w-5" /></Button>
-          <Button variant="ghost" size="sm" onClick={() => setDark(v => !v)} aria-label="Toggle theme">{dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}</Button>
-          <Button variant="outline" size="sm" className="gap-2"><div className="grid h-6 w-6 place-items-center rounded-full bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-100">FT</div><span className="hidden sm:inline">Account</span><ChevronDown className="h-4 w-4" /></Button>
+          <Button variant="outline" size="sm" className="gap-2"><div className="grid h-6 w-6 place-items-center rounded-full bg-zinc-200 text-zinc-700 ">FT</div><span className="hidden sm:inline">Account</span><ChevronDown className="h-4 w-4" /></Button>
         </div>
       </div>
     </div>
