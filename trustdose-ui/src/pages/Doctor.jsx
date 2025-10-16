@@ -27,24 +27,18 @@ import {
   CalendarDays,
 } from "lucide-react";
 
-/* ===== ABI مؤقّت (بدّليه بالـ JSON الحقيقي لاحقاً) ===== */
-const PRESCRIPTION_ABI = {
-  abi: [
-    {
-      inputs: [
-        { internalType: "bytes32", name: "patientHash", type: "bytes32" },
-        { internalType: "string", name: "medicine", type: "string" },
-        { internalType: "string", name: "dose", type: "string" },
-        { internalType: "string", name: "frequency", type: "string" },
-        { internalType: "string", name: "duration", type: "string" },
-      ],
-      name: "createPrescription",
-      outputs: [{ internalType: "uint256", name: "id", type: "uint256" }],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-  ],
-};
+/* ====== استخدمي ABI الحقيقي من الترجمة ======
+   انتبهي لمسار الملف: عندك في المشروع موجود داخل src/contracts
+   لذلك من الصفحات نرجع خطوة: ../contracts/Prescription.json
+*/
+import PRESCRIPTION from "../contracts/Prescription.json";
+
+/* ===== عنوان العقد (من Ganache) =====
+   من لقطة الشاشة عندك:
+   Prescription @ 0x273803B16cE36b3151Eb7e351Cd1924A31842Bfb
+   لو أعدتِ النشر سيتغير العنوان — حدّثيه هنا.
+*/
+const CONTRACT_ADDRESS = "0x273803B16cE36b3151Eb7e351Cd1924A31842Bfb";
 
 /* ===== قائمة الأدوية الأساسية ===== */
 const MEDICINE_CATALOG = [
@@ -117,6 +111,26 @@ async function sha256Hex(input) {
   const enc = new TextEncoder();
   const hash = await crypto.subtle.digest("SHA-256", enc.encode(input));
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/* ===== تهيئة مزوّد Ethers + فحص الشبكة/الحساب ===== */
+async function getSignerEnsured() {
+  if (!window.ethereum) {
+    throw new Error("MetaMask not detected. Please install/enable it.");
+  }
+  // اطلب صلاحية الحساب إذا لزم
+  await window.ethereum.request({ method: "eth_requestAccounts" });
+
+  const provider = new ethers.BrowserProvider(window.ethereum);
+  const network = await provider.getNetwork();
+
+  // Ganache غالبًا chainId = 1337 أو 5777 (حسب الإعداد). ما نمنع التنفيذ لكن ننبه.
+  const allowed = [1337n, 5777n];
+  if (!allowed.includes(network.chainId)) {
+    console.warn("⚠ Running on unexpected chainId =", network.chainId.toString());
+  }
+
+  return provider.getSigner();
 }
 
 /* ====================================================== */
@@ -201,16 +215,18 @@ export default function Doctor() {
       const canonicalMedicine = normalizeMedicineName(medicine);
       const natId = selectedPatient.id?.toString() || "";
       const natIdHashHex = natId ? await sha256Hex(natId) : "";
-      const patientHashBytes32 = natIdHashHex ? "0x" + natIdHashHex : "0x" + "0".repeat(64);
+      const patientHashBytes32 = natIdHashHex
+        ? ("0x" + natIdHashHex)
+        : "0x" + "0".repeat(64); // safeguard
 
-      if (!window.ethereum) throw new Error("MetaMask not detected");
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
+      // signer + عنوان الدكتور
+      const signer = await getSignerEnsured();
       const doctorAddress = await signer.getAddress();
 
-      const CONTRACT_ADDRESS = "0x9DC99df021D5848631D4265CBA18e00d166b0105"; // استبدليه بعنوان عقدك
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, PRESCRIPTION_ABI.abi, signer);
+      // تهيئة العقد من ABI الحقيقي
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, PRESCRIPTION.abi, signer);
 
+      // انتبهي: عقدك يستقبل (durationText) كسلسلة نصية — نرسل قيمة UI كما هي.
       const tx = await contract.createPrescription(
         patientHashBytes32,
         canonicalMedicine,
@@ -218,9 +234,12 @@ export default function Doctor() {
         timesPerDay,
         durationDays
       );
+
+      // ethers v6: receipt فيه hash و status
       const receipt = await tx.wait();
       const txHash = receipt?.hash || tx.hash;
 
+      // حفظ السجل في فايرستور
       await addDoc(collection(db, "prescriptions"), {
         [F.createdAt]: serverTimestamp(),
         [F.doctorId]: doctorAddress,
@@ -251,9 +270,9 @@ export default function Doctor() {
         state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
       });
     } catch (e) {
-      console.error(e);
-      setRxMsg(e?.shortMessage || e?.message || "Blockchain confirmation failed.");
-      setTimeout(() => setRxMsg(""), 5000);
+      console.error("createPrescription failed:", e);
+      setRxMsg(e?.info?.error?.message || e?.shortMessage || e?.message || "Blockchain confirmation failed.");
+      setTimeout(() => setRxMsg(""), 6000);
     } finally {
       setIsLoading(false);
     }
@@ -553,9 +572,7 @@ function MedicineSearch({ value, onChange, catalog }) {
                 e.preventDefault();
                 apply(s);
               }}
-              className={`px-4 py-2 text-sm cursor-pointer hover:bg-gray-50 ${
-                i === cursor ? "bg-gray-100" : ""
-              }`}
+              className={`px-4 py-2 text-sm cursor-pointer hover:bg-gray-50 ${i === cursor ? "bg-gray-100" : ""}`}
             >
               {s}
             </li>
@@ -605,5 +622,3 @@ function mapPatient(dbRec, id) {
     allergies: Array.isArray(dbRec.allergies) ? dbRec.allergies : [],
   };
 }
-
-      
