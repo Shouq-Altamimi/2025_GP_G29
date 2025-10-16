@@ -1,12 +1,12 @@
-// ===================== Admin Dashboard (Full, with Doctor Wallet/Password & On-chain) =====================
+// ===================== Admin Dashboard (Full, pruned as requested) =====================
 "use client";
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
-  Users, Activity, Settings, TrendingUp, Shield, FileText, AlertCircle, Plus, Search, Sun, Moon, Bell,
-  ChevronDown, Download, Filter, Building2, Stethoscope, Truck, Thermometer, ClipboardList, ChevronRight
+  Users, Activity, Settings, TrendingUp, Plus, Search, Bell,
+  ChevronDown, Building2, Stethoscope, Truck, Thermometer, ChevronRight
 } from 'lucide-react'
 
-// ADD: blockchain imports
+// blockchain imports
 import { ethers } from "ethers";
 import AccessControl from "../contracts/AccessControl.json"; // عدّلي المسار لو مختلف
 
@@ -92,10 +92,8 @@ function Modal({ open, onClose, children, title }) {
   )
 }
 
-// Header
+// Header (theme toggle removed)
 function Header({ onOpenAdd }) {
-  const [dark, setDark] = useState(false)
-  useEffect(() => { const root = document.documentElement; dark ? root.classList.add('dark') : root.classList.remove('dark') }, [dark])
   const [dd, setDd] = useState(false)
   return (
     <div className="sticky top-0 z-40 mb-6 border-b border-zinc-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:border-zinc-800 dark:bg-zinc-950/80">
@@ -119,7 +117,6 @@ function Header({ onOpenAdd }) {
             </Dropdown>
           </div>
           <Button variant="ghost" size="sm" aria-label="Notifications"><Bell className="h-5 w-5" /></Button>
-          <Button variant="ghost" size="sm" onClick={() => setDark(v => !v)} aria-label="Toggle theme">{dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}</Button>
           <Button variant="outline" size="sm" className="gap-2"><div className="grid h-6 w-6 place-items-center rounded-full bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-100">FT</div><span className="hidden sm:inline">Account</span><ChevronDown className="h-4 w-4" /></Button>
         </div>
       </div>
@@ -127,7 +124,7 @@ function Header({ onOpenAdd }) {
   )
 }
 
-// ADD: blockchain helpers (roles & generators)
+// blockchain helpers
 const ROLE_DOCTOR = 2;
 function genTempPwd() {
   const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -159,19 +156,12 @@ const saveOnChain = async (contractAddress, doctorWallet, accessId) => {
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('overview')
 
+  // Removed Security Alerts card
   const stats = useMemo(() => ([
     { title: 'Total Users', value: '1,284', change: '+12.5%', icon: Users, trend: 'up' },
     { title: 'Active Sessions', value: '342', change: '+5.2%', icon: Activity, trend: 'up' },
     { title: 'System Health', value: '98.5%', change: '+0.3%', icon: TrendingUp, trend: 'up' },
-    { title: 'Security Alerts', value: '3', change: '-2', icon: Shield, trend: 'down' },
   ]), [])
-
-  const systemLogs = [
-    { id: 1, action: 'User login', user: 'sarah.j@example.com', time: '2 minutes ago', severity: 'info' },
-    { id: 2, action: 'Database backup completed', user: 'System', time: '15 minutes ago', severity: 'success' },
-    { id: 3, action: 'Failed login attempt', user: 'unknown@example.com', time: '1 hour ago', severity: 'warning' },
-    { id: 4, action: 'Settings updated', user: 'admin@example.com', time: '2 hours ago', severity: 'info' },
-  ]
 
   const [users] = useState([
     { id: 1, name: 'Sarah Johnson', email: 'sarah.j@example.com', role: 'Admin', status: 'Active', joined: '2024-03-15' },
@@ -222,7 +212,6 @@ export default function AdminDashboard() {
   function genAccessId(){ return 'AC-' + Math.random().toString(36).slice(2,8).toUpperCase() }
   const [entityType, setEntityType] = useState('Doctor')
 
-  // REPLACED: form & resetForm to include wallet/temp/contract
   const [form, setForm] = useState({
     name: '', email: '', role: 'User', status: 'Active',
     license: '', city: '', specialty: '', regId: '',
@@ -242,7 +231,6 @@ export default function AdminDashboard() {
     contractAddress: ''
   })
 
-  // REPLACED: async + doctor on-chain
   const onSubmitAdd = async (e) => {
     e.preventDefault()
     if (entityType === 'Pharmacy') {
@@ -250,7 +238,6 @@ export default function AdminDashboard() {
       setPharmacies([{ id, name: form.name, license: form.license, city: form.city, status: 'Pending', accessId: form.accessId }, ...pharmacies])
       setActiveTab('pharmacies')
     } else if (entityType === 'Doctor') {
-      // basic checks
       if (!form.contractAddress) { alert("أدخلي Contract Address"); return; }
       if (!ethers.isAddress(form.walletAddress)) { alert("Wallet Address غير صالح"); return; }
       if (!form.tempPassword) { alert("Temp Password مطلوب"); return; }
@@ -285,11 +272,12 @@ export default function AdminDashboard() {
             <p className="mt-1 text-sm text-zinc-500 md:text-base">Manage identities & compliance, and monitor medicine transfers</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm"><FileText className="mr-2 h-4 w-4" />Export</Button>
+            {/* Export removed */}
             <Button variant="primary" size="sm"><Settings className="mr-2 h-4 w-4" />Settings</Button>
           </div>
         </div>
 
+        {/* stats (without Security Alerts) */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 lg:grid-cols-4">
           {stats.map((stat, i) => (
             <Card key={i} className="border">
@@ -308,9 +296,10 @@ export default function AdminDashboard() {
           ))}
         </div>
 
+        {/* tabs (logs & reports removed) */}
         <div className="flex flex-wrap gap-2 border-b border-zinc-200">
           {[
-            ['overview','Overview'],['users','Users'],['pharmacies','Pharmacies'],['doctors','Doctors'],['logistics','Logistics'],['shipments','Shipments'],['logs','System Logs'],['alerts','Alerts'],['reports','Reports']
+            ['overview','Overview'],['users','Users'],['pharmacies','Pharmacies'],['doctors','Doctors'],['logistics','Logistics'],['shipments','Shipments'],['alerts','Alerts']
           ].map(([key,label]) => (
             <Button key={key} variant={activeTab===key?'primary':'ghost'} onClick={()=>setActiveTab(key)} className="rounded-b-none">{label}</Button>
           ))}
@@ -431,33 +420,9 @@ export default function AdminDashboard() {
           </Card>
         )}
 
-        {activeTab==='logs' && (
-          <Card>
-            <CardHeader><CardTitle>System Logs</CardTitle><CardDescription>Monitor system events and security alerts</CardDescription></CardHeader>
-            <CardContent>
-              <div className="mb-3 flex items-center gap-2 text-sm"><Filter className="h-4 w-4 text-[#52B9C4]" /><span className="text-zinc-500">Filter by severity, date, user (coming soon)</span></div>
-              <div className="space-y-3">
-                {systemLogs.map(log => (
-                  <div key={log.id} className="flex items-center justify-between rounded-xl border border-zinc-200 p-4 transition-colors hover:bg-zinc-50">
-                    <div className="flex items-center gap-3">
-                      <AlertCircle className={cx('h-5 w-5',
-                        log.severity === 'warning' ? 'text-amber-500' :
-                        log.severity === 'success' ? 'text-emerald-500' :
-                        'text-[#B08CC1]'
-                      )} />
-                      <div><p className="font-medium text-[#4A2C59]">{log.action}</p><p className="text-sm text-zinc-500">{log.user}</p></div>
-                    </div>
-                    <div className="text-right"><Badge variant="outline" className="text-xs capitalize">{log.severity}</Badge><p className="mt-1 text-xs text-zinc-500">{log.time}</p></div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {activeTab==='alerts' && (
           <Card>
-            <CardHeader><div className="flex items-center gap-2"><Shield className="h-5 w-5 text-[#52B9C4]"/><CardTitle>Alerts</CardTitle></div><CardDescription>Security & cold-chain alerts</CardDescription></CardHeader>
+            <CardHeader><div className="flex items-center gap-2"><CardTitle>Alerts</CardTitle></div><CardDescription>Security & cold-chain alerts</CardDescription></CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {[{id:1, level:'High', type:'Temperature', msg:'Cold-chain breach on RX-983224'}, {id:2, level:'Medium', type:'Auth', msg:'5 failed login attempts (pharmacy-ops)'}].map(a => (
@@ -467,20 +432,6 @@ export default function AdminDashboard() {
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab==='reports' && (
-          <Card>
-            <CardHeader><CardTitle>Reports</CardTitle><CardDescription>Generate & export datasets</CardDescription></CardHeader>
-            <CardContent>
-              <div className="mb-4 flex flex-wrap items-center gap-2">
-                <Button variant="primary" size="sm"><Download className="mr-2 h-4 w-4" /> Export Users CSV</Button>
-                <Button variant="outline" size="sm"><FileText className="mr-2 h-4 w-4" /> Prescriptions PDF</Button>
-                <Button variant="outline" size="sm"><ClipboardList className="mr-2 h-4 w-4" /> Monthly Summary</Button>
-              </div>
-              <p className="text-sm text-zinc-600">(Placeholder) Wire these to Firestore/Chain later.</p>
             </CardContent>
           </Card>
         )}
@@ -517,72 +468,43 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* Doctor (UPDATED with contract + wallet + temp password) */}
+          {/* Doctor */}
           {entityType==='Doctor' && (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-[#4A2C59]">AccessControl Contract Address</label>
-                <input
-                  required
-                  placeholder="0x... (Ganache)"
-                  value={form.contractAddress}
-                  onChange={e=>setForm({...form, contractAddress: e.target.value})}
-                  className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40"
-                />
+                <input required placeholder="0x... (Ganache)" value={form.contractAddress} onChange={e=>setForm({...form, contractAddress: e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
               </div>
-
               <div>
                 <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Name</label>
-                <input required value={form.name} onChange={e=>setForm({...form, name:e.target.value})}
-                       className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
+                <input required value={form.name} onChange={e=>setForm({...form, name:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Specialty</label>
-                <input required value={form.specialty} onChange={e=>setForm({...form, specialty:e.target.value})}
-                       className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
+                <input required value={form.specialty} onChange={e=>setForm({...form, specialty:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
               </div>
-
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-[#4A2C59]">MOH Reg</label>
-                <input required value={form.regId} onChange={e=>setForm({...form, regId:e.target.value})}
-                       className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
+                <input required value={form.regId} onChange={e=>setForm({...form, regId:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
               </div>
-
               <div>
                 <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Wallet Address</label>
                 <div className="flex gap-2">
-                  <input
-                    required
-                    placeholder="0x... (MetaMask)"
-                    value={form.walletAddress}
-                    onChange={e=>setForm({...form, walletAddress: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40"
-                  />
+                  <input required placeholder="0x... (MetaMask)" value={form.walletAddress} onChange={e=>setForm({...form, walletAddress: e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
                   <Button type="button" variant="outline" onClick={()=>connectMetaMask(setForm)}>Use MetaMask</Button>
                 </div>
               </div>
-
               <div>
                 <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Temp Password</label>
                 <div className="flex gap-2">
-                  <input
-                    required
-                    placeholder="e.g. PX-4821"
-                    value={form.tempPassword}
-                    onChange={e=>setForm({...form, tempPassword: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40"
-                  />
+                  <input required placeholder="e.g. PX-4821" value={form.tempPassword} onChange={e=>setForm({...form, tempPassword: e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
                   <Button type="button" variant="outline" onClick={()=>setForm(f=>({...f, tempPassword: genTempPwd()}))}>Regenerate</Button>
                 </div>
-               
               </div>
-
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Access ID</label>
                 <div className="flex gap-2">
-                  <input readOnly value={form.accessId}
-                         className="w-full rounded-xl border border-zinc-300 bg-zinc-100 px-3 py-2 text-[#4A2C59]" />
+                  <input readOnly value={form.accessId} className="w-full rounded-xl border border-zinc-300 bg-zinc-100 px-3 py-2 text-[#4A2C59]" />
                   <Button type="button" variant="outline" onClick={()=>setForm(f=>({...f, accessId: genAccessId()}))}>Regenerate</Button>
                 </div>
               </div>
