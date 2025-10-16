@@ -10,7 +10,7 @@ contract AccessControl {
         bytes32 tempPassHash;
     }
 
-    // ✅ هنا التصحيح: بدون '>' وبدون 'Users'
+
     mapping(address => User) public users;
 
     address public owner;
