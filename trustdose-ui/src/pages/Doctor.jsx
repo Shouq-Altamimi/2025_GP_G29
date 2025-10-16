@@ -38,7 +38,7 @@ import PRESCRIPTION from "../contracts/Prescription.json";
    Prescription @ 0x273803B16cE36b3151Eb7e351Cd1924A31842Bfb
    لو أعدتِ النشر سيتغير العنوان — حدّثيه هنا.
 */
-const CONTRACT_ADDRESS = "0x273803B16cE36b3151Eb7e351Cd1924A31842Bfb";
+const CONTRACT_ADDRESS = "0xAb6371caCf9455e4E83d0f5e167E08e0078e1792";
 
 /* ===== قائمة الأدوية الأساسية ===== */
 const MEDICINE_CATALOG = [

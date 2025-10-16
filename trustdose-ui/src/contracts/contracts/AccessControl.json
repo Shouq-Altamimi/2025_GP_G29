@@ -48,7 +48,8 @@
         }
       ],
       "stateMutability": "view",
-      "type": "function"
+      "type": "function",
+      "constant": true
     },
     {
       "inputs": [
@@ -77,7 +78,8 @@
         }
       ],
       "stateMutability": "view",
-      "type": "function"
+      "type": "function",
+      "constant": true
     },
     {
       "inputs": [
@@ -134,7 +136,8 @@
         }
       ],
       "stateMutability": "view",
-      "type": "function"
+      "type": "function",
+      "constant": true
     }
   ],
   "metadata": "{\"compiler\":{\"version\":\"0.8.19+commit.7dd6d404\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"user\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"enum AccessControl.Role\",\"name\":\"role\",\"type\":\"uint8\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"accessId\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"tempPassHash\",\"type\":\"bytes32\"}],\"name\":\"UserAdded\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_user\",\"type\":\"address\"},{\"internalType\":\"enum AccessControl.Role\",\"name\":\"_role\",\"type\":\"uint8\"},{\"internalType\":\"string\",\"name\":\"_accessId\",\"type\":\"string\"},{\"internalType\":\"string\",\"name\":\"_tempPassword\",\"type\":\"string\"}],\"name\":\"addUser\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_user\",\"type\":\"address\"}],\"name\":\"getUser\",\"outputs\":[{\"internalType\":\"enum AccessControl.Role\",\"name\":\"\",\"type\":\"uint8\"},{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"users\",\"outputs\":[{\"internalType\":\"enum AccessControl.Role\",\"name\":\"role\",\"type\":\"uint8\"},{\"internalType\":\"string\",\"name\":\"accessId\",\"type\":\"string\"},{\"internalType\":\"bytes32\",\"name\":\"tempPassHash\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"project:/contracts/AccessControl.sol\":\"AccessControl\"},\"evmVersion\":\"paris\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[]},\"sources\":{\"project:/contracts/AccessControl.sol\":{\"keccak256\":\"0x592b58e8c46c04c029953afd31a24a9e451ae1d93e651267308f79e2f0df249e\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://5dfc2f4ab0c53c0ae0f760bc0d37e467237b94f0f36daa20c8744a09031f7e42\",\"dweb:/ipfs/QmY1HJ3kDbbnk24wSRaX24kdo1LPaonnoJuXtziVQT2s6d\"]}},\"version\":1}",
@@ -9310,12 +9313,13 @@
     "5777": {
       "events": {},
       "links": {},
-      "address": "0x85F5E7dEd5d353285C9Da67839BCEbb5fb72DF81",
-      "transactionHash": "0x048a534e48d6c964b3430a21cf33afa627fd58421eb40aec000d24c2c2acf119"
+      "address": "0xB7bc9227b6B76468C61be2C9CA1EfaD38b100694",
+      "transactionHash": "0xb35802d24a29633b819eeedfabf7b7940e3e4b42106e686cb67560de46514eee"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-10-16T18:40:24.861Z",
+  "updatedAt": "2025-10-16T19:18:34.922Z",
+  "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",
     "methods": {},
