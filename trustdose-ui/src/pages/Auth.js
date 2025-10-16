@@ -1,7 +1,7 @@
 // src/pages/Auth.js
 "use client";
 import React, { useMemo, useState, useEffect } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, CheckCircle, Circle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import {
@@ -17,18 +17,21 @@ import {
 } from "firebase/firestore";
 
 /* =========================
-   ألوان وهوية TrustDose
+   TrustDose Theme
    ========================= */
 const TD = {
-  primary: "#B08CC1", // موف
-  teal: "#52B9C4",    // فيروزي
-  ink: "#4A2C59",     // حبر
+  primary: "#B08CC1",
+  teal: "#52B9C4",
+  ink: "#4A2C59",
   gray: "#666",
   light: "#eee",
+  ok: "#10b981",
+  warn: "#f59e0b",
+  err: "#DC2626",
 };
 
 /* =========================
-   أدوات الهاش (PBKDF2-SHA256)
+   PBKDF2-SHA256 (WebCrypto)
    ========================= */
 async function pbkdf2Hash(password, saltBase64, iterations = 100_000) {
   const enc = new TextEncoder();
@@ -44,7 +47,7 @@ async function pbkdf2Hash(password, saltBase64, iterations = 100_000) {
   const bits = await crypto.subtle.deriveBits(
     { name: "PBKDF2", hash: "SHA-256", salt, iterations },
     pwKey,
-    256 // 32 bytes
+    256
   );
   const hashBytes = new Uint8Array(bits);
   return btoa(String.fromCharCode(...hashBytes));
@@ -57,32 +60,23 @@ function genSaltBase64(len = 16) {
 }
 
 /* =========================
-   كاتالوج المدن والأحياء
+   Cities & Districts (Riyadh only)
    ========================= */
-const SA_CITIES = [
-  "Riyadh","Jeddah","Dammam","Makkah","Medina","Khobar","Taif","Buraidah",
-  "Abha","Tabuk","Hail","Jazan","Najran","Al Ahsa",
-];
-
+const SA_CITIES = ["Riyadh"];
 const DISTRICTS_BY_CITY = {
-  Riyadh: ["Al Olaya","Al Malaz","Al Nakheel","Al Yasmin","Al Rawdah","Al Qirawan","Other…"],
-  Jeddah: ["Al Rawdah","Al Salamah","Al Nahdah","Al Hamra","Al Rehab","Other…"],
-  Dammam: ["Al Faisaliyah","Al Mazruiyah","Al Shati","Badr","Other…"],
-  Makkah: ["Al Aziziyah","Al Awali","Al Shara’i","Al Nuzha","Other…"],
-  Medina: ["Quba","Al Khalidiyah","Al Zahra","Other…"],
-  Khobar: ["Al Rakah","Al Aqrabiyah","Al Olaya","Other…"],
-  Taif: ["Al Salamah","Al Faisaliah","Al Shifa","Other…"],
-  Buraidah: ["Al Nahdah","Al Rayyan","Other…"],
-  Abha: ["Al Soudah","Al Nasim","Other…"],
-  Tabuk: ["Al Matar","Al Mahدود","Other…"],
-  Hail: ["Al مطار","Al Samraa","Other…"],
-  Jazan: ["Sabya","Abu Arish","Other…"],
-  Najran: ["Al Faisaliah","Al Khalidiyah","Other…"],
-  "Al Ahsa": ["Mubarraz","Hofuf","Other…"],
+  Riyadh: [
+    "Al Olaya",
+    "Al Malaz",
+    "Al Nakheel",
+    "Al Yasmin",
+    "Al Rawdah",
+    "Al Qirawan",
+    "Other…",
+  ],
 };
 
 /* =========================
-   أدوات التحقق (هاتف + كلمة مرور)
+   Validators (Phone / Password / NID)
    ========================= */
 function toEnglishDigits(s) {
   if (!s) return "";
@@ -98,8 +92,14 @@ function toEnglishDigits(s) {
 function isDigitsLike(s) {
   return /^\+?\d+$/.test(s || "");
 }
+
+/** Reject spaces; do not auto-fix them */
 function validateAndNormalizePhone(raw) {
-  const cleaned = toEnglishDigits(String(raw || "").trim()).replace(/\s+/g, "");
+  const original = String(raw || "");
+  if (/\s/.test(original)) {
+    return { ok: false, reason: "Phone number must not contain spaces." };
+  }
+  const cleaned = toEnglishDigits(original).trim();
   if (!isDigitsLike(cleaned)) {
     return { ok: false, reason: "Phone should contain digits only (and optional leading +)." };
   }
@@ -116,6 +116,25 @@ function validateAndNormalizePhone(raw) {
       "Phone must start with 05 or +9665 followed by 8 digits (e.g., 05xxxxxxxx or +9665xxxxxxxx).",
   };
 }
+
+/** Strict at submit: 10 ASCII digits, starts with 1 or 2, no spaces */
+function isValidNationalIdStrict(raw) {
+  const s = String(raw || "");
+  if (/\s/.test(s)) return false;
+  return /^[12][0-9]{9}$/.test(s);
+}
+
+/** Live validation: allow partial typing up to 11, enforce ASCII digits & start rule, show error if >10 */
+function isValidNationalIdLive(raw) {
+  const s = String(raw || "");
+  if (s === "") return { ok: true, reason: "" };
+  if (/\s/.test(s)) return { ok: false, reason: "No spaces allowed." };
+  if (!/^[0-9]*$/.test(s)) return { ok: false, reason: "Digits 0-9 only (ASCII)." };
+  if (s.length >= 1 && !/^[12]/.test(s)) return { ok: false, reason: "Must start with 1 or 2." };
+  if (s.length > 10) return { ok: false, reason: "Exactly 10 digits." };
+  return { ok: true, reason: "" };
+}
+
 function passwordStrength(pw) {
   const p = String(pw || "");
   let score = 0;
@@ -140,7 +159,7 @@ function passwordStrength(pw) {
 }
 
 /* =========================
-   عناصر UI صغيرة قابلة لإعادة الاستخدام
+   Small UI helpers
    ========================= */
 const inputBase = {
   width: "100%",
@@ -154,7 +173,7 @@ const inputBase = {
   fontSize: 14,
 };
 const inputFocus = (hasError = false) => ({
-  borderColor: hasError ? "#DC2626" : TD.primary,
+  borderColor: hasError ? TD.err : TD.primary,
   boxShadow: hasError
     ? "0 0 0 4px rgba(220,38,38,.08)"
     : "0 0 0 4px rgba(176,140,193,.12)",
@@ -183,11 +202,12 @@ function Label({ children }) {
   return <label style={{ fontSize: 13, color: TD.ink, fontWeight: 600 }}>{children}</label>;
 }
 
-/** حاوية select مع سهم صغير */
-function Select({ value, onChange, disabled, required, children }) {
+/** Select with placeholder/name + arrow */
+function Select({ name, value, onChange, disabled, required, placeholder, children }) {
   return (
     <div style={{ position: "relative" }}>
       <select
+        name={name}
         value={value}
         onChange={onChange}
         disabled={disabled}
@@ -201,6 +221,10 @@ function Select({ value, onChange, disabled, required, children }) {
           })
         }
       >
+        {/* placeholder option */}
+        <option value="" disabled hidden>
+          {placeholder || "Select…"}
+        </option>
         {children}
       </select>
       <svg
@@ -238,11 +262,13 @@ export default function TrustDoseAuth() {
 
   // Sign up (Patient)
   const [nationalId, setNationalId] = useState("");
+  const [nationalIdErr, setNationalIdErr] = useState("");
   const [phone, setPhone] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
-  const [gender, setGender] = useState(""); // "M" | "F"
+  const [gender, setGender] = useState(""); // "Male" | "Female"
   const [birthDate, setBirthDate] = useState("");
+  const [birthDateErr, setBirthDateErr] = useState("");
 
   // الموقع
   const [city, setCity] = useState("");
@@ -255,7 +281,6 @@ export default function TrustDoseAuth() {
   const [phoneChecking, setPhoneChecking] = useState(false);
   const [phoneTaken, setPhoneTaken] = useState(false);
 
-  // تصغير بسيط لعناصر Sign-up
   const isSignup = mode === "signup";
   const inputCompact = isSignup ? { padding: "10px 12px", borderRadius: 10, fontSize: 13.5 } : {};
 
@@ -304,7 +329,7 @@ export default function TrustDoseAuth() {
   }, [city]);
 
   const title = useMemo(
-    () => (mode === "signup" ? "Create Patient Account" : "Welcome to TrustDose"),
+    () => (mode === "signup" ? "Patient sign-up" : "Welcome to TrustDose"),
     [mode]
   );
 
@@ -313,8 +338,8 @@ export default function TrustDoseAuth() {
     if (/^dr[-_]?\w+/i.test(clean)) {
       return { coll: "doctors", idFields: ["DoctorID"], role: "doctor" };
     }
-    if (/^(phar|b[-_]?)/i.test(clean)) {
-      return { coll: "pharmacies", idFields: ["BranchID"], role: "pharmacy" };
+    if (/^(ph|phar|pharmacy)[-_]?\w+/i.test(clean)) {
+      return { coll: "pharmacies", idFields: ["BranchID", "PharmacyID"], role: "pharmacy" };
     }
     if (/^\d{10,12}$/.test(clean)) {
       return { coll: "patients", idFields: ["nationalID", "nationalId"], role: "patient" };
@@ -334,7 +359,6 @@ export default function TrustDoseAuth() {
       if (!id) throw new Error("Please enter your ID");
 
       const { coll, idFields, role } = detectSource(id);
-
       let user = null;
 
       if (role === "patient") {
@@ -342,7 +366,6 @@ export default function TrustDoseAuth() {
           const p = await getDoc(doc(db, "patients", `Ph_${id}`));
           if (p.exists()) user = p.data();
         } catch {}
-
       }
 
       if (!user) {
@@ -407,13 +430,20 @@ export default function TrustDoseAuth() {
     setLoading(true);
 
     try {
-      const nid = String(nationalId).trim();
-      const phoneRaw = String(phone).trim();
-      const phoneCheck = validateAndNormalizePhone(phoneRaw);
+      const nidRaw = String(nationalId);
+      const nid = nidRaw.trim();
+
+      // Strict check at submit
+      if (!isValidNationalIdStrict(nid)) {
+        throw new Error("National ID must be 10 digits starting with 1 or 2 (ASCII digits only, no spaces).");
+      }
+
+      const phoneRaw = String(phone);
+      const phoneCheck = validateAndNormalizePhone(phoneRaw); // rejects any space
       const pass = String(password).trim();
       const pass2 = String(confirmPassword).trim();
       const nm = name.trim();
-      const g = gender.trim().toUpperCase();
+      const g = gender.trim(); // "Male" | "Female"
       const bdate = birthDate.trim();
 
       const c = city.trim();
@@ -422,8 +452,7 @@ export default function TrustDoseAuth() {
       if (!nid || !phoneRaw || !pass || !pass2 || !nm || !g || !bdate || !c || !d) {
         throw new Error("Please fill all fields.");
       }
-      if (!/^\d{10,12}$/.test(nid)) throw new Error("National ID should be 10–12 digits.");
-      if (!["M", "F"].includes(g)) throw new Error("Gender must be M or F.");
+      if (!["Male", "Female"].includes(g)) throw new Error("Gender must be Male or Female.");
 
       if (!phoneCheck.ok) { throw new Error(phoneCheck.reason || "Invalid phone."); }
       const phoneNorm = phoneCheck.normalized;
@@ -437,8 +466,10 @@ export default function TrustDoseAuth() {
 
       const bdObj = new Date(bdate);
       if (Number.isNaN(bdObj.getTime())) throw new Error("Invalid birth date.");
-      const now = new Date();
-      if (bdObj > now) throw new Error("Birth date cannot be in the future.");
+
+      // Logical max: 2007-12-31 (UI not restricted)
+      const maxBirth = new Date("2007-12-31T23:59:59");
+      if (bdObj > maxBirth) throw new Error("Birth date must be 2007 or earlier.");
 
       const docId = `Ph_${nid}`;
       const existsSnap = await getDoc(doc(db, "patients", docId));
@@ -454,7 +485,7 @@ export default function TrustDoseAuth() {
       await setDoc(doc(db, "patients", docId), {
         locationCity: c,
         locationDistrict: d,
-        Location: `${c}, ${d}`,
+        locationLabel: `${c}, ${d}`,
         birthDate: Timestamp.fromDate(bdObj),
         contact: phoneNorm,
         gender: g,
@@ -481,6 +512,8 @@ export default function TrustDoseAuth() {
       setDistrictOther("");
       setPhoneInfo({ ok: false, reason: "", normalized: "" });
       setPhoneTaken(false);
+      setNationalIdErr("");
+      setBirthDateErr("");
     } catch (err) {
       setMsg(`❌ ${err?.message || err}`);
     } finally {
@@ -488,7 +521,10 @@ export default function TrustDoseAuth() {
     }
   }
 
-  const currentDistricts = city ? DISTRICTS_BY_CITY[city] || ["Other…"] : [];
+  const currentDistricts = useMemo(
+    () => (city ? DISTRICTS_BY_CITY[city] || ["Other…"] : []),
+    [city]
+  );
 
   return (
     <div
@@ -505,26 +541,24 @@ export default function TrustDoseAuth() {
     >
       <div
         style={{
-          // نفس العرض للصفحتين للتنسيق
           width: "min(92vw, 460px)",
           background: "#fff",
           padding: 24,
           borderRadius: 18,
           boxShadow: "0 18px 42px rgba(0,0,0,0.12)",
           border: "1px solid rgba(0,0,0,.04)",
-          // منع طول مفرط في Sign-up
           maxHeight: "90vh",
           overflowY: "auto",
           WebkitOverflowScrolling: "touch",
           scrollbarWidth: "thin",
         }}
       >
-        {/* الشعار داخل الكارد، أكبر بدون ما يكبر الكارد */}
+        {/* Logo */}
         <div style={{ display: "grid", placeItems: "center", marginBottom: 16 }}>
           <div
             style={{
-              width: 220,          // إطار ثابت
-              height: 100,         // يضمن مساحة مريحة
+              width: 220,
+              height: 100,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -537,7 +571,7 @@ export default function TrustDoseAuth() {
                 width: "100%",
                 height: "auto",
                 objectFit: "contain",
-                transform: "scale(1.3)", // 👈 تكبير داخلي بدون توسيع الكارد
+                transform: "scale(1.3)",
                 filter: "drop-shadow(0 2px 6px rgba(0,0,0,.12))",
               }}
               draggable="false"
@@ -675,10 +709,19 @@ export default function TrustDoseAuth() {
             <Label>National ID</Label>
             <input
               value={nationalId}
-              onChange={(e) => setNationalId(e.target.value)}
-              placeholder="1xxxxxxxxx"
-              style={{ ...inputBase, ...inputCompact }}
-              onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
+              onChange={(e) => {
+                const v = e.target.value;
+                const live = isValidNationalIdLive(v);
+                setNationalId(v);
+                setNationalIdErr(live.ok ? "" : live.reason);
+              }}
+              placeholder="1xxxxxxxxx or 2xxxxxxxxx"
+              style={{
+                ...inputBase,
+                ...inputCompact,
+                ...(nationalIdErr ? { borderColor: TD.err, boxShadow: "0 0 0 4px rgba(220,38,38,.08)" } : {}),
+              }}
+              onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(!!nationalIdErr))}
               onBlur={(e) =>
                 Object.assign(e.currentTarget.style, {
                   borderColor: "#DFE3E8",
@@ -686,18 +729,34 @@ export default function TrustDoseAuth() {
                 })
               }
               required
+              maxLength={11}
+              inputMode="numeric"
+              pattern="[12][0-9]{9}"
+              title="10 ASCII digits starting with 1 or 2"
+              onKeyDown={(e) => {
+                const allowedControl = ["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"];
+                if (e.key === " ") { e.preventDefault(); return; }
+                if (/^[0-9]$/.test(e.key)) return;
+                if (allowedControl.includes(e.key)) return;
+                e.preventDefault();
+              }}
             />
+            {nationalIdErr && (
+              <div style={{ marginTop: -6, marginBottom: 8, fontSize: 12, color: "#b91c1c" }}>
+                {nationalIdErr}
+              </div>
+            )}
 
             <Label>Phone</Label>
             <input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="05xxxxxxxx or +9665xxxxxxxx"
+              placeholder="05xxxxxxxx or +9665xxxxxxxx (no spaces)"
               style={{ ...inputBase, ...inputCompact }}
               onFocus={(e) =>
                 Object.assign(
                   e.currentTarget.style,
-                  inputFocus(!phoneInfo.ok && !!phone)
+                  inputFocus(!(phone === "" || (phoneInfo.ok && !phoneTaken)) && !!phone)
                 )
               }
               onBlur={(e) =>
@@ -707,6 +766,9 @@ export default function TrustDoseAuth() {
                 })
               }
               required
+              onKeyDown={(e) => {
+                if (e.key === " ") e.preventDefault();
+              }}
             />
             <div style={{ marginTop: -6, marginBottom: 8, fontSize: 12 }}>
               {!phone && (
@@ -745,10 +807,15 @@ export default function TrustDoseAuth() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div>
                 <Label>Gender</Label>
-                <Select value={gender} onChange={(e) => setGender(e.target.value)} required>
-                  <option value="">Select…</option>
-                  <option value="M">M</option>
-                  <option value="F">F</option>
+                <Select
+                  name="gender"
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  required
+                  placeholder="Select gender…"
+                >
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
                 </Select>
               </div>
 
@@ -757,9 +824,23 @@ export default function TrustDoseAuth() {
                 <input
                   type="date"
                   value={birthDate}
-                  onChange={(e) => setBirthDate(e.target.value)}
-                  style={{ ...inputBase, ...inputCompact }}
-                  onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setBirthDate(v);
+                    if (v) {
+                      const bd = new Date(v);
+                      const maxBirth = new Date("2007-12-31T23:59:59");
+                      setBirthDateErr(bd > maxBirth ? "Birth date must be 2007 or earlier." : "");
+                    } else {
+                      setBirthDateErr("");
+                    }
+                  }}
+                  style={{
+                    ...inputBase,
+                    ...inputCompact,
+                    ...(birthDateErr ? { borderColor: TD.err, boxShadow: "0 0 0 4px rgba(220,38,38,.08)" } : {}),
+                  }}
+                  onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(!!birthDateErr))}
                   onBlur={(e) =>
                     Object.assign(e.currentTarget.style, {
                       borderColor: "#DFE3E8",
@@ -768,15 +849,25 @@ export default function TrustDoseAuth() {
                   }
                   required
                 />
+                {birthDateErr && (
+                  <div style={{ marginTop: -6, marginBottom: 8, fontSize: 12, color: "#b91c1c" }}>
+                    {birthDateErr}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* الموقع: مدينة + حي */}
+            {/* City + District */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div>
                 <Label>City</Label>
-                <Select value={city} onChange={(e) => setCity(e.target.value)} required>
-                  <option value="">Select a city…</option>
+                <Select
+                  name="city"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  required
+                  placeholder="Select a city…"
+                >
                   {SA_CITIES.map((c) => (
                     <option key={c} value={c}>
                       {c}
@@ -788,15 +879,14 @@ export default function TrustDoseAuth() {
               <div>
                 <Label>District</Label>
                 <Select
+                  name="district"
                   value={district}
                   onChange={(e) => setDistrict(e.target.value)}
                   required
                   disabled={!city}
+                  placeholder={city ? "Select a district…" : "Choose city first"}
                 >
-                  <option value="">
-                    {city ? "Select a district…" : "Choose city first"}
-                  </option>
-                  {(city ? DISTRICTS_BY_CITY[city] || ["Other…"] : []).map((d) => (
+                  {(city ? (DISTRICTS_BY_CITY[city] || []) : []).map((d) => (
                     <option key={d} value={d === "Other…" ? "__OTHER__" : d}>
                       {d}
                     </option>
@@ -805,7 +895,6 @@ export default function TrustDoseAuth() {
               </div>
             </div>
 
-            {/* حقل حي مخصص عند اختيار Other… */}
             {district === "__OTHER__" && (
               <div>
                 <Label>District (Other)</Label>
@@ -867,6 +956,20 @@ export default function TrustDoseAuth() {
               </button>
             </div>
 
+            {/* Password live checklist (Sign up only) */}
+            {password.length > 0 && (
+              <div style={{ marginTop: 8, marginBottom: 8 }}>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
+                  <PwRule ok={/[A-Z]/.test(password)} label="Uppercase (A–Z)" />
+                  <PwRule ok={/[a-z]/.test(password)} label="Lowercase (a–z)" />
+                  <PwRule ok={/\d/.test(password)} label="Digit (0–9)" />
+                  <PwRule ok={/[^A-Za-z0-9]/.test(password)} label="Symbol (!@#$…)" />
+                  <PwRule ok={password.length >= 8} label="Length ≥ 8" />
+                </ul>
+              </div>
+            )}
+
+            {/* Strength bar & hint */}
             {password.length > 0 && (
               <div style={{ marginTop: -6, marginBottom: 8 }}>
                 <div style={{ height: 6, background: "#eee", borderRadius: 6, overflow: "hidden" }}>
@@ -979,5 +1082,15 @@ export default function TrustDoseAuth() {
         )}
       </div>
     </div>
+  );
+}
+
+/** Password Rule item */
+function PwRule({ ok, label }) {
+  return (
+    <li style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: ok ? TD.ok : TD.gray }}>
+      {ok ? <CheckCircle size={16} /> : <Circle size={16} />}
+      <span>{label}</span>
+    </li>
   );
 }
