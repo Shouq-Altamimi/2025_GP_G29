@@ -1,3 +1,6 @@
+// src/pages/Doctor.jsx
+"use client";
+
 import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
@@ -11,6 +14,8 @@ import {
   addDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import { ethers } from "ethers";
+
 import {
   FileText,
   AlertCircle,
@@ -22,119 +27,75 @@ import {
   CalendarDays,
 } from "lucide-react";
 
-/* ====== اقتراحات الواجهة ====== */
-const MEDICINE_CATALOG = [
-  "Panadol",
-  "Paracetamol",
-  "Amoxicillin",
-  "Metformin",
-  "Atorvastatin",
-  "Omeprazole",
-  "Losartan",
-  "Insulin",
-  "Ibuprofen",
-  "Azithromycin",
-  "Vitamin D",
-  "Cough Syrup",
-  "Aspirin",
-  "Lisinopril",
-  "Simvastatin",
-  "Levothyroxine",
-  "Metoprolol",
-  "Amlodipine",
-  "Albuterol",
-  "Gabapentin",
-];
-
-/* ====== قاموس التطبيع (synonyms) ====== */
-const MEDICINE_DICT = {
-  panadol: "Paracetamol",
-  paracetamol: "Paracetamol",
-  tylenol: "Paracetamol",
-
-  ibu: "Ibuprofen",
-  ibuprofen: "Ibuprofen",
-
-  amox: "Amoxicillin",
-  amoxicillin: "Amoxicillin",
-
-  insulin: "Insulin",
-  metformin: "Metformin",
-  atorvastatin: "Atorvastatin",
-  omeprazole: "Omeprazole",
-  losartan: "Losartan",
-  azithromycin: "Azithromycin",
-  "vitamin d": "Vitamin D",
-  aspirin: "Aspirin",
-  lisinopril: "Lisinopril",
-  simvastatin: "Simvastatin",
-  levothyroxine: "Levothyroxine",
-  metoprolol: "Metoprolol",
-  amlodipine: "Amlodipine",
-  albuterol: "Albuterol",
-  gabapentin: "Gabapentin",
+/* ===== ABI مؤقّت (بدّليه بالـ JSON الحقيقي لاحقاً) ===== */
+const PRESCRIPTION_ABI = {
+  abi: [
+    {
+      inputs: [
+        { internalType: "bytes32", name: "patientHash", type: "bytes32" },
+        { internalType: "string", name: "medicine", type: "string" },
+        { internalType: "string", name: "dose", type: "string" },
+        { internalType: "string", name: "frequency", type: "string" },
+        { internalType: "string", name: "duration", type: "string" },
+      ],
+      name: "createPrescription",
+      outputs: [{ internalType: "uint256", name: "id", type: "uint256" }],
+      stateMutability: "nonpayable",
+      type: "function",
+    },
+  ],
 };
 
-// ترجيع الاسم المعياري (مع قبول نص حرّ)
+/* ===== قائمة الأدوية الأساسية ===== */
+const MEDICINE_CATALOG = [
+  "Panadol","Paracetamol","Amoxicillin","Metformin","Atorvastatin",
+  "Omeprazole","Losartan","Insulin","Ibuprofen","Azithromycin",
+  "Vitamin D","Cough Syrup","Aspirin","Lisinopril","Simvastatin",
+  "Levothyroxine","Metoprolol","Amlodipine","Albuterol","Gabapentin",
+];
+
+/* ===== قاموس التطبيع ===== */
+const MEDICINE_DICT = {
+  panadol: "Paracetamol", paracetamol: "Paracetamol", tylenol: "Paracetamol",
+  ibu: "Ibuprofen", ibuprofen: "Ibuprofen",
+  amox: "Amoxicillin", amoxicillin: "Amoxicillin",
+  insulin: "Insulin", metformin: "Metformin", atorvastatin: "Atorvastatin",
+  omeprazole: "Omeprazole", losartan: "Losartan", azithromycin: "Azithromycin",
+  "vitamin d": "Vitamin D", aspirin: "Aspirin", lisinopril: "Lisinopril",
+  simvastatin: "Simvastatin", levothyroxine: "Levothyroxine",
+  metoprolol: "Metoprolol", amlodipine: "Amlodipine", albuterol: "Albuterol",
+  gabapentin: "Gabapentin",
+};
 function normalizeMedicineName(input) {
   if (!input) return "";
   const key = input.trim().toLowerCase();
-  return MEDICINE_DICT[key] || capitalizeWords(input.trim());
+  return (
+    MEDICINE_DICT[key] ||
+    input
+      .trim()
+      .replace(/\s+/g, " ")
+      .split(" ")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ")
+  );
 }
 
-function capitalizeWords(s) {
-  return s
-    .replace(/\s+/g, " ")
-    .split(" ")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(" ");
-}
-
+/* ===== الثوابت ===== */
 const DOSAGE_OPTIONS = [
-  "5 mg",
-  "10 mg",
-  "20 mg",
-  "50 mg",
-  "100 mg",
-  "250 mg",
-  "500 mg",
-  "1 tablet",
-  "2 tablets",
-  "1 capsule",
-  "5 mL",
-  "10 mL",
-  "15 mL",
+  "5 mg","10 mg","20 mg","50 mg","100 mg","250 mg","500 mg",
+  "1 tablet","2 tablets","1 capsule","5 mL","10 mL","15 mL",
 ];
 const FREQUENCY_OPTIONS = [
-  "Once daily (OD)",
-  "Twice daily (BID)",
-  "Three times daily (TID)",
-  "Four times daily (QID)",
-  "Every 6 hours",
-  "Every 8 hours",
-  "Every 12 hours",
+  "Once daily (OD)","Twice daily (BID)","Three times daily (TID)",
+  "Four times daily (QID)","Every 6 hours","Every 8 hours","Every 12 hours",
 ];
 const DURATION_OPTIONS = [
-  "3 days",
-  "5 days",
-  "7 days",
-  "10 days",
-  "14 days",
-  "21 days",
-  "30 days",
-  "1 month",
-  "2 months",
-  "3 months",
+  "3 days","5 days","7 days","10 days","14 days","21 days",
+  "30 days","1 month","2 months","3 months",
 ];
+const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
 
-const C = {
-  primary: "#B08CC1",
-  primaryDark: "#9F76B4",
-  ink: "#4A2C59",
-  pale: "#F6F1FA",
-};
-
-/* ===== Field names (تجنّب الأخطاء الكتابية) ===== */
+/* ===== أسماء الحقول في قاعدة البيانات ===== */
 const F = Object.freeze({
   createdAt: "createdAt",
   doctorId: "doctorId",
@@ -145,33 +106,30 @@ const F = Object.freeze({
   notes: "notes",
   onchainTx: "onchainTx",
   patientDocId: "patientDocId",
-  patientDisplayId: "patientDisplayId", // مثال: آخر 4 أرقام فقط
-  patientNationalIdHash: "patientNationalIdHash", // اختياري: خصوصية
+  patientDisplayId: "patientDisplayId",
+  patientNationalIdHash: "patientNationalIdHash",
   reason: "reason",
   status: "status",
 });
 
-/* ===== SHA-256 (لهاش الـ National ID) ===== */
+/* ===== دالة SHA-256 ===== */
 async function sha256Hex(input) {
   const enc = new TextEncoder();
   const hash = await crypto.subtle.digest("SHA-256", enc.encode(input));
-  return [...new Uint8Array(hash)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/* ====================================================== */
 export default function Doctor() {
   const navigate = useNavigate();
-
   const [q, setQ] = useState("");
   const [searchMsg, setSearchMsg] = useState("");
   const [rxMsg, setRxMsg] = useState("");
   const [searched, setSearched] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
-  const [prescriptions, setPrescriptions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // حقّ فورم الوصفة
+  // form
   const [medicine, setMedicine] = useState("");
   const [dose, setDose] = useState("");
   const [timesPerDay, setTimesPerDay] = useState("");
@@ -179,7 +137,7 @@ export default function Doctor() {
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
 
-  // استرجاع آخر مريض (لو رجعتِ من صفحة الوصفات)
+  /* استرجاع المريض من الجلسة */
   useEffect(() => {
     const cached = sessionStorage.getItem("td_patient");
     if (cached) {
@@ -190,25 +148,15 @@ export default function Doctor() {
     }
   }, []);
 
-  const fmtNow = () =>
-    new Date().toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
+  /* ===== البحث عن مريض ===== */
   async function runSearch() {
     const id = q.trim();
-
     if (!/^\d{10}$/.test(id)) {
       setSearchMsg("National ID must be exactly 10 digits (numbers only).");
       setSelectedPatient(null);
       setSearched(false);
       return;
     }
-
     setIsLoading(true);
     setSearchMsg("");
     try {
@@ -217,7 +165,7 @@ export default function Doctor() {
         const patient = mapPatient(rec, id);
         setSelectedPatient(patient);
         setSearched(true);
-        sessionStorage.setItem("td_patient", JSON.stringify(patient)); // ✅ خزّناه
+        sessionStorage.setItem("td_patient", JSON.stringify(patient));
       } else {
         setSelectedPatient(null);
         setSearched(true);
@@ -235,8 +183,8 @@ export default function Doctor() {
     }
   }
 
-  /* ===== إنشاء وصفة: يحفظ في فايرستور مع serverTimestamp + Hash ===== */
-  async function createRx() {
+  /* ===== تأكيد وإنشاء الوصفة ===== */
+  async function confirmAndSave() {
     if (!selectedPatient) {
       setRxMsg("Please search for a patient first.");
       return;
@@ -246,39 +194,35 @@ export default function Doctor() {
       return;
     }
 
-    // الاسم المعياري من القاموس
-    const canonicalMedicine = normalizeMedicineName(medicine);
-
-    // هاش للـ National ID (بدون كشفه)
-    const natId = selectedPatient.id?.toString() || "";
-    const natIdHash = natId ? await sha256Hex(natId) : "";
-
-    // قد تجلبي العنوان من MetaMask لاحقًا
-    const doctorAddress = null; // TODO: استبدليها بعنوان الطبيب عند الربط
-
-    // إنشاء نسخة محلية للعرض والتنقّل
-    const localRx = {
-      id: `RX-${Date.now()}`,
-      ref: `RX-${Math.floor(Math.random() * 100000)
-        .toString()
-        .padStart(5, "0")}`,
-      patientId: selectedPatient.id,
-      patientName: selectedPatient.name,
-      medicine: canonicalMedicine,
-      dose,
-      timesPerDay,
-      durationDays,
-      reason,
-      notes,
-      status: "Active",
-      createdAt: fmtNow(),
-      prescribedBy: "Dr. Ahmed Hassan",
-    };
-
-    // حفظ فعلي في Firestore
     try {
+      setIsLoading(true);
+      setRxMsg("");
+
+      const canonicalMedicine = normalizeMedicineName(medicine);
+      const natId = selectedPatient.id?.toString() || "";
+      const natIdHashHex = natId ? await sha256Hex(natId) : "";
+      const patientHashBytes32 = natIdHashHex ? "0x" + natIdHashHex : "0x" + "0".repeat(64);
+
+      if (!window.ethereum) throw new Error("MetaMask not detected");
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const doctorAddress = await signer.getAddress();
+
+      const CONTRACT_ADDRESS = "0x9DC99df021D5848631D4265CBA18e00d166b0105"; // استبدليه بعنوان عقدك
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, PRESCRIPTION_ABI.abi, signer);
+
+      const tx = await contract.createPrescription(
+        patientHashBytes32,
+        canonicalMedicine,
+        dose,
+        timesPerDay,
+        durationDays
+      );
+      const receipt = await tx.wait();
+      const txHash = receipt?.hash || tx.hash;
+
       await addDoc(collection(db, "prescriptions"), {
-        [F.createdAt]: serverTimestamp(), // ✅ من السيرفر
+        [F.createdAt]: serverTimestamp(),
         [F.doctorId]: doctorAddress,
         [F.medicineName]: canonicalMedicine,
         [F.dosage]: dose,
@@ -286,61 +230,40 @@ export default function Doctor() {
         [F.durationDays]: durationDays,
         [F.reason]: reason || "",
         [F.notes]: notes || "",
-        [F.status]: "Draft", // تبدأ Draft ثم تتحدث بعد التأكيد على السلسلة
-        [F.onchainTx]: null,
-        [F.patientDocId]: selectedPatient.docId, // مرجع آمن
+        [F.status]: "Active",
+        [F.onchainTx]: txHash,
+        [F.patientDocId]: selectedPatient.docId,
         [F.patientDisplayId]: natId ? natId.slice(-4) : "",
-        [F.patientNationalIdHash]: natIdHash, // ✅ خصوصية
+        [F.patientNationalIdHash]: "0x" + natIdHashHex,
+        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+      });
+
+      setMedicine("");
+      setDose("");
+      setTimesPerDay("");
+      setDurationDays("");
+      setReason("");
+      setNotes("");
+      setRxMsg("Prescription created & confirmed on-chain ✓");
+      setTimeout(() => setRxMsg(""), 4000);
+
+      navigate("/prescriptions", {
+        state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
       });
     } catch (e) {
-      console.error("Firestore add error:", e);
-      setRxMsg("Error saving to database. Please try again.");
-      setTimeout(() => setRxMsg(""), 4000);
-      return;
+      console.error(e);
+      setRxMsg(e?.shortMessage || e?.message || "Blockchain confirmation failed.");
+      setTimeout(() => setRxMsg(""), 5000);
+    } finally {
+      setIsLoading(false);
     }
-
-    // نجاح واجهة
-    setPrescriptions((prev) => [localRx, ...prev]);
-    setMedicine("");
-    setDose("");
-    setTimesPerDay("");
-    setDurationDays("");
-    setReason("");
-    setNotes("");
-    setRxMsg(
-      `Prescription ${localRx.ref} successfully created for ${selectedPatient.name}.`
-    );
-    setTimeout(() => setRxMsg(""), 4000);
-
-    navigate("/prescriptions", {
-      state: {
-        patientId: selectedPatient.id,
-        patientName: selectedPatient.name,
-        localList: [localRx],
-      },
-    });
   }
 
-  function goToPrescriptions() {
-    if (!selectedPatient) return;
-    navigate("/prescriptions", {
-      state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
-    });
-  }
-
-  function resetSearch() {
-    setQ("");
-    setSelectedPatient(null);
-    setSearched(false);
-    setSearchMsg("");
-    setPrescriptions([]);
-    sessionStorage.removeItem("td_patient");
-  }
-
+  /* ===== عرض الصفحة ===== */
   return (
     <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-6 py-6 md:py-8">
       <section className="space-y-6">
-        {/* Search */}
+        {/* ======= البحث عن المريض ======= */}
         <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <Search size={20} style={{ color: C.primary }} />
@@ -357,14 +280,12 @@ export default function Doctor() {
                 inputMode="numeric"
                 pattern="[0-9]*"
                 maxLength={10}
-                onChange={(e) =>
-                  setQ(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))
-                }
+                onChange={(e) => setQ(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))}
                 onKeyDown={(e) => e.key === "Enter" && runSearch()}
               />
               {q && (
                 <button
-                  onClick={resetSearch}
+                  onClick={() => { setQ(""); setSearched(false); setSelectedPatient(null); }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 hover:opacity-80"
                   style={{ color: C.ink }}
                 >
@@ -375,14 +296,8 @@ export default function Doctor() {
             <button
               onClick={runSearch}
               disabled={isLoading}
-              className="px-6 py-3 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 font-medium"
+              className="px-6 py-3 text-white rounded-xl disabled:opacity-50 transition-colors flex items-center gap-2 font-medium"
               style={{ backgroundColor: C.primary }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.backgroundColor = C.primaryDark)
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.backgroundColor = C.primary)
-              }
             >
               {isLoading ? (
                 <>
@@ -398,168 +313,66 @@ export default function Doctor() {
           </div>
 
           {!!searchMsg && (
-            <div
-              className={`mt-3 text-sm flex items-center gap-2 ${
-                searchMsg.includes("not found")
-                  ? "text-amber-700"
-                  : "text-rose-700"
-              }`}
-            >
+            <div className="mt-3 text-sm flex items-center gap-2 text-rose-700">
               <AlertCircle size={16} /> {searchMsg}
             </div>
           )}
         </section>
 
-        {/* Patient Info + Rx */}
+        {/* ======= عرض معلومات المريض + إنشاء وصفة ======= */}
         {searched && selectedPatient && (
           <>
-            {/* Patient Info */}
+            {/* ===== معلومات المريض ===== */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <div className="flex justify-between items-start mb-4">
-                <h2
-                  className="text-xl font-semibold text-gray-800 flex items-center gap-2"
-                  style={{ color: C.ink }}
-                >
-                  <ClipboardList size={20} style={{ color: C.primary }} />
-                  Patient Information
-                </h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={goToPrescriptions}
-                    className="px-4 py-2 rounded-lg text-sm text-white"
-                    style={{ background: C.primary }}
-                  >
-                    View Previous Prescriptions
-                  </button>
-                  <button
-                    onClick={resetSearch}
-                    className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
-                  >
-                    ✕ Clear Search
-                  </button>
-                </div>
-              </div>
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
+                <ClipboardList size={20} style={{ color: C.primary }} />
+                Patient Information
+              </h2>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                <InfoCard
-                  label="Name"
-                  value={selectedPatient.name}
-                  highlight={selectedPatient.name !== "Not Found"}
-                />
+                <InfoCard label="Name" value={selectedPatient.name} highlight />
                 <InfoCard label="National ID" value={selectedPatient.id} bold />
-                <InfoCard
-                  label="Age"
-                  value={
-                    selectedPatient.age ? `${selectedPatient.age} years` : "—"
-                  }
-                />
-                <InfoCard
-                  label="Blood Type"
-                  value={selectedPatient.bloodType || "—"}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <InfoCard
-                  label="Height"
-                  value={
-                    selectedPatient.heightCm
-                      ? `${selectedPatient.heightCm} cm`
-                      : "—"
-                  }
-                />
-                <InfoCard
-                  label="Weight"
-                  value={
-                    selectedPatient.weightKg
-                      ? `${selectedPatient.weightKg} kg`
-                      : "—"
-                  }
-                />
+                <InfoCard label="Age" value={`${selectedPatient.age || "—"} years`} />
+                <InfoCard label="Blood Type" value={selectedPatient.bloodType || "—"} />
               </div>
             </section>
 
-            {/* Create Prescription */}
+            {/* ===== إنشاء وصفة جديدة ===== */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <h2
-                className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2"
-                style={{ color: C.ink }}
-              >
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
                 <FileText size={20} style={{ color: C.primary }} />
                 Create New Prescription
               </h2>
 
               {!!rxMsg && (
                 <div
-                  className={`p-3 rounded-lg mb-4 flex items-center gap-2 border`}
+                  className="p-3 rounded-lg mb-4 flex items-center gap-2 border"
                   style={
-                    rxMsg.includes("successfully")
-                      ? {
-                          background: "#EFFAF1",
-                          color: "#166534",
-                          borderColor: "#BBE5C8",
-                        }
-                      : {
-                          background: "#FEF2F2",
-                          color: "#991B1B",
-                          borderColor: "#FECACA",
-                        }
+                    rxMsg.includes("✓")
+                      ? { background: "#EFFAF1", color: "#166534", borderColor: "#BBE5C8" }
+                      : { background: "#FEF2F2", color: "#991B1B", borderColor: "#FECACA" }
                   }
                 >
-                  {rxMsg.includes("successfully") ? (
-                    <CheckCircle2 size={18} />
-                  ) : (
-                    <AlertCircle size={18} />
-                  )}
+                  {rxMsg.includes("✓") ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
                   {rxMsg}
                 </div>
               )}
 
-              {/* 🔎 بحث الدواء مع اقتراحات */}
+              {/* حقل البحث عن الدواء */}
               <div className="mb-4">
-                <MedicineSearch
-                  value={medicine}
-                  onChange={setMedicine}
-                  catalog={MEDICINE_CATALOG}
-                />
+                <MedicineSearch value={medicine} onChange={setMedicine} catalog={MEDICINE_CATALOG} />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <SelectField
-                  icon={<Pill size={16} />}
-                  label="Dosage"
-                  value={dose}
-                  onChange={setDose}
-                  placeholder="Select dosage"
-                  options={DOSAGE_OPTIONS}
-                  required
-                />
-                <SelectField
-                  icon={<Clock size={16} />}
-                  label="Frequency"
-                  value={timesPerDay}
-                  onChange={setTimesPerDay}
-                  placeholder="Select frequency"
-                  options={FREQUENCY_OPTIONS}
-                  required
-                />
-                <SelectField
-                  icon={<CalendarDays size={16} />}
-                  label="Duration"
-                  value={durationDays}
-                  onChange={setDurationDays}
-                  placeholder="Select duration"
-                  options={DURATION_OPTIONS}
-                  required
-                />
+                <SelectField icon={<Pill size={16} />} label="Dosage" value={dose} onChange={setDose} placeholder="Select dosage" options={DOSAGE_OPTIONS} required />
+                <SelectField icon={<Clock size={16} />} label="Frequency" value={timesPerDay} onChange={setTimesPerDay} placeholder="Select frequency" options={FREQUENCY_OPTIONS} required />
+                <SelectField icon={<CalendarDays size={16} />} label="Duration" value={durationDays} onChange={setDurationDays} placeholder="Select duration" options={DURATION_OPTIONS} required />
               </div>
 
               <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Reason for Prescription
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason for Prescription</label>
                 <input
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:border-transparent transition-all"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all"
                   style={{ outlineColor: C.primary }}
                   placeholder="e.g., Hypertension, Diabetes, Infection..."
                   value={reason}
@@ -568,41 +381,28 @@ export default function Doctor() {
               </div>
 
               <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Additional Notes
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
                 <textarea
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:border-transparent transition-all h-32 resize-none"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all h-32 resize-none"
                   style={{ outlineColor: C.primary }}
-                  placeholder="Special instructions, precautions, or additional information..."
+                  placeholder="Special instructions or precautions..."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                 />
               </div>
 
-              <div className="flex items-center justify-start gap-3 pt-4">
+              <div className="flex items-center gap-3 pt-4">
                 <button
-                  onClick={createRx}
+                  onClick={confirmAndSave}
                   className="px-6 py-3 text-white rounded-xl transition-colors flex items-center gap-2 font-medium shadow-sm"
                   style={{ backgroundColor: C.primary }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.backgroundColor = C.primaryDark)
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.backgroundColor = C.primary)
-                  }
                 >
                   <FileText size={18} />
-                  Create Prescription
+                  Confirm & Create
                 </button>
                 <button
                   onClick={() => {
-                    setDose("");
-                    setTimesPerDay("");
-                    setDurationDays("");
-                    setReason("");
-                    setNotes("");
-                    setRxMsg("");
+                    setDose(""); setTimesPerDay(""); setDurationDays(""); setReason(""); setNotes(""); setRxMsg("");
                   }}
                   className="px-6 py-3 rounded-xl font-medium"
                   style={{ background: "#F3F4F6", color: "#374151" }}
@@ -618,62 +418,20 @@ export default function Doctor() {
   );
 }
 
-/* ---------- Helpers ---------- */
-function toAge(birthDate) {
-  try {
-    const d = birthDate?.toDate ? birthDate.toDate() : new Date(birthDate);
-    if (isNaN(d)) return "";
-    const diff = Date.now() - d.getTime();
-    return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
-  } catch {
-    return "";
-  }
-}
-
-async function fetchPatientByNationalId(id) {
-  const directRef = doc(db, "patients", `Ph_${id}`);
-  const snap = await getDoc(directRef);
-  if (snap.exists()) return { docId: snap.id, ...snap.data() };
-
-  const colRef = collection(db, "patients");
-  const q1 = query(colRef, where("nationalId", "==", id));
-  const q2 = query(colRef, where("nationalID", "==", id));
-  const [r1, r2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-  const hit = !r1.empty ? r1.docs[0] : !r2.empty ? r2.docs[0] : null;
-  return hit ? { docId: hit.id, ...hit.data() } : null;
-}
-
-function mapPatient(dbRec, id) {
-  if (!dbRec) return null;
-  const national = dbRec.nationalId || dbRec.nationalID || id;
-  return {
-    docId: dbRec.docId, // ✅ مهم للحفظ في prescriptions
-    id: national?.toString() || id,
-    name: dbRec.name || "—",
-    age: toAge(dbRec.birthDate),
-    heightCm: dbRec.heightCm || "",
-    weightKg: dbRec.weightKg || "",
-    bloodType: dbRec.bloodType || "",
-    allergies: Array.isArray(dbRec.allergies) ? dbRec.allergies : [],
-  };
-}
-
-function InfoCard({ icon = null, label, value, bold = false, highlight = false }) {
+/* ---------- المكونات المساعدة ---------- */
+function InfoCard({ label, value, bold = false, highlight = false }) {
   return (
     <div
       className="p-4 border rounded-xl"
       style={{
-        background: highlight ? C.pale : "#F9FAFB",
+        background: highlight ? "#F6F1FA" : "#F9FAFB",
         borderColor: highlight ? "#E9DFF1" : "#E5E7EB",
       }}
     >
-      <div className="flex items-center gap-2 text-sm text-gray-600 mb-1">
-        {icon && <span className="text-gray-400">{icon}</span>}
-        <span>{label}</span>
-      </div>
+      <div className="text-sm text-gray-600 mb-1">{label}</div>
       <div
         className={`text-gray-800 ${bold ? "font-semibold" : ""}`}
-        style={highlight ? { color: C.ink, fontWeight: 600 } : undefined}
+        style={highlight ? { color: "#4A2C59", fontWeight: 600 } : undefined}
       >
         {value ?? "—"}
       </div>
@@ -681,6 +439,7 @@ function InfoCard({ icon = null, label, value, bold = false, highlight = false }
   );
 }
 
+/* SelectField مع سهم صغير جدًا */
 function SelectField({
   icon,
   label,
@@ -711,8 +470,9 @@ function SelectField({
             </option>
           ))}
         </select>
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-          ▼
+        {/* سهم صغير */}
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-400 text-[10px]">
+          ▾
         </div>
         {icon && (
           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
@@ -724,6 +484,7 @@ function SelectField({
   );
 }
 
+/* 🔎 حقل بحث الدواء مع اقتراحات (Autocomplete) */
 function MedicineSearch({ value, onChange, catalog }) {
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(-1);
@@ -731,7 +492,6 @@ function MedicineSearch({ value, onChange, catalog }) {
   const suggestions = useMemo(() => {
     if (!value) return catalog.slice(0, 8);
     const v = value.toLowerCase();
-    // ترتيب بسيط: يبدأ بـ… ثم يحتوي …
     const starts = catalog.filter((n) => n.toLowerCase().startsWith(v));
     const contains = catalog.filter(
       (n) => !n.toLowerCase().startsWith(v) && n.toLowerCase().includes(v)
@@ -802,8 +562,48 @@ function MedicineSearch({ value, onChange, catalog }) {
           ))}
         </ul>
       )}
-      <p className="mt-1 text-xs text-gray-500">
-      </p>
     </div>
   );
 }
+
+/* ---------- Helpers (حساب العمر + جلب المريض + تهيئة بياناته) ---------- */
+function toAge(birthDate) {
+  try {
+    const d = birthDate?.toDate ? birthDate.toDate() : new Date(birthDate);
+    if (isNaN(d)) return "";
+    const diff = Date.now() - d.getTime();
+    return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
+  } catch {
+    return "";
+  }
+}
+
+async function fetchPatientByNationalId(id) {
+  const directRef = doc(db, "patients", `Ph_${id}`);
+  const snap = await getDoc(directRef);
+  if (snap.exists()) return { docId: snap.id, ...snap.data() };
+
+  const colRef = collection(db, "patients");
+  const q1 = query(colRef, where("nationalId", "==", id));
+  const q2 = query(colRef, where("nationalID", "==", id));
+  const [r1, r2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+  const hit = !r1.empty ? r1.docs[0] : !r2.empty ? r2.docs[0] : null;
+  return hit ? { docId: hit.id, ...hit.data() } : null;
+}
+
+function mapPatient(dbRec, id) {
+  if (!dbRec) return null;
+  const national = dbRec.nationalId || dbRec.nationalID || id;
+  return {
+    docId: dbRec.docId, // مهم لحفظ الوصفة وربطها بالمريض
+    id: national?.toString() || id,
+    name: dbRec.name || "—",
+    age: toAge(dbRec.birthDate),
+    heightCm: dbRec.heightCm || "",
+    weightKg: dbRec.weightKg || "",
+    bloodType: dbRec.bloodType || "",
+    allergies: Array.isArray(dbRec.allergies) ? dbRec.allergies : [],
+  };
+}
+
+      
