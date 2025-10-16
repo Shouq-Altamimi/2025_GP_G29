@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 /// @title TrustDose Prescription Registry
-/// @notice يسجّل الوصفات على السلسلة بصلاحية 48 ساعة قابلة للتمديد بطلب صيدلي وموافقة طبيب.
+/// @notice يسجّل الوصفات على السلسلة.
 contract Prescription {
     // ======= إعدادات عامة =======
     uint256 public constant DEFAULT_VALIDITY = 48 hours;   // الصلاحية الافتراضية
