@@ -100,7 +100,13 @@ function Header({ onOpenAdd }) {
       <div className="mx-auto flex max-w-7xl items-center gap-3 p-4">
         <div className="flex items-center gap-2 text-[#4A2C59] dark:text-zinc-50">
           <a href="/" className="flex items-center gap-2 text-[#4A2C59] dark:text-zinc-50">
-            <img src="/TrustDose fi-01.png" alt="TrustDose" className="h-12 w-12 object-contain" />
+          <img
+         src="/Images/TrustDose_logo.png"
+         alt="TrustDose"
+        className="h-24 w-auto object-contain"
+        style={{ maxHeight: "80px" }}
+          />
+
           </a>
         </div>
         <div className="ml-auto flex items-center gap-2">

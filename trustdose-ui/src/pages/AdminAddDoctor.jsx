@@ -2,8 +2,8 @@
 "use client";
 import React, { useState } from "react";
 import { ethers } from "ethers";
-import AccessControl from "../contracts/AccessControl.json"; // عدّلي المسار إذا لزم
-import { db } from "../firebase"; // عدّلي المسار إذا لزم
+import AccessControl from "../contracts/AccessControl.json"; 
+import { db } from "../firebase"; 
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 const ROLE_DOCTOR = 2;
@@ -28,7 +28,7 @@ async function sha256Hex(text) {
 }
 
 export default function AdminAddDoctor() {
-  const [contractAddress, setContractAddress] = useState(""); // اكتب عقد Ganache هنا أو الصقه
+  const [contractAddress, setContractAddress] = useState("0x820FF6a45B1A699666cCaa9d6Fa106C89d761ff7"); // اكتب عقد Ganache هنا أو الصقه
   const [entityType] = useState("Doctor");
   const [name, setName] = useState("");
   const [specialty, setSpecialty] = useState("");
