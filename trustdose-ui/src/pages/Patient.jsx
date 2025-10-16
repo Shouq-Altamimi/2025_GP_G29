@@ -10,7 +10,6 @@ import {
   query,
   where,
   getDocs,
-  orderBy,
   limit,
 } from "firebase/firestore";
 
@@ -25,7 +24,6 @@ function resolveNidFromAnywhere() {
     const urlId = sp.get("id");
     if (isNid(urlId)) return urlId;
   } catch {}
-
   const nidFromTD = localStorage.getItem("TD_PATIENT_NID");
   if (isNid(nidFromTD)) return nidFromTD;
 
@@ -55,11 +53,19 @@ function Card({ title, children }) {
   );
 }
 
-function Row({ label, value }) {
+function Row({ label, value, extra }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "170px 1fr", gap: 12 }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "170px 1fr auto",
+        alignItems: "center",
+        gap: 12,
+      }}
+    >
       <div style={{ color: "#6b7280" }}>{label}</div>
       <div style={{ fontWeight: 600 }}>{value ?? "-"}</div>
+      {extra}
     </div>
   );
 }
@@ -70,12 +76,54 @@ function Row({ label, value }) {
 export default function PatientPage() {
   const navigate = useNavigate();
   const [nid, setNid] = useState(null);
-
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-
   const [patient, setPatient] = useState(null);
   const [prescriptions, setPrescriptions] = useState([]);
+
+  // Hide menu icon ONLY on Patient page (scoped CSS + observer)
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.id = "td-patient-hide-menu";
+    style.innerHTML = `
+      button[aria-label="Toggle menu"],
+      [aria-label="menu"],
+      [data-testid="menu"],
+      [data-role="menu-toggle"],
+      .menu-icon,
+      .menu-button,
+      .hamburger,
+      .hamburger-button,
+      .navbar-toggle,
+      .nav-toggle,
+      .header-menu-toggle,
+      .td-global-menu {
+        display: none !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+
+    const obs = new MutationObserver(() => {
+      const btns = document.querySelectorAll(
+        `button[aria-label='Toggle menu'], [aria-label='menu'], [data-testid='menu'],
+         [data-role='menu-toggle'], .menu-icon, .menu-button, .hamburger,
+         .hamburger-button, .navbar-toggle, .nav-toggle, .header-menu-toggle, .td-global-menu`
+      );
+      btns.forEach((el) => {
+        el.style.display = "none";
+        el.style.visibility = "hidden";
+        el.style.pointerEvents = "none";
+      });
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      obs.disconnect();
+      document.getElementById("td-patient-hide-menu")?.remove();
+    };
+  }, []);
 
   // Resolve NID once
   useEffect(() => {
@@ -99,7 +147,6 @@ export default function PatientPage() {
       setErr("");
 
       try {
-        // 1) Get patient doc
         const pRef = doc(db, "patients", `Ph_${nid}`);
         const pSnap = await getDoc(pRef);
         if (!pSnap.exists()) {
@@ -109,14 +156,11 @@ export default function PatientPage() {
         }
         const pData = pSnap.data();
 
-        // 2) Get prescriptions (try patientId then nationalID)
         let list = [];
         try {
           const q1 = query(
             collection(db, "prescriptions"),
             where("patientId", "==", nid),
-            // optional ordering if موجود
-            // orderBy("createdAt", "desc"),
             limit(50)
           );
           const s1 = await getDocs(q1);
@@ -164,6 +208,10 @@ export default function PatientPage() {
     navigate("/auth", { replace: true });
   }
 
+  function handleResetPhone() {
+    alert("Reset function will be implemented soon!");
+  }
+
   /* =============== UI =============== */
   return (
     <div
@@ -188,26 +236,27 @@ export default function PatientPage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* الأيقونة المتدرجة قبل الترحيب */}
           <div
             style={{
               width: 28,
               height: 28,
-              borderRadius: 6,
-              background:
-                "linear-gradient(135deg, #B08CC1 0%, #52B9C4 100%)",
+              borderRadius: 8,
+              background: "linear-gradient(135deg, #B08CC1 0%, #52B9C4 100%)",
             }}
           />
-          <div style={{ fontWeight: 800, fontSize: 18, color: "#334155" }}>
-            TrustDose — Patient
+
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 18, color: "#334155" }}>
+              Welcome, {patient?.name || "Patient"}
+            </div>
+            <div style={{ fontSize: 14, color: "#64748b", marginTop: 2 }}>
+              Wishing you good health.
+            </div>
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {nid && (
-            <div style={{ fontSize: 13, color: "#64748b" }}>
-              NID: <strong>{nid}</strong>
-            </div>
-          )}
           <button
             onClick={handleLogout}
             style={{
@@ -244,15 +293,51 @@ export default function PatientPage() {
             <Card title="Patient Profile">
               <div style={{ display: "grid", gap: 10 }}>
                 <Row label="Full name" value={fullName} />
-                <Row label="National ID" value={patient.nationalID || patient.nationalId} />
-                <Row label="Phone" value={patient.contact} />
+                <Row
+                  label="National ID"
+                  value={patient.nationalID || patient.nationalId}
+                />
+                <Row
+                  label="Phone"
+                  value={patient.contact}
+                  extra={
+                    <button
+                      onClick={handleResetPhone}
+                      style={{
+                        border: "none",
+                        borderRadius: 8,
+                        background: "#B08CC1",
+                        color: "#fff",
+                        padding: "6px 14px",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        transition: "0.2s",
+                      }}
+                      onMouseOver={(e) =>
+                        (e.target.style.background = "#9c79ae")
+                      }
+                      onMouseOut={(e) =>
+                        (e.target.style.background = "#B08CC1")
+                      }
+                    >
+                      Reset
+                    </button>
+                  }
+                />
                 <Row
                   label="Gender"
-                  value={patient.gender === "M" ? "Male" : patient.gender === "F" ? "Female" : "-"}
+                  value={
+                    patient.gender === "M"
+                      ? "Male"
+                      : patient.gender === "F"
+                      ? "Female"
+                      : "-"
+                  }
                 />
                 <Row label="City" value={patient.locationCity} />
                 <Row label="District" value={patient.locationDistrict} />
-                <Row label="Location (legacy)" value={patient.Location} />
+                <Row label="Location" value={patient.Location} />
               </div>
             </Card>
 
