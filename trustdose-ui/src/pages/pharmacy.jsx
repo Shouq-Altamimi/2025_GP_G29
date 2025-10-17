@@ -2,6 +2,13 @@
 import React, { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 
+// ===== Firestore =====
+import { db } from "../firebase"; 
+import {
+  collection, query, where, getDocs, limit,
+  doc as fsDoc, updateDoc
+} from "firebase/firestore";
+
 /** utils */
 function nowISO() { return new Date().toISOString(); }
 function fmt(dateISO) {
@@ -19,6 +26,14 @@ function toEnglishDigits(s) {
     else if (code >= 48 && code <= 57) out += ch;
   }
   return out;
+}
+function toMaybeISO(val) {
+  if (!val) return undefined;
+  if (val && typeof val === "object" && typeof val.toDate === "function") {
+    try { return val.toDate().toISOString(); } catch { return undefined; }
+  }
+  if (typeof val === "string") return val;
+  return undefined;
 }
 
 /** branding */
@@ -86,7 +101,7 @@ export default function PharmacyApp() {
       <main style={{ flex: 1, padding: 24 }}>
         <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
           {route === "Pick Up Orders" && (
-            <PickUpSection rows={rxs} setRxs={setRxs} q={q} setQ={setQ} addNotification={addNotification} />
+            <PickUpSection setRxs={setRxs} q={q} setQ={setQ} addNotification={addNotification} />
           )}
           {route === "Delivery Orders" && (
             <DeliverySection rows={rowsDelivery} setRxs={setRxs} addNotification={addNotification} />
@@ -100,36 +115,113 @@ export default function PharmacyApp() {
   );
 }
 
-/** Pick Up */
-function PickUpSection({ rows = [], setRxs, q, setQ, addNotification }) {
+function PickUpSection({ setRxs, q, setQ, addNotification }) {
   const [searched, setSearched] = useState(false);
-  const digits = toEnglishDigits(q);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState(null); // null | { ...normalized } | {_notFound:true}
 
-  const result = useMemo(() => {
-    if (!searched || !digits) return null;
-    const found = rows.find(
-      (r) => r.patientId.includes(digits) || r.ref.toLowerCase().includes(String(digits).toLowerCase())
-    );
-    if (found) return found;
+  const raw = String(q || "").trim();
+  const natDigits = toEnglishDigits(raw); 
+  const rxUpper = raw.toUpperCase();       
+
+  function normalizeFromDB(data = {}, docId = "") {
     return {
-      ref: `RX-${digits}`,
-      patientId: digits,
-      patientName: "-",
-      medicine: "-",
-      dose: "-",
-      timesPerDay: "-",
-      durationDays: "-",
-      createdAt: nowISO(),
-      dispensed: false,
+      ref: data.prescriptionID || docId || "-",
+      patientId: (data.nationalID ?? "-") + "",
+      patientName: data.patientName || "-",
+      medicine: data.medicineName || data.medicine || "-",
+      dose: data.dosage || data.dose || "-",
+      timesPerDay: data.timesPerDay ?? "-",
+      durationDays:
+        typeof data.durationDays === "number" ? data.durationDays : (data.durationDays || "-"),
+      createdAt: toMaybeISO(data.createdAt) || nowISO(),
+      status: data.status || "-",
+      dispensed: !!data.dispensed,
+      dispensedAt: toMaybeISO(data.dispensedAt) || undefined,
+      _docId: docId,
     };
-  }, [rows, digits, searched]);
+  }
 
-  function runSearch() { setSearched(true); }
-  function resetSearch() { setQ(""); setSearched(false); }
+  async function runSearch() {
+    setSearched(true);
+    setLoading(true);
+    setError("");
+    setResult(null);
 
-  function markDispensed(ref) {
-    setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, dispensed: true, dispensedAt: nowISO() } : rx));
-    addNotification(`Prescription ${ref} dispensed`);
+    try {
+      const col = collection(db, "prescriptions");
+      const tasks = [];
+
+      if (rxUpper) {
+        tasks.push(getDocs(query(col, where("prescriptionID", "==", rxUpper), limit(1))));
+      }
+
+      if (natDigits) {
+        tasks.push(getDocs(query(col, where("nationalID", "==", natDigits), limit(1))));
+        const nNum = Number(natDigits);
+        if (!Number.isNaN(nNum)) {
+          tasks.push(getDocs(query(col, where("nationalID", "==", nNum), limit(1))));
+        }
+      }
+
+      const snaps = await Promise.all(tasks);
+      let pick = null;
+
+      const prefer = (snap, check) => {
+        if (!snap || snap.empty) return null;
+        const doc = snap.docs.find(check);
+        return doc || snap.docs[0];
+      };
+      const byRxId  = prefer(snaps[0], d => d.data().prescriptionID === rxUpper);
+      const byNatS  = prefer(snaps[1], d => String(d.data().nationalID || "") === natDigits);
+      const byNatN  = prefer(snaps[2], d => d.data().nationalID === Number(natDigits));
+
+      pick = byRxId || byNatS || byNatN || null;
+
+      if (pick) setResult(normalizeFromDB(pick.data(), pick.id));
+      else setResult({ _notFound: true, ref: rxUpper || "-", patientId: natDigits || "-" });
+    } catch (e) {
+      console.error(e);
+      setError("Could not complete search. Check your internet or Firestore access.");
+      setResult({ _notFound: true, ref: rxUpper || "-", patientId: natDigits || "-" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function resetSearch() {
+    setQ("");
+    setSearched(false);
+    setResult(null);
+    setError("");
+  }
+
+  async function markDispensed(ref) {
+    if (!result || !result._docId) return;
+
+    if (result.dispensed) return;
+
+    try {
+      const docRef = fsDoc(db, "prescriptions", result._docId);
+
+      await updateDoc(docRef, {
+        dispensed: true
+      });
+
+      setResult((prev) =>
+        prev ? { ...prev, dispensed: true } : prev
+      );
+
+      setRxs(prev =>
+        prev.map(rx => rx.ref === ref ? { ...rx, dispensed: true } : rx)
+      );
+
+      addNotification(`Prescription ${ref} dispensed`);
+    } catch (e) {
+      console.error(e);
+      setError("Could not update dispensing status. Please try again.");
+    }
   }
 
   return (
@@ -145,10 +237,9 @@ function PickUpSection({ rows = [], setRxs, q, setQ, addNotification }) {
             <input
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:border-transparent transition-all"
               style={{ outlineColor: brand.purple }}
-              placeholder="Search by Patient ID or Prescription"
+              placeholder="Enter Patient ID or Prescription ID"
               value={q}
-              inputMode="numeric"
-              onChange={(e) => { setQ(e.target.value); setSearched(false); }}
+              onChange={(e) => { setQ(e.target.value); setSearched(false); setResult(null); setError(""); }}
               onKeyDown={(e) => { if (e.key === "Enter") runSearch(); }}
             />
             {!!q && (
@@ -167,41 +258,62 @@ function PickUpSection({ rows = [], setRxs, q, setQ, addNotification }) {
           <button
             type="button"
             onClick={runSearch}
-            className="px-6 py-3 text-white rounded-xl transition-colors flex items-center gap-2 font-medium"
+            className="px-6 py-3 text-white rounded-xl transition-colors flex items-center gap-2 font-medium disabled:opacity-60"
             style={{ backgroundColor: brand.purple }}
             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#9F76B4")}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = brand.purple)}
+            disabled={loading || !q.trim()}
           >
-            <Search size={18} /> Search
+            {loading ? "Searching..." : (<><Search size={18} /> Search</>)}
           </button>
         </div>
+        {!!error && <p className="text-red-600 mt-3">{error}</p>}
       </section>
 
-      {result && (
+      {searched && result && (
         <div style={card}>
-          <div><b>Prescription {result.ref}</b></div>
-          <div>Patient: {result.patientName} ({result.patientId})</div>
-          <div>Medicine: {result.medicine}</div>
-          <div>Dose: {result.dose}</div>
-          <div>Times/Day: {result.timesPerDay}</div>
-          <div>Duration: {result.durationDays} days</div>
-          <div>Created: {fmt(result.createdAt)}</div>
-          <div style={{ marginTop: 8 }}>
-            <button
-              onClick={() => markDispensed(result.ref)}
-              style={{ ...btnStyle, background: result.dispensed ? "#d1fae5" : "#fff" }}
-              disabled={result.dispensed}
-            >
-              {result.dispensed ? "✓ Dispensed" : "Dispense"}
-            </button>
-          </div>
+          {result._notFound ? (
+            <>
+              <div><b>Not found in DB</b></div>
+              <div>Prescription: {result.ref}</div>
+              <div>National ID: {result.patientId}</div>
+              <div style={{ marginTop: 8 }}>
+                <button style={{ ...btnStyle, opacity: .6, cursor: "not-allowed" }} disabled>
+                  Dispense
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div><b>Prescription:</b> {result.ref}</div>
+              <div><b>National ID:</b> {result.patientId}</div>
+              <div><b>Patient:</b> {result.patientName}</div>
+              <div><b>Medicine:</b> {result.medicine}</div>
+              <div><b>Dosage:</b> {result.dose}</div>
+              <div><b>Times/Day:</b> {result.timesPerDay}</div>
+              <div><b>Duration:</b> {result.durationDays}</div>
+              <div><b>Status:</b> {result.status || "-"}</div>
+              <div><b>Created:</b> {fmt(result.createdAt)}</div>
+
+              <div style={{ marginTop: 8 }}>
+                <button
+                  onClick={() => markDispensed(result.ref)}
+                  style={{ ...btnStyle, background: result.dispensed ? "#d1fae5" : "#fff" }}
+                  disabled={result.dispensed}
+                  title={result.dispensed ? "Prescription already dispensed" : ""}
+                >
+                  {result.dispensed ? "✓ Dispensed" : "Dispense"}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </section>
   );
 }
 
-/** Delivery */
+/** ========================= Delivery ========================= */
 function DeliverySection({ rows = [], setRxs, addNotification }) {
   function acceptOrder(ref) {
     setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, accepted: true, acceptedAt: nowISO() } : rx));
@@ -231,7 +343,7 @@ function DeliverySection({ rows = [], setRxs, addNotification }) {
   );
 }
 
-/** Pending */
+/** ========================= Pending ========================= */
 function PendingSection({ rows = [], setRxs, addNotification }) {
   function cancel(ref) {
     setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, accepted: false, acceptedAt: undefined } : rx));
@@ -256,7 +368,11 @@ function PendingSection({ rows = [], setRxs, addNotification }) {
           {r.contactedAt && <div>Contacted At: {fmt(r.contactedAt)}</div>}
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <button onClick={() => cancel(r.ref)} style={{ ...btnStyle }}>Cancel</button>
-            <button onClick={() => contact(r.ref)} style={{ ...btnStyle, background: r.contactedAt ? "#d1fae5" : "#fff" }} disabled={!!r.contactedAt}>
+            <button
+              onClick={() => contact(r.ref)}
+              style={{ ...btnStyle, background: r.contactedAt ? "#d1fae5" : "#fff" }}
+              disabled={!!r.contactedAt}
+            >
               {r.contactedAt ? "✓ Contacted" : "Contact"}
             </button>
           </div>
