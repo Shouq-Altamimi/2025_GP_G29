@@ -1,5 +1,4 @@
 // @ts-nocheck
-
 import React, { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 
@@ -47,21 +46,16 @@ export default function PharmacyApp() {
     { ref: "RX-003", patientId: "1003", patientName: "Hassan", medicine: "Metformin", dose: "850mg", timesPerDay: 1, durationDays: 14, createdAt: nowISO(), dispensed: false, accepted: false }
   ]);
 
-  const [notifications, setNotifications] = useState([]);
   const [route, setRoute] = useState("Pick Up Orders");
   const [q, setQ] = useState("");
 
   const rowsDelivery = useMemo(() => rxs.filter(r => !r.dispensed && !r.accepted), [rxs]);
   const rowsPending  = useMemo(() => rxs.filter(r => !r.dispensed && r.accepted), [rxs]);
 
-  const routes = ["Pick Up Orders", "Delivery Orders", "Pending Orders", "Notifications", "Statistics"];
+  const routes = ["Pick Up Orders", "Delivery Orders", "Pending Orders"];
 
   function addNotification(payload) {
-    if (typeof payload === "string") {
-      setNotifications(prev => [{ text: payload, time: fmt(nowISO()) }, ...prev]);
-    } else if (payload && typeof payload === "object") {
-      setNotifications(prev => [{ ...payload, time: fmt(nowISO()), done: false }, ...prev]);
-    }
+    console.log("PharmacyApp notification:", payload);
   }
 
   return (
@@ -90,7 +84,6 @@ export default function PharmacyApp() {
 
       {/* Main */}
       <main style={{ flex: 1, padding: 24 }}>
-        {/* ✅ نفس حاوية الدكتور لضبط حجم الكارد والبوكس */}
         <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
           {route === "Pick Up Orders" && (
             <PickUpSection rows={rxs} setRxs={setRxs} q={q} setQ={setQ} addNotification={addNotification} />
@@ -101,50 +94,13 @@ export default function PharmacyApp() {
           {route === "Pending Orders" && (
             <PendingSection rows={rowsPending} setRxs={setRxs} addNotification={addNotification} /> 
           )}
-          {route === "Notifications" && (
-            <section style={{ display: "grid", gap: 12 }}>
-              <h1 style={{ marginTop: 0 }}>Notifications</h1>
-              {notifications.length === 0 ? (
-                <div style={{ ...card, color: "#6b7280" }}>No notifications yet</div>
-              ) : (
-                notifications.map((n, i) => (
-                  <div key={i} style={{ ...card }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                      <div>
-                        <div>{n.text}</div>
-                        <div style={{ fontSize: 12, color: "#6b7280" }}>{n.time}</div>
-                      </div>
-                      {(n.type === 'logistics_cancel' || n.type === 'cancel') && !n.done && (
-                        <button
-                          onClick={() => {
-                            setRxs(prev => prev.map(rx => rx.ref === n.ref ? { ...rx, redispensedAt: nowISO() } : rx));
-                            setNotifications(prev => prev.map((x, idx) => idx === i ? { ...x, done: true, text: `${n.text} — ✓ Re-dispensed` } : x));
-                          }}
-                          style={{ ...btnStyle, background: n.done ? '#d1fae5' : '#fff' }}
-                          disabled={n.done}
-                        >
-                          {n.done ? '✓ Re-dispensed' : 'Re-dispense'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </section>
-          )}
-          {route === "Statistics" && (
-            <section style={{ display: "grid", gap: 12 }}>
-              <h1 style={{ marginTop: 0 }}>Statistics</h1>
-              <div style={{ ...card }}>Statistics content here</div>
-            </section>
-          )}
         </div>
       </main>
     </div>
   );
 }
 
-/** Pick Up: search then show one card (prototype) */
+/** Pick Up */
 function PickUpSection({ rows = [], setRxs, q, setQ, addNotification }) {
   const [searched, setSearched] = useState(false);
   const digits = toEnglishDigits(q);
@@ -155,7 +111,6 @@ function PickUpSection({ rows = [], setRxs, q, setQ, addNotification }) {
       (r) => r.patientId.includes(digits) || r.ref.toLowerCase().includes(String(digits).toLowerCase())
     );
     if (found) return found;
-    // fallback
     return {
       ref: `RX-${digits}`,
       patientId: digits,
@@ -179,10 +134,6 @@ function PickUpSection({ rows = [], setRxs, q, setQ, addNotification }) {
 
   return (
     <section style={{ display: "grid", gap: 20 }}>
-      {/* ✅ أزلنا العنوان العام غير الموجود في التابس */}
-      {/* <h1>Pick Up Orders</h1> */}
-
-      {/* ===== Search box مطابق للدكتور بالحجم والستايل ===== */}
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
           <Search size={20} style={{ color: brand.purple }} />
@@ -225,7 +176,6 @@ function PickUpSection({ rows = [], setRxs, q, setQ, addNotification }) {
           </button>
         </div>
       </section>
-      {/* ===== نهاية البوكس المطابق ===== */}
 
       {result && (
         <div style={card}>
@@ -251,7 +201,7 @@ function PickUpSection({ rows = [], setRxs, q, setQ, addNotification }) {
   );
 }
 
-/** Delivery: Accept moves item to Pending */
+/** Delivery */
 function DeliverySection({ rows = [], setRxs, addNotification }) {
   function acceptOrder(ref) {
     setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, accepted: true, acceptedAt: nowISO() } : rx));
@@ -281,7 +231,7 @@ function DeliverySection({ rows = [], setRxs, addNotification }) {
   );
 }
 
-/** Pending: Cancel returns to Delivery, Contact marks contacted */
+/** Pending */
 function PendingSection({ rows = [], setRxs, addNotification }) {
   function cancel(ref) {
     setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, accepted: false, acceptedAt: undefined } : rx));
