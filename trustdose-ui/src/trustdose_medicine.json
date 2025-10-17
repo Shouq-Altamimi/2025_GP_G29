@@ -1,0 +1,157 @@
+[
+  { "name":"paracetamol", "label":"paracetamol 500 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"paracetamol", "label":"paracetamol 650 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"paracetamol", "label":"Panadol 500 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"paracetamol", "label":"Panadol 650 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"ibuprofen", "label":"ibuprofen 200 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"ibuprofen", "label":"ibuprofen 400 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"ibuprofen", "label":"ibuprofen 600 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"amoxicillin", "label":"amoxicillin 250 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+  { "name":"amoxicillin", "label":"amoxicillin 500 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+
+  { "name":"amoxicillin-clavulanate", "label":"amoxicillin-clavulanate 375 mg (250+125)", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"amoxicillin-clavulanate", "label":"amoxicillin-clavulanate 625 mg (500+125)", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"amoxicillin-clavulanate", "label":"amoxicillin-clavulanate 1 g (875+125)", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"azithromycin", "label":"azithromycin 250 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"azithromycin", "label":"azithromycin 500 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"ciprofloxacin", "label":"ciprofloxacin 250 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"ciprofloxacin", "label":"ciprofloxacin 500 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"ciprofloxacin", "label":"ciprofloxacin 750 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"doxycycline", "label":"doxycycline 100 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+
+  { "name":"metronidazole", "label":"metronidazole 250 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"metronidazole", "label":"metronidazole 500 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"nitrofurantoin", "label":"nitrofurantoin 50 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+  { "name":"nitrofurantoin", "label":"nitrofurantoin 100 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+
+  { "name":"cephalexin", "label":"cephalexin 250 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+  { "name":"cephalexin", "label":"cephalexin 500 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+
+  { "name":"ceftriaxone", "label":"ceftriaxone 1 g (vial)", "dosageForm":"injection", "sensitivity":"NonSensitive" },
+  { "name":"ceftriaxone", "label":"ceftriaxone 2 g (vial)", "dosageForm":"injection", "sensitivity":"NonSensitive" },
+
+  { "name":"co-trimoxazole (sulfamethoxazole/trimethoprim)", "label":"co-trimoxazole 400/80 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"co-trimoxazole (sulfamethoxazole/trimethoprim)", "label":"co-trimoxazole 800/160 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"metformin", "label":"metformin 500 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"metformin", "label":"metformin 850 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"metformin", "label":"metformin 1000 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"glimepiride", "label":"glimepiride 1 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"glimepiride", "label":"glimepiride 2 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"glimepiride", "label":"glimepiride 3 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"glimepiride", "label":"glimepiride 4 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"insulin glargine", "label":"insulin glargine 100 units/mL", "dosageForm":"injection", "sensitivity":"Sensitive", "minSafeTemp":2, "maxSafeTemp":8 },
+  { "name":"insulin regular", "label":"insulin regular 100 units/mL", "dosageForm":"injection", "sensitivity":"Sensitive", "minSafeTemp":2, "maxSafeTemp":8 },
+  { "name":"insulin NPH", "label":"insulin NPH 100 units/mL", "dosageForm":"injection", "sensitivity":"Sensitive", "minSafeTemp":2, "maxSafeTemp":8 },
+
+  { "name":"atorvastatin", "label":"atorvastatin 10 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"atorvastatin", "label":"atorvastatin 20 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"atorvastatin", "label":"atorvastatin 40 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"atorvastatin", "label":"atorvastatin 80 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"rosuvastatin", "label":"rosuvastatin 5 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"rosuvastatin", "label":"rosuvastatin 10 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"rosuvastatin", "label":"rosuvastatin 20 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"rosuvastatin", "label":"rosuvastatin 40 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"simvastatin", "label":"simvastatin 10 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"simvastatin", "label":"simvastatin 20 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"simvastatin", "label":"simvastatin 40 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"omeprazole", "label":"omeprazole 20 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+  { "name":"omeprazole", "label":"omeprazole 40 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+
+  { "name":"pantoprazole", "label":"pantoprazole 20 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"pantoprazole", "label":"pantoprazole 40 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"esomeprazole", "label":"esomeprazole 20 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+  { "name":"esomeprazole", "label":"esomeprazole 40 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+
+  { "name":"lansoprazole", "label":"lansoprazole 15 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+  { "name":"lansoprazole", "label":"lansoprazole 30 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+
+  { "name":"losartan", "label":"losartan 25 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"losartan", "label":"losartan 50 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"losartan", "label":"losartan 100 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"valsartan", "label":"valsartan 80 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"valsartan", "label":"valsartan 160 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"valsartan", "label":"valsartan 320 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"lisinopril", "label":"lisinopril 5 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"lisinopril", "label":"lisinopril 10 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"lisinopril", "label":"lisinopril 20 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"amlodipine", "label":"amlodipine 5 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"amlodipine", "label":"amlodipine 10 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"hydrochlorothiazide", "label":"hydrochlorothiazide 12.5 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"hydrochlorothiazide", "label":"hydrochlorothiazide 25 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"hydrochlorothiazide", "label":"hydrochlorothiazide 50 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"furosemide", "label":"furosemide 20 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"furosemide", "label":"furosemide 40 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"furosemide", "label":"furosemide 80 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"spironolactone", "label":"spironolactone 25 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"spironolactone", "label":"spironolactone 50 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"spironolactone", "label":"spironolactone 100 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"salbutamol (albuterol)", "label":"salbutamol 100 mcg/dose", "dosageForm":"inhaler", "sensitivity":"NonSensitive" },
+
+  { "name":"budesonide/formoterol", "label":"budesonide/formoterol 80/4.5 mcg", "dosageForm":"inhaler", "sensitivity":"NonSensitive" },
+  { "name":"budesonide/formoterol", "label":"budesonide/formoterol 160/4.5 mcg", "dosageForm":"inhaler", "sensitivity":"NonSensitive" },
+
+  { "name":"fluticasone propionate", "label":"fluticasone propionate 50 mcg", "dosageForm":"inhaler", "sensitivity":"NonSensitive" },
+  { "name":"fluticasone propionate", "label":"fluticasone propionate 125 mcg", "dosageForm":"inhaler", "sensitivity":"NonSensitive" },
+  { "name":"fluticasone propionate", "label":"fluticasone propionate 250 mcg", "dosageForm":"inhaler", "sensitivity":"NonSensitive" },
+
+  { "name":"montelukast", "label":"montelukast 5 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"montelukast", "label":"montelukast 10 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"cetirizine", "label":"cetirizine 10 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"loratadine", "label":"loratadine 10 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"levothyroxine", "label":"levothyroxine 25 mcg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"levothyroxine", "label":"levothyroxine 50 mcg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"levothyroxine", "label":"levothyroxine 75 mcg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"levothyroxine", "label":"levothyroxine 100 mcg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"levothyroxine", "label":"levothyroxine 125 mcg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"levothyroxine", "label":"levothyroxine 150 mcg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"ferrous sulfate", "label":"ferrous sulfate 200 mg (65 mg Fe)", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"folic acid", "label":"folic acid 1 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"folic acid", "label":"folic acid 5 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"vitamin D3 (cholecalciferol)", "label":"vitamin D3 1000 IU", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+  { "name":"vitamin D3 (cholecalciferol)", "label":"vitamin D3 5000 IU", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+
+  { "name":"clopidogrel", "label":"clopidogrel 75 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"aspirin (low-dose)", "label":"aspirin (low-dose) 81 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"aspirin (low-dose)", "label":"aspirin (low-dose) 100 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"omeprazole oral suspension", "label":"omeprazole oral suspension 2 mg/mL (after reconstitution)", "dosageForm":"suspension", "sensitivity":"NonSensitive" },
+
+  { "name":"betamethasone cream", "label":"betamethasone cream 0.1%", "dosageForm":"cream", "sensitivity":"NonSensitive" },
+
+  { "name":"mupirocin ointment", "label":"mupirocin ointment 2%", "dosageForm":"ointment", "sensitivity":"NonSensitive" },
+
+  { "name":"ofloxacin eye drops", "label":"ofloxacin eye drops 0.3%", "dosageForm":"drops", "sensitivity":"NonSensitive" },
+
+  { "name":"amitriptyline", "label":"amitriptyline 10 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"amitriptyline", "label":"amitriptyline 25 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+  { "name":"amitriptyline", "label":"amitriptyline 50 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
+
+  { "name":"epinephrine autoinjector", "label":"epinephrine autoinjector 0.3 mg/0.3 mL", "dosageForm":"injection", "sensitivity":"Sensitive", "minSafeTemp":15, "maxSafeTemp":25 },
+  { "name":"epinephrine autoinjector", "label":"epinephrine autoinjector 0.15 mg/0.3 mL", "dosageForm":"injection", "sensitivity":"Sensitive", "minSafeTemp":15, "maxSafeTemp":25 }
+]
