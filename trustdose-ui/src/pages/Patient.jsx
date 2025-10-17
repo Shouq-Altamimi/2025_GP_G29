@@ -1,7 +1,6 @@
 // src/pages/Patient.jsx
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import {
   doc,
@@ -17,7 +16,6 @@ import {
    Helpers
    ========================= */
 const isNid = (v) => /^\d{10,12}$/.test(String(v || "").trim());
-
 function resolveNidFromAnywhere() {
   try {
     const sp = new URLSearchParams(window.location.search);
@@ -26,11 +24,9 @@ function resolveNidFromAnywhere() {
   } catch {}
   const nidFromTD = localStorage.getItem("TD_PATIENT_NID");
   if (isNid(nidFromTD)) return nidFromTD;
-
   const role = localStorage.getItem("userRole");
   const userId = localStorage.getItem("userId");
   if (role === "patient" && isNid(userId)) return userId;
-
   return null;
 }
 
@@ -74,14 +70,13 @@ function Row({ label, value, extra }) {
    The Page
    ========================= */
 export default function PatientPage() {
-  const navigate = useNavigate();
   const [nid, setNid] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [patient, setPatient] = useState(null);
   const [prescriptions, setPrescriptions] = useState([]);
 
-  // Hide menu icon ONLY on Patient page (scoped CSS + observer)
+  // Hide menu icon ONLY on Patient page
   useEffect(() => {
     const style = document.createElement("style");
     style.id = "td-patient-hide-menu";
@@ -104,28 +99,10 @@ export default function PatientPage() {
       }
     `;
     document.head.appendChild(style);
-
-    const obs = new MutationObserver(() => {
-      const btns = document.querySelectorAll(
-        `button[aria-label='Toggle menu'], [aria-label='menu'], [data-testid='menu'],
-         [data-role='menu-toggle'], .menu-icon, .menu-button, .hamburger,
-         .hamburger-button, .navbar-toggle, .nav-toggle, .header-menu-toggle, .td-global-menu`
-      );
-      btns.forEach((el) => {
-        el.style.display = "none";
-        el.style.visibility = "hidden";
-        el.style.pointerEvents = "none";
-      });
-    });
-    obs.observe(document.body, { childList: true, subtree: true });
-
-    return () => {
-      obs.disconnect();
-      document.getElementById("td-patient-hide-menu")?.remove();
-    };
+    return () => document.getElementById("td-patient-hide-menu")?.remove();
   }, []);
 
-  // Resolve NID once
+  // Resolve NID
   useEffect(() => {
     const id = resolveNidFromAnywhere();
     if (!id) {
@@ -136,47 +113,39 @@ export default function PatientPage() {
     setNid(id);
   }, []);
 
-  // Fetch data when we have NID
+  // Fetch patient + prescriptions
   useEffect(() => {
     if (!nid) return;
-
     let cancelled = false;
 
     async function boot() {
       setLoading(true);
       setErr("");
-
       try {
         const pRef = doc(db, "patients", `Ph_${nid}`);
         const pSnap = await getDoc(pRef);
         if (!pSnap.exists()) {
-          throw new Error(
-            "Patient not found. Please log in again with the correct National ID."
-          );
+          throw new Error("Patient not found. Please log in again.");
         }
         const pData = pSnap.data();
 
         let list = [];
-        try {
-          const q1 = query(
-            collection(db, "prescriptions"),
-            where("patientId", "==", nid),
-            limit(50)
-          );
-          const s1 = await getDocs(q1);
-          list = s1.docs.map((d) => ({ id: d.id, ...d.data() }));
-        } catch {}
+        const q1 = query(
+          collection(db, "prescriptions"),
+          where("patientId", "==", nid),
+          limit(50)
+        );
+        const s1 = await getDocs(q1);
+        list = s1.docs.map((d) => ({ id: d.id, ...d.data() }));
 
         if (list.length === 0) {
-          try {
-            const q2 = query(
-              collection(db, "prescriptions"),
-              where("nationalID", "==", nid),
-              limit(50)
-            );
-            const s2 = await getDocs(q2);
-            list = s2.docs.map((d) => ({ id: d.id, ...d.data() }));
-          } catch {}
+          const q2 = query(
+            collection(db, "prescriptions"),
+            where("nationalID", "==", nid),
+            limit(50)
+          );
+          const s2 = await getDocs(q2);
+          list = s2.docs.map((d) => ({ id: d.id, ...d.data() }));
         }
 
         if (!cancelled) {
@@ -191,23 +160,10 @@ export default function PatientPage() {
     }
 
     boot();
-    return () => {
-      cancelled = true;
-    };
+    return () => (cancelled = true);
   }, [nid]);
 
   const fullName = useMemo(() => patient?.name || "-", [patient]);
-
-  function handleLogout() {
-    try {
-      localStorage.removeItem("TD_PATIENT_NID");
-      localStorage.removeItem("sessionStatus");
-      localStorage.removeItem("userRole");
-      localStorage.removeItem("userId");
-    } catch {}
-    navigate("/auth", { replace: true });
-  }
-
   function handleResetPhone() {
     alert("Reset function will be implemented soon!");
   }
@@ -218,65 +174,43 @@ export default function PatientPage() {
       style={{
         minHeight: "100vh",
         background: "#f8fafc",
+        paddingTop: 20,
       }}
     >
-      {/* Header */}
-      <div
-        style={{
-          height: 64,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 16px",
-          borderBottom: "1px solid #e5e7eb",
-          background: "#fff",
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {/* الأيقونة المتدرجة قبل الترحيب */}
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "0 12px" }}>
+        {/* ===== Greeting ===== */}
+        {!loading && !err && patient && (
           <div
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: "linear-gradient(135deg, #B08CC1 0%, #52B9C4 100%)",
-            }}
-          />
-
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 18, color: "#334155" }}>
-              Welcome, {patient?.name || "Patient"}
-            </div>
-            <div style={{ fontSize: 14, color: "#64748b", marginTop: 2 }}>
-              Wishing you good health.
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button
-            onClick={handleLogout}
-            style={{
-              height: 36,
-              padding: "0 14px",
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-              background: "#fff",
-              cursor: "pointer",
-              fontWeight: 600,
-              color: "#334155",
+              display: "flex",
+              alignItems: "center",
+              gap: -1,
+              marginBottom: 24,
             }}
           >
-            Logout
-          </button>
-        </div>
-      </div>
+            {/* كبسولة من الصورة */}
+            <img
+              src="/Images/TrustDose-pill.png"
+              alt="TrustDose Capsule"
+              style={{
+                width: 75,
+                height: "auto",
+                display: "block",
+              }}
+            />
 
-      {/* Body */}
-      <div style={{ maxWidth: 1000, margin: "16px auto", padding: "0 12px" }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 18, color: "#334155" }}>
+                Welcome, {patient?.name || "Patient"}
+              </div>
+              <div style={{ fontSize: 14, color: "#64748b", marginTop: 2 }}>
+                Wishing you good health.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== Content ===== */}
         {loading && (
           <div style={{ padding: 16, color: "#64748b" }}>Loading…</div>
         )}
