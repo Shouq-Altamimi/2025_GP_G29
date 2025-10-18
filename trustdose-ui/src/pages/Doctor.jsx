@@ -13,24 +13,25 @@ import {
   where,
   addDoc,
   serverTimestamp,
+  limit as fsLimit,
 } from "firebase/firestore";
 import { ethers } from "ethers";
-import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "lucide-react";
+import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList, LogOut } from "lucide-react";
 import PRESCRIPTION from "../contracts/Prescription.json";
 
-// ===== Contract (kept as-is) =====
+// عقدك
 const CONTRACT_ADDRESS = "0x438B5B4931C51EC0F11DD4033587cCF99628500d";
 
-/* UI colors */
+/* ألوان */
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
 
-/* Validation limits */
+/* حدود */
 const LIMITS = Object.freeze({
   medicalCondition: { min: 3, max: 120 },
   notes: { min: 0, max: 300 },
 });
 
-/* Suggested dosage options by form */
+/* اقتراحات الجرعة */
 const DOSAGE_BY_FORM = {
   tablet: ["1 tablet", "2 tablets", "½ tablet", "¼ tablet"],
   capsule: ["1 capsule", "2 capsules"],
@@ -41,15 +42,14 @@ const DOSAGE_BY_FORM = {
   cream: ["Apply thin layer"],
   ointment: ["Apply thin layer"],
 };
-function getDoseOptions(form) {
-  if (!form) return [];
-  return DOSAGE_BY_FORM[form] || [];
-}
+const getDoseOptions = (form) => (form ? DOSAGE_BY_FORM[form] || [] : []);
 
-/* Firestore field names */
+/* أسماء الحقول */
 const F = Object.freeze({
   createdAt: "createdAt",
   doctorId: "doctorId",
+  doctorName: "doctorName",
+  doctorSpeciality: "doctorSpeciality",
   dosage: "dosage",
   durationDays: "durationDays",
   frequency: "frequency",
@@ -62,32 +62,34 @@ const F = Object.freeze({
   patientDisplayId: "patientDisplayId",
   patientNationalIdHash: "patientNationalIdHash",
   medicalCondition: "medicalCondition",
+  expiresAt: "expiresAt",
+  prescriptionID: "prescriptionID",
 });
 
-/* “Other” sentinel for selects */
+/* قيمة other */
 const OTHER_VALUE = "__OTHER__";
 
-/* SHA-256 helper */
+/* SHA-256 */
 async function sha256Hex(input) {
   const enc = new TextEncoder();
   const hash = await crypto.subtle.digest("SHA-256", enc.encode(input));
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/* Ethers signer helper */
+/* توقيع Ethers */
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected. Please install/enable it.");
   await window.ethereum.request({ method: "eth_requestAccounts" });
   const provider = new ethers.BrowserProvider(window.ethereum);
   const network = await provider.getNetwork();
-  const allowed = [1337n, 5777n];
+  const allowed = [1337n, 5777n]; // تنبيه فقط
   if (!allowed.includes(network.chainId)) {
     console.warn("⚠ Running on unexpected chainId =", network.chainId.toString());
   }
   return provider.getSigner();
 }
 
-/* Generate prescriptionID with prefix RX- + 8 random A-Z/0-9 (e.g., RX-9G7K4B2T) */
+/* prescriptionID */
 function generatePrescriptionId(prefix = "RX-", len = 8) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let id = prefix;
@@ -95,9 +97,13 @@ function generatePrescriptionId(prefix = "RX-", len = 8) {
   return id;
 }
 
-/* ======================= Page ======================= */
+/* ======================= الصفحة ======================= */
 export default function Doctor() {
   const navigate = useNavigate();
+
+  // doctor header
+  const [doctor, setDoctor] = useState(null);
+  const [doctorLoadErr, setDoctorLoadErr] = useState("");
 
   // patient search
   const [q, setQ] = useState("");
@@ -105,11 +111,11 @@ export default function Doctor() {
   const [searched, setSearched] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
 
-  // medicines from Firestore
+  // medicines
   const [medList, setMedList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // single prescription item
+  // rx fields
   const [selectedMed, setSelectedMed] = useState(null);
   const [dose, setDose] = useState("");
   const [timesPerDay, setTimesPerDay] = useState("");
@@ -120,11 +126,46 @@ export default function Doctor() {
   // messages
   const [rxMsg, setRxMsg] = useState("");
 
-  // medical condition UX
+  // UX
   const mcRef = useRef(null);
   const [mcTouched, setMcTouched] = useState(false);
 
-  /* restore patient from session */
+  /* تحميل الطبيب من localStorage ثم Firestore */
+  useEffect(() => {
+    (async () => {
+      try {
+        const role = localStorage.getItem("userRole");
+        const userId = localStorage.getItem("userId"); // "Dr-1" أو DoctorID مثل "Dr-001"
+        if (role !== "doctor" || !userId) {
+          setDoctorLoadErr("No active doctor session.");
+          return;
+        }
+
+        let snap = null;
+        // 1) كمستند مباشر
+        try {
+          const ref = doc(db, "doctors", String(userId));
+          const s = await getDoc(ref);
+          if (s.exists()) snap = s;
+        } catch {}
+
+        // 2) DoctorID == userId
+        if (!snap) {
+          const col = collection(db, "doctors");
+          const q = query(col, where("DoctorID", "==", String(userId)), fsLimit(1));
+          const qs = await getDocs(q);
+          if (!qs.empty) snap = qs.docs[0];
+        }
+
+        if (snap?.exists()) setDoctor({ id: snap.id, ...snap.data() });
+        else setDoctorLoadErr("Doctor not found in Firestore.");
+      } catch (e) {
+        setDoctorLoadErr(e?.message || "Failed to load doctor.");
+      }
+    })();
+  }, []);
+
+  /* restore patient */
   useEffect(() => {
     const cached = sessionStorage.getItem("td_patient");
     if (cached) {
@@ -144,13 +185,24 @@ export default function Doctor() {
     })();
   }, []);
 
-  /* clear search state */
   function clearSearch() {
     setQ("");
     setSelectedPatient(null);
     setSearched(false);
     setSearchMsg("");
     sessionStorage.removeItem("td_patient");
+  }
+
+  /* sign out -> يرجع لصفحة /auth */
+  function signOut() {
+    try {
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("userId");
+      localStorage.removeItem("TD_PATIENT_NID");
+      sessionStorage.removeItem("td_patient");
+    } finally {
+      navigate("/auth");
+    }
   }
 
   /* search patient */
@@ -193,13 +245,9 @@ export default function Doctor() {
     if (!selectedPatient) return setRxMsg("Please search for a patient first.");
     if (!selectedMed) return setRxMsg("Please choose a medicine from the list.");
     if (!dose) return setRxMsg("Please select a dosage.");
-    if (!timesPerDay || !durationDays) {
-      return setRxMsg("Please fill all required medication fields.");
-    }
+    if (!timesPerDay || !durationDays) return setRxMsg("Please fill all required medication fields.");
 
     const mc = medicalCondition.trim();
-
-    // Validate Medical Condition on click (button remains enabled)
     if (mc.length < LIMITS.medicalCondition.min) {
       setMcTouched(true);
       setRxMsg(`Medical Condition must be at least ${LIMITS.medicalCondition.min} characters.`);
@@ -221,11 +269,12 @@ export default function Doctor() {
       setIsLoading(true);
       setRxMsg("");
 
+      // hash الهوية
       const natId = selectedPatient.id?.toString() || "";
       const natIdHashHex = natId ? await sha256Hex(natId) : "";
       const patientHashBytes32 = natIdHashHex ? "0x" + natIdHashHex : "0x" + "0".repeat(64);
 
-      // ===== blockchain (kept as-is) =====
+      // البلوك تشين
       const signer = await getSignerEnsured();
       const doctorAddress = await signer.getAddress();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, PRESCRIPTION.abi, signer);
@@ -241,10 +290,12 @@ export default function Doctor() {
       const receipt = await tx.wait();
       const txHash = receipt?.hash || tx.hash;
 
-      // ===== Firestore payload (secure) =====
+      // Firestore
       const payload = {
         [F.createdAt]: serverTimestamp(),
         [F.doctorId]: doctorAddress,
+        [F.doctorName]: doctor?.name || "",
+        [F.doctorSpeciality]: doctor?.speciality || "",
         [F.medicineLabel]: selectedMed.label,
         [F.medicineName]: selectedMed.name,
         [F.dosageForm]: selectedMed.dosageForm || "",
@@ -256,19 +307,15 @@ export default function Doctor() {
         [F.onchainTx]: txHash,
         [F.patientDisplayId]: natId ? natId.slice(-4) : "",
         [F.patientNationalIdHash]: "0x" + natIdHashHex,
-        reason: mc,                                // keep 'reason' mirroring medicalCondition
-        prescriptionID: generatePrescriptionId(),  // e.g., RX-9G7K4B2T
-        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+        [F.prescriptionID]: generatePrescriptionId(),
+        [F.expiresAt]: new Date(Date.now() + 48 * 60 * 60 * 1000), // 48 ساعة
+        reason: mc, // توافقًا مع حقول قديمة
       };
-
-      // Store sensitivity ONLY if present on medicine (no alerts/assumptions/UI logic)
-      if (selectedMed?.sensitivity) {
-        payload[F.sensitivity] = selectedMed.sensitivity;
-      }
+      if (selectedMed?.sensitivity) payload[F.sensitivity] = selectedMed.sensitivity;
 
       await addDoc(collection(db, "prescriptions"), payload);
 
-      // clean & notify
+      // تنظيف وإشعار — بدون تحويل تلقائي لصفحة الباست
       setSelectedMed(null);
       setDose("");
       setTimesPerDay("");
@@ -276,11 +323,7 @@ export default function Doctor() {
       setMedicalCondition("");
       setNotes("");
       setRxMsg("Prescription created & confirmed on-chain ✓");
-      setTimeout(() => setRxMsg(""), 3000);
-
-      navigate("/prescriptions", {
-        state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
-      });
+      setTimeout(() => setRxMsg(""), 4000);
     } catch (e) {
       console.error("createPrescription failed:", e);
       setRxMsg(e?.info?.error?.message || e?.shortMessage || e?.message || "Blockchain confirmation failed.");
@@ -290,11 +333,34 @@ export default function Doctor() {
     }
   }
 
-  /* render */
   return (
     <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-6 py-6 md:py-8">
+      {/* Welcome */}
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 56, height: "auto" }} />
+          <div>
+            <div className="font-extrabold text-lg" style={{ color: "#334155" }}>
+              {doctor?.name ? `Welcome, Dr. ${doctor.name}` : "Welcome, Doctor"}
+            </div>
+            <div className="text-sm" style={{ color: "#64748b" }}>
+              {doctor?.speciality || ""} {doctorLoadErr && !doctor ? " " + doctorLoadErr : ""}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={signOut}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-medium border"
+          style={{ background: "#F3F4F6", color: "#374151", borderColor: "#E5E7EB" }}
+          title="Sign out"
+        >
+          <LogOut size={16} />
+          Sign out
+        </button>
+      </div>
+
       <section className="space-y-6">
-        {/* search patient */}
+        {/* Search Patients */}
         <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <Search size={20} style={{ color: C.primary }} />
@@ -313,7 +379,7 @@ export default function Doctor() {
                 maxLength={10}
                 onChange={(e) => {
                   let v = e.target.value.replace(/[^0-9]/g, "");
-                  if (v.length > 0 && !/^[12]/.test(v)) v = ""; // first digit must be 1 or 2
+                  if (v.length > 0 && !/^[12]/.test(v)) v = "";
                   v = v.slice(0, 10);
                   setQ(v);
                 }}
@@ -352,18 +418,6 @@ export default function Doctor() {
             </button>
           </div>
 
-          {(q || selectedPatient) && (
-            <div className="flex justify-end mt-2">
-              <button
-                onClick={clearSearch}
-                className="px-6 py-3 rounded-xl font-medium"
-                style={{ background: "#F3F4F6", color: "#374151" }}
-              >
-                Clear Search
-              </button>
-            </div>
-          )}
-
           {!!searchMsg && (
             <div className="mt-3 text-sm flex items-center gap-2 text-rose-700">
               <AlertCircle size={16} /> {searchMsg}
@@ -374,7 +428,6 @@ export default function Doctor() {
         {/* patient + form */}
         {searched && selectedPatient && (
           <>
-            {/* Patient Information */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 relative">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
                 <ClipboardList size={20} style={{ color: C.primary }} />
@@ -391,7 +444,11 @@ export default function Doctor() {
                 <button
                   onClick={() =>
                     navigate("/prescriptions", {
-                      state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
+                      state: {
+                        patientId: selectedPatient.id,
+                        patientDocId: selectedPatient.docId,
+                        patientName: selectedPatient.name,
+                      },
                     })
                   }
                   className="px-6 py-3 text-white rounded-xl transition-colors flex items-center gap-2 font-medium shadow-sm"
@@ -403,7 +460,6 @@ export default function Doctor() {
               </div>
             </section>
 
-            {/* Create Prescription */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
                 <FileText size={20} style={{ color: C.primary }} />
@@ -424,7 +480,6 @@ export default function Doctor() {
                 </div>
               )}
 
-              {/* search medicine */}
               <div className="mb-4">
                 <MedicineSearch
                   value={selectedMed?.label || ""}
@@ -439,7 +494,6 @@ export default function Doctor() {
                   }}
                 />
 
-                {/* Sensitivity display only (no alerts/confirmations) */}
                 {selectedMed?.sensitivity && (
                   <div className="mt-2">
                     <span
@@ -454,58 +508,34 @@ export default function Doctor() {
                     </span>
                   </div>
                 )}
-
-                {selectedMed && getDoseOptions(selectedMed?.dosageForm).length === 0 && (
-                  <div className="mt-2 text-sm text-rose-700">
-                    Dosage options for this medicine are missing. Please review the medicine record.
-                  </div>
-                )}
               </div>
 
-              {/* fields */}
               {!selectedMed ? (
                 <div className="mt-2 text-sm text-gray-500">Select a medicine first to show fields.</div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <DosageSelect
-                    value={dose}
-                    onChange={setDose}
-                    options={getDoseOptions(selectedMed?.dosageForm)}
-                    placeholder="Select dosage"
-                    allowOther
-                  />
-
+                  <DosageSelect value={dose} onChange={setDose} options={getDoseOptions(selectedMed?.dosageForm)} placeholder="Select dosage" allowOther />
                   <SelectField
                     label="Frequency"
                     value={timesPerDay}
                     onChange={setTimesPerDay}
                     placeholder="Select frequency"
-                    options={[
-                      "Once daily (OD)",
-                      "Every 6 hours",
-                      "Every 8 hours",
-                      "Every 12 hours",
-                    ]}
+                    options={["Once daily (OD)", "Every 6 hours", "Every 8 hours", "Every 12 hours"]}
                     required
                     allowOther
                   />
-
                   <SelectField
                     label="Duration"
                     value={durationDays}
                     onChange={setDurationDays}
                     placeholder="Select duration"
-                    options={[
-                      "3 days","5 days","7 days","10 days","14 days","21 days","30 days",
-                      "1 month","2 months","3 months",
-                    ]}
+                    options={["3 days", "5 days", "7 days", "10 days", "14 days", "21 days", "30 days", "1 month", "2 months", "3 months"]}
                     required
                     allowOther
                   />
                 </div>
               )}
 
-              {/* medical condition */}
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Medical Condition <span className="text-rose-500">*</span>
@@ -513,37 +543,22 @@ export default function Doctor() {
                 <input
                   ref={mcRef}
                   className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
-                    mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min
-                      ? "border-rose-400 focus:ring-rose-200"
-                      : "border-gray-300"
+                    mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
                   }`}
-                  style={{
-                    outlineColor:
-                      mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min
-                        ? "#f87171"
-                        : C.primary,
-                  }}
+                  style={{ outlineColor: mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min ? "#f87171" : C.primary }}
                   placeholder="e.g., Hypertension"
                   value={medicalCondition}
-                  onChange={(e) => {
-                    const v = e.target.value.slice(0, LIMITS.medicalCondition.max);
-                    setMedicalCondition(v);
-                  }}
+                  onChange={(e) => setMedicalCondition(e.target.value.slice(0, LIMITS.medicalCondition.max))}
                   onBlur={() => setMcTouched(true)}
                 />
                 <div className="mt-1 flex items-center justify-between text-xs">
-                  <span className="text-gray-500">
-                    {`${medicalCondition.length}/${LIMITS.medicalCondition.max}`}
-                  </span>
+                  <span className="text-gray-500">{`${medicalCondition.length}/${LIMITS.medicalCondition.max}`}</span>
                   {mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min && (
-                    <span className="text-rose-600">
-                      Please enter at least {LIMITS.medicalCondition.min} characters.
-                    </span>
+                    <span className="text-rose-600">Please enter at least {LIMITS.medicalCondition.min} characters.</span>
                   )}
                 </div>
               </div>
 
-              {/* notes */}
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
                 <textarea
@@ -557,7 +572,6 @@ export default function Doctor() {
               </div>
 
               <div className="flex items-center justify-between pt-4">
-                {/* confirm */}
                 <button
                   onClick={confirmAndSave}
                   disabled={isLoading || !selectedMed || !dose || !timesPerDay || !durationDays}
@@ -568,7 +582,6 @@ export default function Doctor() {
                   Confirm & Create
                 </button>
 
-                {/* clear */}
                 <button
                   onClick={() => {
                     setSelectedMed(null);
@@ -597,13 +610,7 @@ export default function Doctor() {
 /* ============== components ============== */
 function InfoCard({ label, value, bold = false, highlight = false }) {
   return (
-    <div
-      className="p-4 border rounded-xl"
-      style={{
-        background: highlight ? "#F6F1FA" : "#F9FAFB",
-        borderColor: highlight ? "#E9DFF1" : "#E5E7EB",
-      }}
-    >
+    <div className="p-4 border rounded-xl" style={{ background: highlight ? "#F6F1FA" : "#F9FAFB", borderColor: highlight ? "#E9DFF1" : "#E5E7EB" }}>
       <div className="text-sm text-gray-600 mb-1">{label}</div>
       <div className={`text-gray-800 ${bold ? "font-semibold" : ""}`} style={highlight ? { color: "#4A2C59", fontWeight: 600 } : undefined}>
         {value ?? "—"}
@@ -614,11 +621,9 @@ function InfoCard({ label, value, bold = false, highlight = false }) {
 
 function SelectField({ label, value, onChange, placeholder, options, required = false, allowOther = false }) {
   const isCustom = allowOther && !!value && !options.includes(value);
-  const selectValue = isCustom ? OTHER_VALUE : (value || "");
-
+  const selectValue = isCustom ? OTHER_VALUE : value || "";
   const [touched, setTouched] = useState(false);
   const missing = required && ((selectValue === "" && !isCustom) || (isCustom && !value));
-
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -626,7 +631,9 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
       </label>
       <div className="relative">
         <select
-          className={`w-full pl-4 pr-10 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all appearance-none bg-white ${missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"}`}
+          className={`w-full pl-4 pr-10 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all appearance-none bg-white ${
+            missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+          }`}
           style={{ outlineColor: missing ? "#f87171" : C.primary }}
           value={selectValue}
           onChange={(e) => {
@@ -637,12 +644,13 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
           onBlur={() => setTouched(true)}
         >
           <option value="" disabled hidden>{placeholder}</option>
-          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+          {options.map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
           {allowOther && <option value={OTHER_VALUE}>Other…</option>}
         </select>
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">▾</div>
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">▾</div>
       </div>
-
       {(allowOther && (isCustom || selectValue === OTHER_VALUE)) && (
         <div className="mt-2">
           <input
@@ -662,11 +670,9 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
 
 function DosageSelect({ value, onChange, options = [], required = true, placeholder = "Select dosage", allowOther = true }) {
   const isCustom = allowOther && !!value && !options.includes(value);
-  const selectValue = isCustom ? OTHER_VALUE : (value || "");
-
+  const selectValue = isCustom ? OTHER_VALUE : value || "";
   const [touched, setTouched] = useState(false);
   const missing = required && ((selectValue === "" && !isCustom) || (isCustom && !value));
-
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -674,7 +680,9 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
       </label>
       <div className="relative">
         <select
-          className={`w-full pl-4 pr-10 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all appearance-none bg-white ${missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"}`}
+          className={`w-full pl-4 pr-10 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all appearance-none bg-white ${
+            missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+          }`}
           style={{ outlineColor: missing ? "#f87171" : C.primary }}
           value={selectValue}
           onChange={(e) => {
@@ -685,12 +693,13 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
           onBlur={() => setTouched(true)}
         >
           <option value="" disabled hidden>{placeholder}</option>
-          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+          {options.map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
           {allowOther && <option value={OTHER_VALUE}>Other…</option>}
         </select>
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">▾</div>
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">▾</div>
       </div>
-
       {(allowOther && (isCustom || selectValue === OTHER_VALUE)) && (
         <div className="mt-2">
           <input
@@ -708,7 +717,7 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
   );
 }
 
-/* MedicineSearch: suggestions from "medicines" collection */
+/* MedicineSearch */
 function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine name" }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState(value || "");
@@ -757,12 +766,23 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
   }
 
   function onKeyDown(e) {
-    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) { setOpen(true); return; }
+    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      setOpen(true);
+      return;
+    }
     if (!open) return;
-    if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.min(c + 1, suggestions.length - 1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => Math.max(c - 1, 0)); }
-    else if (e.key === "Enter") { e.preventDefault(); if (cursor >= 0 && suggestions[cursor]) choose(suggestions[cursor]); }
-    else if (e.key === "Escape") { setOpen(false); }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setCursor((c) => Math.min(c + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setCursor((c) => Math.max(c - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (cursor >= 0 && suggestions[cursor]) choose(suggestions[cursor]);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
   }
 
   return (
@@ -773,7 +793,11 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
         style={{ outlineColor: invalid ? "#f87171" : C.primary }}
         placeholder={placeholder}
         value={q}
-        onChange={(e) => { setQ(e.target.value); setOpen(true); setInvalid(false); }}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setOpen(true);
+          setInvalid(false);
+        }}
         onFocus={() => setOpen(true)}
         onBlur={handleBlur}
         onKeyDown={onKeyDown}
@@ -792,7 +816,10 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
                 key={m.id || m.label}
                 role="option"
                 aria-selected={i === cursor}
-                onMouseDown={(e) => { e.preventDefault(); choose(m); }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  choose(m);
+                }}
                 onMouseEnter={() => setCursor(i)}
                 className={`px-4 py-2 text-sm cursor-pointer ${i === cursor ? "bg-gray-100" : "hover:bg-gray-50"}`}
               >
@@ -833,7 +860,9 @@ function toAge(birthDate) {
     const diffMs = Date.now() - date.getTime();
     const age = Math.floor(diffMs / (365.25 * 24 * 60 * 60 * 1000));
     return age >= 0 ? age : "—";
-  } catch { return "—"; }
+  } catch {
+    return "—";
+  }
 }
 
 async function fetchPatientByNationalId(id) {
