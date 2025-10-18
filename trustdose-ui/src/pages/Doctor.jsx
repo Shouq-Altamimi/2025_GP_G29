@@ -259,6 +259,7 @@ export default function Doctor() {
         reason: mc,                                // keep 'reason' mirroring medicalCondition
         prescriptionID: generatePrescriptionId(),  // e.g., RX-9G7K4B2T
         expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+         dispensed: false,
       };
 
       // Store sensitivity ONLY if present on medicine (no alerts/assumptions/UI logic)

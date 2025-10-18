@@ -119,7 +119,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState(null); // null | { ...normalized } | {_notFound:true}
+  const [result, setResult] = useState(null); // null | { ...normalized }
 
   const raw = String(q || "").trim();
   const natDigits = toEnglishDigits(raw); 
@@ -139,6 +139,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       status: data.status || "-",
       dispensed: !!data.dispensed,
       dispensedAt: toMaybeISO(data.dispensedAt) || undefined,
+      sensitivity: data.sensitivity || "-",             // نحتاجه للشرط
       _docId: docId,
     };
   }
@@ -153,21 +154,38 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       const col = collection(db, "prescriptions");
       const tasks = [];
 
+      // 🔎 فلترة من المصدر: غير مصروفة + غير حساسة
       if (rxUpper) {
-        tasks.push(getDocs(query(col, where("prescriptionID", "==", rxUpper), limit(1))));
+        tasks.push(getDocs(query(
+          col,
+          where("prescriptionID", "==", rxUpper),
+          where("dispensed", "==", false),
+          where("sensitivity", "==", "NonSensitive"),
+          limit(1)
+        )));
       }
 
       if (natDigits) {
-        tasks.push(getDocs(query(col, where("nationalID", "==", natDigits), limit(1))));
+        tasks.push(getDocs(query(
+          col,
+          where("nationalID", "==", natDigits),
+          where("dispensed", "==", false),
+          where("sensitivity", "==", "NonSensitive"),
+          limit(1)
+        )));
         const nNum = Number(natDigits);
         if (!Number.isNaN(nNum)) {
-          tasks.push(getDocs(query(col, where("nationalID", "==", nNum), limit(1))));
+          tasks.push(getDocs(query(
+            col,
+            where("nationalID", "==", nNum),
+            where("dispensed", "==", false),
+            where("sensitivity", "==", "NonSensitive"),
+            limit(1)
+          )));
         }
       }
 
       const snaps = await Promise.all(tasks);
-      let pick = null;
-
       const prefer = (snap, check) => {
         if (!snap || snap.empty) return null;
         const doc = snap.docs.find(check);
@@ -177,14 +195,22 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       const byNatS  = prefer(snaps[1], d => String(d.data().nationalID || "") === natDigits);
       const byNatN  = prefer(snaps[2], d => d.data().nationalID === Number(natDigits));
 
-      pick = byRxId || byNatS || byNatN || null;
+      const pick = byRxId || byNatS || byNatN || null;
 
-      if (pick) setResult(normalizeFromDB(pick.data(), pick.id));
-      else setResult({ _notFound: true, ref: rxUpper || "-", patientId: natDigits || "-" });
+      if (pick) {
+        setResult(normalizeFromDB(pick.data(), pick.id));
+        setSearched(true);
+      } else {
+        // 🔇 لا نظهر كارد "Not found" — نعيد الواجهة للحالة الصامتة
+        setResult(null);
+        setSearched(false);
+      }
     } catch (e) {
       console.error(e);
       setError("Could not complete search. Check your internet or Firestore access.");
-      setResult({ _notFound: true, ref: rxUpper || "-", patientId: natDigits || "-" });
+      // صامت أيضًا عند الخطأ (اختياريًا بإمكانك إظهار رسالة فقط)
+      setResult(null);
+      setSearched(false);
     } finally {
       setLoading(false);
     }
@@ -199,30 +225,24 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
 
   async function markDispensed(ref) {
     if (!result || !result._docId) return;
-
-    if (result.dispensed) return;
+    if (result.sensitivity !== "NonSensitive" || result.dispensed) return; // حماية إضافية
 
     try {
       const docRef = fsDoc(db, "prescriptions", result._docId);
+      await updateDoc(docRef, { dispensed: true });
 
-      await updateDoc(docRef, {
-        dispensed: true
-      });
-
-      setResult((prev) =>
-        prev ? { ...prev, dispensed: true } : prev
-      );
-
-      setRxs(prev =>
-        prev.map(rx => rx.ref === ref ? { ...rx, dispensed: true } : rx)
-      );
-
+      setResult((prev) => prev ? { ...prev, dispensed: true } : prev);
+      setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, dispensed: true } : rx));
       addNotification(`Prescription ${ref} dispensed`);
     } catch (e) {
       console.error(e);
       setError("Could not update dispensing status. Please try again.");
     }
   }
+
+  const eligible = result
+    ? (result.sensitivity === "NonSensitive") && (result.dispensed === false)
+    : false;
 
   return (
     <section style={{ display: "grid", gap: 20 }}>
@@ -270,43 +290,36 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
         {!!error && <p className="text-red-600 mt-3">{error}</p>}
       </section>
 
-      {searched && result && (
+      {/* نعرض فقط إذا فيه نتيجة مطابقة — لا نعرض كارد Not found */}
+      {result && !result._notFound && (
         <div style={card}>
-          {result._notFound ? (
-            <>
-              <div><b>Not found in DB</b></div>
-              <div>Prescription: {result.ref}</div>
-              <div>National ID: {result.patientId}</div>
-              <div style={{ marginTop: 8 }}>
-                <button style={{ ...btnStyle, opacity: .6, cursor: "not-allowed" }} disabled>
-                  Dispense
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div><b>Prescription:</b> {result.ref}</div>
-              <div><b>National ID:</b> {result.patientId}</div>
-              <div><b>Patient:</b> {result.patientName}</div>
-              <div><b>Medicine:</b> {result.medicine}</div>
-              <div><b>Dosage:</b> {result.dose}</div>
-              <div><b>Times/Day:</b> {result.timesPerDay}</div>
-              <div><b>Duration:</b> {result.durationDays}</div>
-              <div><b>Status:</b> {result.status || "-"}</div>
-              <div><b>Created:</b> {fmt(result.createdAt)}</div>
+          <>
+            <div><b>Prescription:</b> {result.ref}</div>
+            <div><b>National ID:</b> {result.patientId}</div>
+            <div><b>Patient:</b> {result.patientName}</div>
+            <div><b>Medicine:</b> {result.medicine}</div>
+            <div><b>Dosage:</b> {result.dose}</div>
+            <div><b>Times/Day:</b> {result.timesPerDay}</div>
+            <div><b>Duration:</b> {result.durationDays}</div>
+            <div><b>Status:</b> {result.status || "-"}</div>
+            <div><b>Created:</b> {fmt(result.createdAt)}</div>
+            <div><b>Sensitivity:</b> {result.sensitivity}</div>
 
-              <div style={{ marginTop: 8 }}>
-                <button
-                  onClick={() => markDispensed(result.ref)}
-                  style={{ ...btnStyle, background: result.dispensed ? "#d1fae5" : "#fff" }}
-                  disabled={result.dispensed}
-                  title={result.dispensed ? "Prescription already dispensed" : ""}
-                >
-                  {result.dispensed ? "✓ Dispensed" : "Dispense"}
-                </button>
-              </div>
-            </>
-          )}
+            <div style={{ marginTop: 8 }}>
+              <button
+                onClick={() => markDispensed(result.ref)}
+                style={{ ...btnStyle, background: result.dispensed ? "#d1fae5" : "#fff" }}
+                disabled={!eligible}
+                title={
+                  result.dispensed
+                    ? "Prescription already dispensed"
+                    : (result.sensitivity !== "NonSensitive" ? "Sensitive: pickup not allowed" : "")
+                }
+              >
+                {result.dispensed ? "✓ Dispensed" : (eligible ? "Dispense" : "Not eligible")}
+              </button>
+            </div>
+          </>
         </div>
       )}
     </section>
