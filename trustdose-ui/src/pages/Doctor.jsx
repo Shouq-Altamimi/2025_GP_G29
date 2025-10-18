@@ -97,7 +97,6 @@ function generatePrescriptionId(prefix = "RX-", len = 8) {
   return id;
 }
 
-/* ======================= الصفحة ======================= */
 export default function Doctor() {
   const navigate = useNavigate();
 
@@ -193,7 +192,7 @@ export default function Doctor() {
     sessionStorage.removeItem("td_patient");
   }
 
-  /* sign out -> يرجع لصفحة /auth */
+  /* sign out → /auth */
   function signOut() {
     try {
       localStorage.removeItem("userRole");
@@ -315,7 +314,7 @@ export default function Doctor() {
 
       await addDoc(collection(db, "prescriptions"), payload);
 
-      // تنظيف وإشعار — بدون تحويل تلقائي لصفحة الباست
+      // تنظيف وإشعار
       setSelectedMed(null);
       setDose("");
       setTimesPerDay("");
@@ -323,7 +322,16 @@ export default function Doctor() {
       setMedicalCondition("");
       setNotes("");
       setRxMsg("Prescription created & confirmed on-chain ✓");
-      setTimeout(() => setRxMsg(""), 4000);
+      setTimeout(() => setRxMsg(""), 3000);
+
+      // الانتقال لصفحة الباست
+      navigate("/prescriptions", {
+        state: {
+          patientId: selectedPatient.id,
+          patientDocId: selectedPatient.docId,
+          patientName: selectedPatient.name,
+        },
+      });
     } catch (e) {
       console.error("createPrescription failed:", e);
       setRxMsg(e?.info?.error?.message || e?.shortMessage || e?.message || "Blockchain confirmation failed.");
@@ -344,7 +352,7 @@ export default function Doctor() {
               {doctor?.name ? `Welcome, Dr. ${doctor.name}` : "Welcome, Doctor"}
             </div>
             <div className="text-sm" style={{ color: "#64748b" }}>
-              {doctor?.speciality || ""} {doctorLoadErr && !doctor ? " " + doctorLoadErr : ""}
+              {doctor?.speciality ? `Speciality: ${doctor.speciality}` : ""} {doctorLoadErr && !doctor ? " " + doctorLoadErr : ""}
             </div>
           </div>
         </div>
@@ -717,12 +725,14 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
   );
 }
 
-/* MedicineSearch */
+/* MedicineSearch — يمنع الإدخال اليدوي: لازم تختار من البيانات */
 function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine name" }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState(value || "");
   const [cursor, setCursor] = useState(-1);
   const [invalid, setInvalid] = useState(false);
+  const inputRef = useRef(null);
+  const listId = "med-suggestions";
 
   useEffect(() => setQ(value || ""), [value]);
 
@@ -759,55 +769,66 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
   function handleBlur() {
     const match = base.find((m) => m.label === q);
     if (!match) {
-      setQ(value || "");
-      setInvalid(!!q);
+      setQ(value || "");         // يرجّع القيمة السابقة
+      setInvalid(!!q);           // يبيّن رسالة “اختَر من القائمة”
     }
     setTimeout(() => setOpen(false), 120);
   }
 
   function onKeyDown(e) {
-    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-      setOpen(true);
-      return;
-    }
+    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) { setOpen(true); return; }
     if (!open) return;
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setCursor((c) => Math.min(c + 1, suggestions.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setCursor((c) => Math.max(c - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (cursor >= 0 && suggestions[cursor]) choose(suggestions[cursor]);
-    } else if (e.key === "Escape") {
-      setOpen(false);
-    }
+    if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.min(c + 1, suggestions.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => Math.max(c - 1, 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (cursor >= 0 && suggestions[cursor]) choose(suggestions[cursor]); }
+    else if (e.key === "Escape") { setOpen(false); }
   }
 
   return (
     <div className="relative">
       <label className="block text-sm font-medium text-gray-700 mb-1">Search Medicine</label>
-      <input
-        className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${invalid ? "border-rose-400 focus:ring-rose-200" : "border-gray-300 focus:border-transparent"}`}
-        style={{ outlineColor: invalid ? "#f87171" : C.primary }}
-        placeholder={placeholder}
-        value={q}
-        onChange={(e) => {
-          setQ(e.target.value);
-          setOpen(true);
-          setInvalid(false);
-        }}
-        onFocus={() => setOpen(true)}
-        onBlur={handleBlur}
-        onKeyDown={onKeyDown}
-        aria-autocomplete="list"
-        role="combobox"
-      />
+
+      {/* حقل الإدخال + زر السهم */}
+      <div className="relative">
+        <input
+          ref={inputRef}
+          className={`w-full px-4 pr-12 py-3 border rounded-xl focus:ring-2 transition-all ${
+            invalid ? "border-rose-400 focus:ring-rose-200" : "border-gray-300 focus:border-transparent"
+          }`}
+          style={{ outlineColor: invalid ? "#f87171" : "#B08CC1" }}
+          placeholder={placeholder}
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); setInvalid(false); }}
+          onFocus={() => setOpen(true)}
+          onBlur={handleBlur}
+          onKeyDown={onKeyDown}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-haspopup="listbox"
+        />
+
+        {/* زر السهم (Dropdown caret) */}
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}     // يمنع فقدان الفوكس قبل الفتح
+          onClick={() => { setOpen((o) => !o); inputRef.current?.focus(); }}
+          aria-label={open ? "Hide suggestions" : "Show suggestions"}
+          className="absolute right-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg hover:bg-gray-100 grid place-items-center"
+        >
+          <span className={`inline-block transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
+        </button>
+      </div>
+
       {invalid && <div className="mt-1 text-xs text-rose-600">Please choose a medicine from the list.</div>}
 
       {open && (
-        <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-80 overflow-y-auto" role="listbox">
+        <ul
+          id={listId}
+          className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-80 overflow-y-auto"
+          role="listbox"
+        >
           {suggestions.length === 0 ? (
             <li className="px-4 py-3 text-sm text-gray-500">No matches found</li>
           ) : (
@@ -816,10 +837,7 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
                 key={m.id || m.label}
                 role="option"
                 aria-selected={i === cursor}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  choose(m);
-                }}
+                onMouseDown={(e) => { e.preventDefault(); choose(m); }}
                 onMouseEnter={() => setCursor(i)}
                 className={`px-4 py-2 text-sm cursor-pointer ${i === cursor ? "bg-gray-100" : "hover:bg-gray-50"}`}
               >
@@ -828,14 +846,7 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
                   <div className="ml-3 flex items-center gap-2">
                     <span className="text-[11px] uppercase text-gray-500">{m.dosageForm}</span>
                     {m.sensitivity && (
-                      <span
-                        className="text-[11px] px-2 py-0.5 rounded-full border"
-                        style={{
-                          background: m.sensitivity === "Sensitive" ? "#FEF2F2" : "#F1F8F5",
-                          color: m.sensitivity === "Sensitive" ? "#991B1B" : "#166534",
-                          borderColor: m.sensitivity === "Sensitive" ? "#FECACA" : "#BBE5C8",
-                        }}
-                      >
+                      <span className="text-[11px] px-2 py-0.5 rounded-full border">
                         {m.sensitivity}
                       </span>
                     )}
@@ -850,6 +861,7 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
     </div>
   );
 }
+
 
 /* helpers */
 function toAge(birthDate) {

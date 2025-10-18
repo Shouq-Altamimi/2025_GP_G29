@@ -1,4 +1,4 @@
-// src/App.js
+// src/App.jsx
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 
@@ -29,7 +29,7 @@ export default function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/doctor-home" element={<DoctorHome />} />
 
-        {/* صفحات داخل الشِل الموحد */}
+        {/* صفحات داخل الشِل */}
         <Route element={<Shell />}>
           <Route path="/doctor" element={<Doctor />} />
           <Route path="/pharmacy" element={<Pharmacy />} />
