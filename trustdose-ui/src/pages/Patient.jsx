@@ -6,16 +6,17 @@ import {
   doc,
   getDoc,
   collection,
-  query,
-  where,
   getDocs,
-  limit,
+  query as fsQuery,
+  where,
+  limit as fsLimit,
 } from "firebase/firestore";
 
 /* =========================
    Helpers
    ========================= */
 const isNid = (v) => /^\d{10,12}$/.test(String(v || "").trim());
+
 function resolveNidFromAnywhere() {
   try {
     const sp = new URLSearchParams(window.location.search);
@@ -24,16 +25,68 @@ function resolveNidFromAnywhere() {
   } catch {}
   const nidFromTD = localStorage.getItem("TD_PATIENT_NID");
   if (isNid(nidFromTD)) return nidFromTD;
+
   const role = localStorage.getItem("userRole");
   const userId = localStorage.getItem("userId");
   if (role === "patient" && isNid(userId)) return userId;
+
   return null;
+}
+
+async function fetchPatientByFlexibleId(nid) {
+  try {
+    const ref1 = doc(db, "patients", String(nid));
+    const snap1 = await getDoc(ref1);
+    if (snap1.exists()) return { id: ref1.id, data: snap1.data() };
+  } catch {}
+  try {
+    const ref2 = doc(db, "patients", `Ph_${nid}`);
+    const snap2 = await getDoc(ref2);
+    if (snap2.exists()) return { id: ref2.id, data: snap2.data() };
+  } catch {}
+  try {
+    const col = collection(db, "patients");
+    const variants = [
+      fsQuery(col, where("nationalID", "==", String(nid)), fsLimit(1)),
+      fsQuery(col, where("nationalId", "==", String(nid)), fsLimit(1)),
+    ];
+    for (const q of variants) {
+      const qs = await getDocs(q);
+      if (!qs.empty) {
+        const d = qs.docs[0];
+        return { id: d.id, data: d.data() };
+      }
+    }
+  } catch {}
+  return null;
+}
+
+async function fetchPrescriptionsSmart(foundDocId, nid) {
+  try {
+    const col = collection(db, "prescriptions");
+
+    const q1 = fsQuery(col, where("patientDocId", "==", String(foundDocId)), fsLimit(50));
+    const s1 = await getDocs(q1);
+    if (!s1.empty) return { items: s1.docs.map((d) => ({ id: d.id, ...d.data() })), blocked: false };
+
+    const q2 = fsQuery(col, where("patientDisplayId", "==", String(nid)), fsLimit(50));
+    const s2 = await getDocs(q2);
+    if (!s2.empty) return { items: s2.docs.map((d) => ({ id: d.id, ...d.data() })), blocked: false };
+
+    const q3 = fsQuery(col, where("nationalID", "==", String(nid)), fsLimit(50));
+    const s3 = await getDocs(q3);
+    if (!s3.empty) return { items: s3.docs.map((d) => ({ id: d.id, ...d.data() })), blocked: false };
+
+    return { items: [], blocked: false };
+  } catch (e) {
+    return { items: [], blocked: true, error: e?.message || String(e) };
+  }
 }
 
 /* =========================
    UI Components
    ========================= */
-function Card({ title, children }) {
+function Card({ title, children, footer }) {
   return (
     <div
       style={{
@@ -45,23 +98,23 @@ function Card({ title, children }) {
     >
       {title && <div style={{ fontWeight: 700, marginBottom: 8 }}>{title}</div>}
       {children}
+      {footer}
     </div>
   );
 }
 
-function Row({ label, value, extra }) {
+function Row({ label, value }) {
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "170px 1fr auto",
+        gridTemplateColumns: "170px 1fr",
         alignItems: "center",
         gap: 12,
       }}
     >
       <div style={{ color: "#6b7280" }}>{label}</div>
-      <div style={{ fontWeight: 600 }}>{value ?? "-"}</div>
-      {extra}
+      <div style={{ fontWeight: 600, wordBreak: "break-word" }}>{value ?? "-"}</div>
     </div>
   );
 }
@@ -74,35 +127,8 @@ export default function PatientPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [patient, setPatient] = useState(null);
-  const [prescriptions, setPrescriptions] = useState([]);
+  const [rx, setRx] = useState({ items: [], blocked: false, error: "" });
 
-  // Hide menu icon ONLY on Patient page
-  useEffect(() => {
-    const style = document.createElement("style");
-    style.id = "td-patient-hide-menu";
-    style.innerHTML = `
-      button[aria-label="Toggle menu"],
-      [aria-label="menu"],
-      [data-testid="menu"],
-      [data-role="menu-toggle"],
-      .menu-icon,
-      .menu-button,
-      .hamburger,
-      .hamburger-button,
-      .navbar-toggle,
-      .nav-toggle,
-      .header-menu-toggle,
-      .td-global-menu {
-        display: none !important;
-        visibility: hidden !important;
-        pointer-events: none !important;
-      }
-    `;
-    document.head.appendChild(style);
-    return () => document.getElementById("td-patient-hide-menu")?.remove();
-  }, []);
-
-  // Resolve NID
   useEffect(() => {
     const id = resolveNidFromAnywhere();
     if (!id) {
@@ -113,92 +139,64 @@ export default function PatientPage() {
     setNid(id);
   }, []);
 
-  // Fetch patient + prescriptions
   useEffect(() => {
     if (!nid) return;
     let cancelled = false;
-
-    async function boot() {
+    (async () => {
       setLoading(true);
       setErr("");
       try {
-        const pRef = doc(db, "patients", `Ph_${nid}`);
-        const pSnap = await getDoc(pRef);
-        if (!pSnap.exists()) {
-          throw new Error("Patient not found. Please log in again.");
-        }
-        const pData = pSnap.data();
+        const found = await fetchPatientByFlexibleId(nid);
+        if (!found) throw new Error("Patient not found. Please log in again.");
 
-        let list = [];
-        const q1 = query(
-          collection(db, "prescriptions"),
-          where("patientId", "==", nid),
-          limit(50)
-        );
-        const s1 = await getDocs(q1);
-        list = s1.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-        if (list.length === 0) {
-          const q2 = query(
-            collection(db, "prescriptions"),
-            where("nationalID", "==", nid),
-            limit(50)
-          );
-          const s2 = await getDocs(q2);
-          list = s2.docs.map((d) => ({ id: d.id, ...d.data() }));
-        }
+        const pres = await fetchPrescriptionsSmart(found.id, nid);
 
         if (!cancelled) {
-          setPatient(pData);
-          setPrescriptions(list);
+          setPatient(found.data);
+          setRx(pres);
         }
       } catch (e) {
         if (!cancelled) setErr(e?.message || String(e));
       } finally {
         if (!cancelled) setLoading(false);
       }
-    }
-
-    boot();
-    return () => (cancelled = true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [nid]);
 
   const fullName = useMemo(() => patient?.name || "-", [patient]);
-  function handleResetPhone() {
-    alert("Reset function will be implemented soon!");
-  }
+  const phoneValue = useMemo(() => {
+    if (!patient) return "-";
+    if (patient.contact && typeof patient.contact === "object") {
+      return patient.contact.phone || patient.contact.mobile || "-";
+    }
+    return patient.contact || "-";
+  }, [patient]);
+  const locationDistrictOnly = useMemo(() => {
+    if (!patient?.Location) return "-";
+    const parts = String(patient.Location).split(",");
+    return (parts[1] || parts[0] || "-").trim();
+  }, [patient]);
 
-  /* =============== UI =============== */
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#f8fafc",
-        paddingTop: 20,
-      }}
-    >
+    <div style={{ minHeight: "100vh", background: "#f8fafc", paddingTop: 20 }}>
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: "0 12px" }}>
-        {/* ===== Greeting ===== */}
         {!loading && !err && patient && (
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: -1,
+              gap: 12,
               marginBottom: 24,
             }}
           >
-            {/* كبسولة من الصورة */}
             <img
               src="/Images/TrustDose-pill.png"
               alt="TrustDose Capsule"
-              style={{
-                width: 75,
-                height: "auto",
-                display: "block",
-              }}
+              style={{ width: 75, height: "auto", display: "block" }}
             />
-
             <div>
               <div style={{ fontWeight: 800, fontSize: 18, color: "#334155" }}>
                 Welcome, {patient?.name || "Patient"}
@@ -210,81 +208,56 @@ export default function PatientPage() {
           </div>
         )}
 
-        {/* ===== Content ===== */}
-        {loading && (
-          <div style={{ padding: 16, color: "#64748b" }}>Loading…</div>
-        )}
-
+        {loading && <div style={{ padding: 16, color: "#64748b" }}>Loading…</div>}
         {!loading && err && (
-          <div style={{ padding: 16, color: "#dc2626", fontWeight: 600 }}>
-            {err}
-          </div>
+          <div style={{ padding: 16, color: "#dc2626", fontWeight: 600 }}>{err}</div>
         )}
 
         {!loading && !err && patient && (
           <>
-            {/* Profile */}
             <Card title="Patient Profile">
               <div style={{ display: "grid", gap: 10 }}>
                 <Row label="Full name" value={fullName} />
-                <Row
-                  label="National ID"
-                  value={patient.nationalID || patient.nationalId}
-                />
-                <Row
-                  label="Phone"
-                  value={patient.contact}
-                  extra={
-                    <button
-                      onClick={handleResetPhone}
-                      style={{
-                        border: "none",
-                        borderRadius: 8,
-                        background: "#B08CC1",
-                        color: "#fff",
-                        padding: "6px 14px",
-                        fontSize: 13,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        transition: "0.2s",
-                      }}
-                      onMouseOver={(e) =>
-                        (e.target.style.background = "#9c79ae")
-                      }
-                      onMouseOut={(e) =>
-                        (e.target.style.background = "#B08CC1")
-                      }
-                    >
-                      Reset
-                    </button>
-                  }
-                />
+                <Row label="National ID" value={patient.nationalID || patient.nationalId || "-"} />
+                <Row label="Phone" value={phoneValue} />
                 <Row
                   label="Gender"
-                  value={
-                    patient.gender === "M"
-                      ? "Male"
-                      : patient.gender === "F"
-                      ? "Female"
-                      : "-"
-                  }
+                  value={patient.gender === "M" ? "Male" : patient.gender === "F" ? "Female" : "-"}
                 />
-                <Row label="City" value={patient.locationCity} />
-                <Row label="District" value={patient.locationDistrict} />
-                <Row label="Location" value={patient.Location} />
+                <Row label="Location" value={locationDistrictOnly} />
               </div>
             </Card>
 
-            {/* Prescriptions */}
             <div style={{ height: 12 }} />
-            <Card title="Prescriptions">
-              {prescriptions.length === 0 ? (
-                <div style={{ color: "#6b7280" }}>No prescriptions found.</div>
+            <Card
+              title="Prescriptions"
+              footer={
+                rx.blocked ? (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      background: "#fff7ed",
+                      color: "#9a3412",
+                      border: "1px solid #fed7aa",
+                      fontSize: 12,
+                    }}
+                  >
+                    Prescriptions might be hidden by Firestore Rules (no read).
+                  </div>
+                ) : null
+              }
+            >
+              {rx.items.length === 0 ? (
+                <div style={{ color: "#6b7280" }}>
+                  {rx.blocked ? "—" : "No prescriptions found."}
+                </div>
               ) : (
                 <div style={{ display: "grid", gap: 12 }}>
-                  {prescriptions.map((rx) => (
+                  {rx.items.map((item) => (
                     <div
-                      key={rx.id}
+                      key={item.id}
                       style={{
                         border: "1px solid #e5e7eb",
                         borderRadius: 10,
@@ -301,23 +274,20 @@ export default function PatientPage() {
                         }}
                       >
                         <div style={{ fontWeight: 700 }}>
-                          {rx.medicine || rx.name || "Prescription"}
+                          {item.medicineName || item.medicine || "Prescription"}
                         </div>
                         <div style={{ color: "#64748b", fontSize: 13 }}>
-                          {rx.ref || rx.id}
+                          {item.ref || item.id}
                         </div>
                       </div>
 
                       <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
-                        <Row label="Dose" value={rx.dose} />
-                        <Row label="Times/Day" value={rx.timesPerDay} />
-                        <Row label="Duration (days)" value={rx.durationDays} />
-                        <Row label="Status" value={rx.status || "-"} />
-                        {rx.pharmacy?.name && (
-                          <Row label="Pharmacy" value={rx.pharmacy.name} />
-                        )}
-                        {rx.city && <Row label="City" value={rx.city} />}
-                        {rx.notes && <Row label="Notes" value={rx.notes} />}
+                        <Row label="Dose" value={item.dosage || item.dose} />
+                        <Row label="Frequency" value={item.frequency || item.timesPerDay} />
+                        <Row label="Duration (days)" value={item.durationDays} />
+                        <Row label="Status" value={item.status || (item.dispensed ? "Dispensed" : "-")} />
+                        {item.notes && <Row label="Notes" value={item.notes} />}
+                        {item.onchainTx && <Row label="Tx Hash" value={item.onchainTx} />}
                       </div>
                     </div>
                   ))}
