@@ -923,7 +923,7 @@
   "sourceMap": "69:497:1:-:0;;;162:37;;;;;;;;;-1:-1:-1;178:5:1;:18;;-1:-1:-1;;;;;;178:18:1;186:10;178:18;;;69:497;;;;;;",
   "deployedSourceMap": "69:497:1:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;395:168;;;;;;:::i;:::-;;:::i;:::-;;119:36;;;;;;;;;451:25:5;;;439:2;424:18;119:36:1;;;;;;;;94:20;;;;;-1:-1:-1;;;;;94:20:1;;;;;;-1:-1:-1;;;;;651:32:5;;;633:51;;621:2;606:18;94:20:1;487:203:5;292:97:1;;;;;;:::i;:::-;;:::i;395:168::-;251:5;;-1:-1:-1;;;;;251:5:1;237:10;:19;229:51;;;;-1:-1:-1;;;229:51:1;;1082:2:5;229:51:1;;;1064:21:5;1121:2;1101:18;;;1094:30;-1:-1:-1;;;1140:18:5;;;1133:49;1199:18;;229:51:1;;;;;;;;;532:24:::1;::::0;510:47:::1;::::0;-1:-1:-1;;;510:47:1;;491:11;;-1:-1:-1;;;;;510:21:1;::::1;::::0;::::1;::::0;:47:::1;::::0;::::1;;451:25:5::0;;;439:2;424:18;;305:177;510:47:1::1;;;;;;;;;;;;;;;;;;::::0;::::1;;;;;;;;;;;;::::0;::::1;;;;;;;;;451:112;395:168:::0;:::o;292:97::-;251:5;;-1:-1:-1;;;;;251:5:1;237:10;:19;229:51;;;;-1:-1:-1;;;229:51:1;;1082:2:5;229:51:1;;;1064:21:5;1121:2;1101:18;;;1094:30;-1:-1:-1;;;1140:18:5;;;1133:49;1199:18;;229:51:1;880:343:5;229:51:1;350:24:::1;:36:::0;292:97::o;14:286:5:-;73:6;126:2;114:9;105:7;101:23;97:32;94:52;;;142:1;139;132:12;94:52;168:23;;-1:-1:-1;;;;;220:31:5;;210:42;;200:70;;266:1;263;256:12;200:70;289:5;14:286;-1:-1:-1;;;14:286:5:o;695:180::-;754:6;807:2;795:9;786:7;782:23;778:32;775:52;;;823:1;820;813:12;775:52;-1:-1:-1;846:23:5;;695:180;-1:-1:-1;695:180:5:o",
   "source": "// SPDX-License-Identifier: MIT\r\npragma solidity >=0.8.0 <0.8.20;\r\n\r\ncontract Migrations {\r\n  address public owner;\r\n  uint public last_completed_migration;\r\n\r\n  constructor() { owner = msg.sender; }\r\n\r\n  modifier restricted() { require(msg.sender == owner, \"Restricted to owner\"); _; }\r\n\r\n  function setCompleted(uint completed) public restricted { last_completed_migration = completed; }\r\n\r\n  function upgrade(address new_address) public restricted {\r\n    Migrations upgraded = Migrations(new_address);\r\n    upgraded.setCompleted(last_completed_migration);\r\n  }\r\n}\r\n",
-  "sourcePath": "C:\\Users\\hp\\Downloads\\2025_GP_G29\\contracts\\Migrations.sol",
+  "sourcePath": "C:\\Users\\hp\\Desktop\\2025_GP_G29\\contracts\\Migrations.sol",
   "ast": {
     "absolutePath": "project:/contracts/Migrations.sol",
     "exportedSymbols": {
@@ -1645,12 +1645,12 @@
     "5777": {
       "events": {},
       "links": {},
-      "address": "0xdb73298D6734b536af2b2968F54620396948FeE9",
-      "transactionHash": "0x423024af2799e1614708781181270596676a6b6a771e4d41e2fc3972982dd291"
+      "address": "0x27F084f1EcDaB80aDc6aE26159CdC12BC75Cc98D",
+      "transactionHash": "0x6707830e15fd97220985ed8915f21d4aff9fc990ddbe429c29ecddb35bab34ab"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-10-16T19:18:35.636Z",
+  "updatedAt": "2025-10-18T07:24:16.843Z",
   "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",
