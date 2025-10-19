@@ -462,101 +462,112 @@ export default function TrustDoseAuth() {
 
   // ===== Patient Sign up =====
   async function handleSignUp(e) {
-    e.preventDefault();
-    setMsg("");
-    setLoading(true);
+  e.preventDefault();
+  setMsg("");
+  setLoading(true);
 
-    try {
-      const nidRaw = String(nationalId);
-      const nid = nidRaw.trim();
-
-      // Strict check at submit
-      if (!isValidNationalIdStrict(nid)) {
-        throw new Error("National ID must be 10 digits starting with 1 or 2 (ASCII digits only, no spaces).");
-      }
-
-      const phoneRaw = String(phone);
-      const phoneCheck = validateAndNormalizePhone(phoneRaw); // rejects any space
-      const pass = String(password).trim();
-      const pass2 = String(confirmPassword).trim();
-      const nm = name.trim();
-      const g = gender.trim(); // "Male" | "Female"
-      const bdate = birthDate.trim();
-
-      const c = city.trim();
-      const d = district === "__OTHER__" ? districtOther.trim() : district.trim();
-
-      if (!nid || !phoneRaw || !pass || !pass2 || !nm || !g || !bdate || !c || !d) {
-        throw new Error("Please fill all fields.");
-      }
-      if (!["Male", "Female"].includes(g)) throw new Error("Gender must be Male or Female.");
-
-      if (!phoneCheck.ok) { throw new Error(phoneCheck.reason || "Invalid phone."); }
-      const phoneNorm = phoneCheck.normalized;
-
-      const pw = passwordStrength(pass);
-      const meetsPolicy = pw.len8 && pw.hasLower && pw.hasUpper && pw.hasDigit;
-      if (!meetsPolicy) {
-        throw new Error("Password must be at least 8 chars and include lowercase, uppercase, and a digit.");
-      }
-      if (pass !== pass2) throw new Error("Passwords do not match.");
-
-      const bdObj = new Date(bdate);
-      if (Number.isNaN(bdObj.getTime())) throw new Error("Invalid birth date.");
-
-      // Logical max: 2007-12-31 (UI not restricted)
-      const maxBirth = new Date("2007-12-31T23:59:59");
-      if (bdObj > maxBirth) throw new Error("Birth date must be 2007 or earlier.");
-
-      const docId = `Ph_${nid}`;
-      const existsSnap = await getDoc(doc(db, "patients", docId));
-      if (existsSnap.exists()) { throw new Error("An account with this National ID already exists."); }
-
-      const phoneQ = query(collection(db, "patients"), where("contact", "==", phoneNorm));
-      const phoneSnap = await getDocs(phoneQ);
-      if (!phoneSnap.empty) { throw new Error("This phone number is already registered."); }
-
-      const saltB64 = genSaltBase64(16);
-      const hashB64 = await pbkdf2Hash(pass, saltB64, 100_000);
-
-      await setDoc(doc(db, "patients", docId), {
-        locationCity: c,
-        locationDistrict: d,
-        locationLabel: `${c}, ${d}`,
-        birthDate: Timestamp.fromDate(bdObj),
-        contact: phoneNorm,
-        gender: g,
-        name: nm,
-        nationalID: nid,
-        nationalId: nid,
-        passwordHash: hashB64,
-        passwordSalt: saltB64,
-        passwordAlgo: "PBKDF2-SHA256-100k",
-        createdAt: serverTimestamp(),
-      });
-
-      setMsg("🎉 Patient account created successfully. You can sign in now.");
-      setMode("signin");
-      setAccountId(nid);
-      setPassword("");
-      setConfirmPassword("");
-      setName("");
-      setGender("");
-      setBirthDate("");
-      setPhone("");
-      setCity("");
-      setDistrict("");
-      setDistrictOther("");
-      setPhoneInfo({ ok: false, reason: "", normalized: "" });
-      setPhoneTaken(false);
-      setNationalIdErr("");
-      setBirthDateErr("");
-    } catch (err) {
-      setMsg(`❌ ${err?.message || err}`);
-    } finally {
-      setLoading(false);
+  try {
+    // ‼️ حوّل كل شيء لأرقام/نصوص ASCII قبل أي فحص
+    const nidAscii = toEnglishDigits(String(nationalId ?? "")).trim();
+    if (!isValidNationalIdStrict(nidAscii)) {
+      throw new Error("National ID must be 10 digits starting with 1 or 2 (ASCII digits only, no spaces).");
     }
+
+    const phoneRaw = String(phone ?? "");
+    const phoneCheck = validateAndNormalizePhone(phoneRaw);
+
+    const pass  = String(password ?? "").trim();
+    const pass2 = String(confirmPassword ?? "").trim();
+    const nm    = String(name ?? "").trim();
+    const g     = String(gender ?? "").trim(); // "Male" | "Female"
+    const c     = String(city ?? "").trim();
+    const d     = String(district === "__OTHER__" ? (districtOther ?? "") : (district ?? "")).trim();
+
+    // تاريخ الميلاد: فسّره بشكل صارم من input type=date (YYYY-MM-DD)
+    const bdateStr = String(birthDate ?? "").trim();
+    let bdObj;
+    {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(bdateStr);
+      if (!m) throw new Error("Invalid birth date.");
+      const y = Number(m[1]), mo = Number(m[2]), dy = Number(m[3]);
+      bdObj = new Date(Date.UTC(y, mo - 1, dy, 0, 0, 0));
+    }
+    if (Number.isNaN(bdObj.getTime())) throw new Error("Invalid birth date.");
+
+    const maxBirth = new Date(Date.UTC(2007, 11, 31, 23, 59, 59));
+    if (bdObj > maxBirth) throw new Error("Birth date must be 2007 or earlier.");
+
+    if (!phoneCheck.ok) throw new Error(phoneCheck.reason || "Invalid phone.");
+    const phoneNorm = phoneCheck.normalized;
+
+    if (!nidAscii || !phoneRaw || !pass || !pass2 || !nm || !g || !bdateStr || !c || !d) {
+      throw new Error("Please fill all fields.");
+    }
+    if (!["Male", "Female"].includes(g)) throw new Error("Gender must be Male or Female.");
+
+    const pw = passwordStrength(pass);
+    const meetsPolicy = pw.len8 && pw.hasLower && pw.hasUpper && pw.hasDigit;
+    if (!meetsPolicy) throw new Error("Password must be at least 8 chars and include lowercase, uppercase, and a digit.");
+    if (pass !== pass2) throw new Error("Passwords do not match.");
+
+    const docId = `Ph_${nidAscii}`;
+
+    const existsSnap = await getDoc(doc(db, "patients", docId));
+    if (existsSnap.exists()) throw new Error("An account with this National ID already exists.");
+
+    const phoneQ = query(collection(db, "patients"), where("contact", "==", phoneNorm));
+    const phoneSnap = await getDocs(phoneQ);
+    if (!phoneSnap.empty) throw new Error("This phone number is already registered.");
+
+    // كلمة المرور: PBKDF2-SHA256 32 بايت -> Base64 طوله 44
+    const saltB64 = genSaltBase64(16); // 16 بايت -> Base64 طوله 24
+    const hashB64 = await pbkdf2Hash(pass, saltB64, 100_000);
+
+    // لوج للتأكد من الأطوال المطلوبة في الrules
+    console.log("[signup] hashLen:", hashB64.length, "saltLen:", saltB64.length);
+
+    const payload = {
+      locationCity: c,
+      locationDistrict: d,
+      locationLabel: `${c}, ${d}`,
+      birthDate: Timestamp.fromDate(bdObj),
+      contact: phoneNorm,
+      gender: g,
+      name: nm,
+      nationalID: nidAscii,
+      nationalId: nidAscii,
+      passwordHash: hashB64,
+      passwordSalt: saltB64,
+      passwordAlgo: "PBKDF2-SHA256-100k",
+      createdAt: serverTimestamp(),
+    };
+
+    await setDoc(doc(db, "patients", docId), payload);
+
+    setMsg("🎉 Patient account created successfully. You can sign in now.");
+    setMode("signin");
+    setAccountId(nidAscii);
+    setPassword("");
+    setConfirmPassword("");
+    setName("");
+    setGender("");
+    setBirthDate("");
+    setPhone("");
+    setCity("");
+    setDistrict("");
+    setDistrictOther("");
+    setPhoneInfo({ ok: false, reason: "", normalized: "" });
+    setPhoneTaken(false);
+    setNationalIdErr("");
+    setBirthDateErr("");
+  } catch (err) {
+    console.error("signup error:", err?.code, err?.message, err);
+    setMsg(`❌ ${err?.code || ""} ${err?.message || err}`);
+  } finally {
+    setLoading(false);
   }
+}
+
 
   const currentDistricts = useMemo(
     () => (city ? DISTRICTS_BY_CITY[city] || ["Other…"] : []),
