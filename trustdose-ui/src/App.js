@@ -6,7 +6,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import DoctorHome from "./DoctorHome";
 import TrustDoseAuth from "./pages/Auth";
 import Doctor from "./pages/Doctor";
-import Shell from "./pages/Shell";
+import Shell from "./pages/DoctorHeader.jsx";
 import Patient from "./pages/Patient";
 import PrescriptionsPage from "./pages/PrescriptionsPage";
 
