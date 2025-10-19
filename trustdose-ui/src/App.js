@@ -5,8 +5,13 @@ import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import AdminDashboard from "./pages/AdminDashboard";
 import DoctorHome from "./DoctorHome";
 import TrustDoseAuth from "./pages/Auth";
+
+// الطبيب
 import Doctor from "./pages/Doctor";
-import Shell from "./pages/DoctorHeader.jsx";
+import Shell from "./pages/DoctorHeader.jsx"; // شِل الطبيب
+
+// المريض
+import PShell from "./pages/PShell.jsx";      // شِل المريض (جديد)
 import Patient from "./pages/Patient";
 import PrescriptionsPage from "./pages/PrescriptionsPage";
 
@@ -35,8 +40,16 @@ export default function App() {
         {/* 🟣 صفحات الطبيب داخل شِل الطبيب */}
         <Route element={<Shell />}>
           <Route path="/doctor" element={<Doctor />} />
-          <Route path="/prescriptions" element={<PrescriptionsPage />} />
-          <Route path="/patient" element={<Patient />} />
+          {/* (اختياري) لو عندك صفحة وصفات خاصة بالطبيب خليها هنا */}
+          {/* <Route path="/prescriptions" element={<PrescriptionsPage />} /> */}
+        </Route>
+
+        {/* 🔵 صفحات المريض داخل شِل المريض */}
+        <Route path="/patient" element={<PShell />}>
+          {/* منيو المريض (الصفحة الرئيسية) */}
+          <Route index element={<Patient />} />
+          {/* وصفات المريض: /patient/prescriptions */}
+          <Route path="prescriptions" element={<PrescriptionsPage />} />
         </Route>
 
         {/* 🟢 صفحات الصيدلية داخل شِل الصيدلية */}
