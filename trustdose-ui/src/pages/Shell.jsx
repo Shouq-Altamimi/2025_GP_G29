@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
-import { db } from "../firebase";
+import { db } from "../firebase.js";
 import {
   collection,
   doc,
@@ -69,37 +69,58 @@ export default function Shell() {
 
   useEffect(() => {
     if (!isDoctorPage) return;
+
     (async () => {
       const role = localStorage.getItem("userRole");
-      const userId = localStorage.getItem("userId");
-      if (role !== "doctor" || !userId) {
+      const userDoctorID = localStorage.getItem("userId");
+
+      if (role !== "doctor" || !userDoctorID) {
         setDoctor(null);
         setDoctorDocId(null);
         setOpen(false);
         setShowAccount(false);
+        sessionStorage.removeItem("td_doctor");
         return;
       }
+
       try {
-        const s = await getDoc(doc(db, "doctors", String(userId)));
-        if (s.exists()) {
-          setDoctor(normalizeDoctor(s.data()));
-          setDoctorDocId(s.id);
-          return;
-        }
-      } catch {}
-      try {
-        const col = collection(db, "doctors");
-        const qy = query(col, where("DoctorID", "==", String(userId)), fsLimit(1));
+        // 👇 نعتمد حصريًا على DoctorID
+        const qy = query(
+          collection(db, "doctors"),
+          where("DoctorID", "==", String(userDoctorID)),
+          fsLimit(1)
+        );
         const qs = await getDocs(qy);
+
         if (!qs.empty) {
           const d = qs.docs[0];
-          setDoctor(normalizeDoctor(d.data()));
+          const norm = normalizeDoctor(d.data());
+          setDoctor(norm);
           setDoctorDocId(d.id);
+
+          sessionStorage.setItem(
+            "td_doctor",
+            JSON.stringify({
+              DoctorID: norm?.DoctorID || String(userDoctorID),
+              name: norm?.name || "",
+              phone: norm?.phone || "",
+              healthFacility: norm?.healthFacility || "",
+              speciality: norm?.speciality || "",
+            })
+          );
           return;
         }
-      } catch {}
-      setDoctor(null);
-      setDoctorDocId(null);
+
+        // لو ما لقينا شي بهوية DoctorID — نفرّغ
+        setDoctor(null);
+        setDoctorDocId(null);
+        sessionStorage.removeItem("td_doctor");
+      } catch (e) {
+        console.error("Load doctor by DoctorID failed:", e);
+        setDoctor(null);
+        setDoctorDocId(null);
+        sessionStorage.removeItem("td_doctor");
+      }
     })();
   }, [isDoctorPage]);
 
@@ -107,6 +128,7 @@ export default function Shell() {
     localStorage.removeItem("userRole");
     localStorage.removeItem("userId");
     sessionStorage.removeItem("td_patient");
+    sessionStorage.removeItem("td_doctor");
     navigate("/auth");
   }
 
