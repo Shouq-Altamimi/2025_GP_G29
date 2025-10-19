@@ -15,16 +15,12 @@ import {
 /* =========================
    0) Local mapping (no DB changes)
    ========================= */
-// ضع هنا الربط بين doctorId (العنوان 0x..) واسم الطبيب والمنشأة.
-// أضف أي مفاتيح أخرى تحتاجها.
 const DOCTOR_MAP = {
   "0x4F5b09D9940a1fF83463De89BD25C216fBd86E5C": {
     name: "Khalid Altamimi",
     facility: "Dr. Sulaiman Al Habib Hospital",
   },
-  // عناوين أخرى...
 };
-
 
 /* =========================
    Helpers
@@ -292,9 +288,7 @@ export default function PatientPage() {
         const found = await fetchPatientByFlexibleId(nid);
         if (!found) throw new Error("Patient not found. Please log in again.");
         const pres = await fetchPrescriptionsSmart(found.id, nid);
-
         pres.items = await hydrateNames(pres.items);
-
         setPatient(found.data);
         setRx(pres);
       } catch (e) {
@@ -306,7 +300,6 @@ export default function PatientPage() {
   }, [nid]);
 
   const fullName = useMemo(() => patient?.name || "-", [patient]);
-
   const toggleOpen = (id) => setOpenIds((s) => ({ ...s, [id]: !s[id] }));
 
   return (
@@ -338,7 +331,12 @@ export default function PatientPage() {
               const doctor = p._doctorName || "—";
 
               const medTitle = p.medicineLabel || p.medicineName || "Prescription";
-              const rxNumber = p.rxNumber || p.prescriptionNumber || p.id;
+              const rxNumber =
+                p.prescriptionID ||
+                p.prescriptionId ||
+                p.rxNumber ||
+                p.prescriptionNumber ||
+                p.id;
 
               const statusStyles =
                 status === "Dispensed"
@@ -479,6 +477,8 @@ export default function PatientPage() {
                         <Row label="Dosage" value={p.dosage || p.dose || "—"} />
                         <Row label="Frequency" value={p.frequency || p.timesPerDay || "—"} />
                         <Row label="Duration" value={p.durationDays ?? "—"} />
+
+                        {/* ✅ تعديل عرض الحساسية مع شرطة */}
                         {p.sensitivity && (
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <div style={{ color: "#6b7280", width: 170 }}>Sensitivity</div>
@@ -494,17 +494,22 @@ export default function PatientPage() {
                                     ? TD.brand.dangerBorder
                                     : TD.brand.successBorder,
                                 background:
-                                  p.sensitivity === "Sensitive" ? TD.brand.dangerBg : TD.brand.successBg,
+                                  p.sensitivity === "Sensitive"
+                                    ? TD.brand.dangerBg
+                                    : TD.brand.successBg,
                                 color:
-                                  p.sensitivity === "Sensitive" ? TD.brand.dangerText : TD.brand.successText,
+                                  p.sensitivity === "Sensitive"
+                                    ? TD.brand.dangerText
+                                    : TD.brand.successText,
                               }}
                             >
                               {p.sensitivity === "Sensitive"
-                                ? "Sensitive (Delivery)"
-                                : "NonSensitive (Pickup)"}
+                                ? "Sensitive - (Delivery)"
+                                : "Non-Sensitive - (Pickup)"}
                             </div>
                           </div>
                         )}
+
                         {p.notes && <Row label="Notes" value={p.notes} />}
                       </div>
                     </div>
