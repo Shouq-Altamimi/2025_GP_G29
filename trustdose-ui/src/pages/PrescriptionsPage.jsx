@@ -1,4 +1,3 @@
-// src/pages/PrescriptionsPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { db } from "../firebase";
@@ -6,7 +5,7 @@ import { collection, query, where, getDocs } from "firebase/firestore";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59", pale: "#F6F1FA" };
 
-/* SHA-256 helper (نفس اللي في Doctor) */
+/* SHA-256 helper */
 async function sha256Hex(input) {
   const enc = new TextEncoder();
   const hash = await crypto.subtle.digest("SHA-256", enc.encode(input));
@@ -17,22 +16,22 @@ export default function PrescriptionsPage() {
   const { state } = useLocation();
   const navigate = useNavigate();
 
+  // fallback من السيشن إذا ما وصل state
   const cached = sessionStorage.getItem("td_patient");
   const fallback = cached ? JSON.parse(cached) : null;
 
-  const patientId    = state?.patientId    || fallback?.id    || "";
-  const patientName  = state?.patientName  || fallback?.name  || "";
+  const patientId   = state?.patientId   || fallback?.id   || "";
+  const patientName = state?.patientName || fallback?.name || "";
 
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [qText, setQText] = useState("");
 
   useEffect(() => {
-    if (!patientId) { navigate("/doctor"); return; }
+    if (!patientId) { navigate(-1); return; }
     (async () => {
       setLoading(true);
       try {
-        // نجيب الوصفات باستخدام الهاش لحماية الهوية
         const natHash = "0x" + (await sha256Hex(String(patientId)));
         const colRef = collection(db, "prescriptions");
         const qRef = query(colRef, where("patientNationalIdHash", "==", natHash));
@@ -96,8 +95,10 @@ export default function PrescriptionsPage() {
                     {rx.medicineLabel || rx.medicineName || "—"}
                   </div>
 
+                  {/* ✅ Prescribed by Dr. X from Y */}
                   <div className="text-sm text-gray-600 mt-1">
                     Prescribed by {rx.doctorName ? `Dr. ${rx.doctorName}` : "—"}
+                    {rx.doctorFacility ? ` from ${rx.doctorFacility}` : ""}
                     {rx.doctorSpeciality ? ` — ${rx.doctorSpeciality}` : ""}
                   </div>
 
@@ -105,7 +106,12 @@ export default function PrescriptionsPage() {
                     {(rx.dosage || "—")} • {(rx.frequency || "—")} • {(rx.durationDays || rx.duration || "—")}
                   </div>
 
-                  {rx.reason && <div className="text-sm text-gray-600 mt-1">Reason: {rx.reason}</div>}
+                  {/* ✅ الاسم الظاهر “Medical Condition” بدل Reason */}
+                  {rx.reason && (
+                    <div className="text-sm text-gray-600 mt-1">
+                      Medical Condition: {rx.reason}
+                    </div>
+                  )}
                   {rx.notes && <div className="text-sm text-gray-500 mt-1 italic">{rx.notes}</div>}
                 </div>
 
@@ -115,8 +121,7 @@ export default function PrescriptionsPage() {
                   </div>
                 </div>
               </div>
-
-              {/* تم إخفاء سطر Tx بناءً على طلبك */}
+              {/* سطر الـ Tx مخفي حسب طلبك */}
             </div>
           ))}
         </div>

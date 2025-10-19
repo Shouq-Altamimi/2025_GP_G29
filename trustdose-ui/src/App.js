@@ -1,4 +1,3 @@
-// src/App.jsx
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 
@@ -8,10 +7,10 @@ import TrustDoseAuth from "./pages/Auth";
 
 // الطبيب
 import Doctor from "./pages/Doctor";
-import Shell from "./pages/DoctorHeader.jsx"; // شِل الطبيب
+import Shell from "./pages/DoctorHeader.jsx";
 
 // المريض
-import PShell from "./pages/PShell.jsx";      // شِل المريض (جديد)
+import PShell from "./pages/PShell.jsx";
 import Patient from "./pages/Patient";
 import PrescriptionsPage from "./pages/PrescriptionsPage";
 
@@ -37,19 +36,20 @@ export default function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/doctor-home" element={<DoctorHome />} />
 
+        {/* شِل الطبيب */}
         <Route element={<Shell />}>
           <Route path="/doctor" element={<Doctor />} />
-          {/* (اختياري) لو عندك صفحة وصفات خاصة بالطبيب خليها هنا */}
-          {/* <Route path="/prescriptions" element={<PrescriptionsPage />} /> */}
+          {/* ✅ فعّلنا هذا الراوت للطبيب بدون ما نلغي راوت المريض */}
+          <Route path="/prescriptions" element={<PrescriptionsPage />} />
         </Route>
 
+        {/* شِل المريض */}
         <Route path="/patient" element={<PShell />}>
-          {/* منيو المريض (الصفحة الرئيسية) */}
           <Route index element={<Patient />} />
-          {/* وصفات المريض: /patient/prescriptions */}
           <Route path="prescriptions" element={<PrescriptionsPage />} />
         </Route>
 
+        {/* شِل الصيدلية */}
         <Route path="/pharmacy" element={<PharmacyShell />}>
           <Route index element={<Pharmacy />} />
         </Route>

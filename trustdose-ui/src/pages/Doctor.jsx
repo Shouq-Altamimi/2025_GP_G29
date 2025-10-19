@@ -31,19 +31,21 @@ const LIMITS = Object.freeze({
   notes: { min: 0, max: 300 },
 });
 
+/* خيارات الجرعات حسب الشكل الصيدلاني */
 const DOSAGE_BY_FORM = {
-  tablet: ["1 tablet", "2 tablets", "½ tablet"],
+  tablet: ["1 tablet", "2 tablets", "½ tablet", "¼ tablet"],
   capsule: ["1 capsule", "2 capsules"],
   inhaler: ["1 puff", "2 puffs"],
   suspension: ["2.5 mL", "5 mL", "10 mL", "15 mL"],
   drops: ["1 drop", "2 drops", "3 drops"],
-  injection: ["0.3 mL", "0.5 mL"],
+  injection: ["0.3 mL", "0.5 mL", "1 vial", "2 vials"],
   cream: ["Apply thin layer"],
   ointment: ["Apply thin layer"],
 };
 const OTHER_VALUE = "__OTHER__";
 function getDoseOptions(form) { return form ? DOSAGE_BY_FORM[form] || [] : []; }
 
+/* أسماء الحقول في Firestore */
 const F = Object.freeze({
   createdAt: "createdAt",
   doctorId: "doctorId",
@@ -281,9 +283,10 @@ export default function Doctor() {
         throw new Error("Transaction reverted or failed.");
       }
 
+      // هاش المعاملة
       const txHash = receipt?.hash || receipt?.transactionHash || tx.hash;
 
-      // 5.4 — استخراج onchainId من الحدث (إن وجد)
+      // 5.3 — استخراج onchainId من الحدث ونخزّنه في فايربيس
       let onchainId = null;
       try {
         const iface = new ethers.Interface(PRESCRIPTION.abi);
@@ -298,32 +301,36 @@ export default function Doctor() {
         }
       } catch {}
 
-      // 5.5 — حفظ في Firestore (بعد النجاح فقط) — لا يوجد expiresAt
-      const payload = {
-        [F.createdAt]: serverTimestamp(),
-        [F.doctorId]: doctorAddress,
-        [F.doctorName]: doctor?.name || "",
-        [F.doctorPhone]: doctor?.phone || "",
-        [F.medicineLabel]: selectedMed.label,
-        [F.medicineName]: selectedMed.name,
-        [F.dosageForm]: selectedMed.dosageForm || "",
-        [F.dosage]: finalDose,
-        [F.frequency]: finalFreq,
-        [F.durationDays]: finalDuration,
-        [F.medicalCondition]: mc,
-        [F.notes]: notes || "",
-        [F.onchainTx]: txHash,
-        [F.patientDisplayId]: natId ? natId.slice(-4) : "",
-        [F.patientNationalIdHash]: "0x" + natIdHashHex,
+      // 5.4 — حفظ في Firestore (بعد النجاح فقط)
+const payload = {
+  createdAt: serverTimestamp(),
+  doctorId: doctorAddress,
+  doctorName: doctor?.name || "",
+  doctorPhone: doctor?.phone || "",
 
-        // إضافات للعرض
-        nationalID: natId,
-        patientName: selectedPatient.name,
-        onchainId: onchainId ?? null,
-        reason: mc,
-        prescriptionID: generatePrescriptionId(),
-        dispensed: false,
-      };
+  // ✅ أضفناها: نخزن اسم المنشأة عشان نعرضها لاحقًا
+  doctorFacility: doctor?.healthFacility || "",
+
+  medicineLabel: selectedMed.label,
+  medicineName: selectedMed.name,
+  dosageForm: selectedMed.dosageForm || "",
+  dosage: finalDose,
+  frequency: finalFreq,
+  durationDays: finalDuration,
+  medicalCondition: mc,
+  notes: notes || "",
+  onchainTx: txHash,
+  patientDisplayId: natId ? natId.slice(-4) : "",
+  patientNationalIdHash: "0x" + natIdHashHex,
+
+  nationalID: natId,
+  patientName: selectedPatient.name,
+  onchainId: onchainId ?? null,
+  reason: mc,
+  prescriptionID: generatePrescriptionId(),
+  dispensed: false,
+};
+
       if (selectedMed?.sensitivity) payload[F.sensitivity] = selectedMed.sensitivity;
 
       await addDoc(collection(db, "prescriptions"), payload);
@@ -360,7 +367,6 @@ export default function Doctor() {
             <div className="font-extrabold text-lg" style={{ color: "#334155" }}>
               {doctor?.name ? `Welcome, Dr. ${doctor.name}` : "Welcome, Doctor"}
             </div>
-            {/* (لا يوجد سطر تحت الاسم) */}
           </div>
         </div>
         {doctorLoadErr && <div className="text-sm text-rose-700">{doctorLoadErr}</div>}
@@ -454,7 +460,7 @@ export default function Doctor() {
 
               <div className="flex justify-end">
                 <button
-                  onClick={() => navigate("/prescriptions", {
+                  onClick={() =>   navigate("/trustdose-ui\\src\\pages\\PrescriptionsPage.jsx", {
                     state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
                   })}
                   className="px-6 py-3 text-white rounded-xl transition-colors flex items-center gap-2 font-medium shadow-sm"
@@ -736,7 +742,7 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
   );
 }
 
-/* ========= MedicineSearch (أضفتُه هنا داخل نفس الملف) ========= */
+/* ========= MedicineSearch ========= */
 function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine name" }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState(value || "");
