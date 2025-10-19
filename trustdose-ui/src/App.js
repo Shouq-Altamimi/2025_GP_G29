@@ -39,7 +39,7 @@ export default function App() {
         {/* شِل الطبيب */}
         <Route element={<Shell />}>
           <Route path="/doctor" element={<Doctor />} />
-          {/* ✅ فعّلنا هذا الراوت للطبيب بدون ما نلغي راوت المريض */}
+          {/* صفحة الوصفات التي يستخدمها زر الطبيب */}
           <Route path="/prescriptions" element={<PrescriptionsPage />} />
         </Route>
 

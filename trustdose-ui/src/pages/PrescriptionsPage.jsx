@@ -96,11 +96,11 @@ export default function PrescriptionsPage() {
                   </div>
 
                   {/* ✅ Prescribed by Dr. X from Y */}
-                  <div className="text-sm text-gray-600 mt-1">
-                    Prescribed by {rx.doctorName ? `Dr. ${rx.doctorName}` : "—"}
-                    {rx.doctorFacility ? ` from ${rx.doctorFacility}` : ""}
-                    {rx.doctorSpeciality ? ` — ${rx.doctorSpeciality}` : ""}
-                  </div>
+                 <div className="text-sm text-gray-600 mt-1">
+                  Prescribed by {rx.doctorName ? `Dr. ${rx.doctorName}` : "—"}
+                  {rx.doctorFacility ? ` — ${rx.doctorFacility}` : ""}
+                </div>
+
 
                   <div className="text-sm text-gray-600 mt-1">
                     {(rx.dosage || "—")} • {(rx.frequency || "—")} • {(rx.durationDays || rx.duration || "—")}
