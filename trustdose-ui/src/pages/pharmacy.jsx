@@ -5,7 +5,7 @@ import { Search } from "lucide-react";
 // ===== Firestore =====
 import { db } from "../firebase";
 import {
-  collection, query, where, getDocs, limit,
+  collection, query, where, getDocs,
   doc as fsDoc, updateDoc, serverTimestamp
 } from "firebase/firestore";
 
@@ -68,6 +68,9 @@ function niceErr(e, fallback = "On-chain dispense failed.") {
   );
 }
 
+// منع الحروف العربية داخل خانة البحث
+const ARABIC_LETTERS_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g;
+
 /** branding */
 const brand = { purple: "#B08CC1", teal: "#52B9C4", ink: "#4A2C59" };
 const card = {
@@ -87,50 +90,26 @@ const btnStyle = {
 };
 
 export default function PharmacyApp() {
+  // داتا تجريبية لأقسام التسليم/البيندنج فقط
   const [rxs, setRxs] = useState([
     { ref: "RX-001", patientId: "1001", patientName: "Salem",  medicine: "Insulin",   dose: "10u",   timesPerDay: 2, durationDays: 30, createdAt: nowISO(), dispensed: false, accepted: false },
     { ref: "RX-002", patientId: "1002", patientName: "Maha",   medicine: "Panadol",   dose: "500mg", timesPerDay: 3, durationDays: 5,  createdAt: nowISO(), dispensed: false, accepted: false },
     { ref: "RX-003", patientId: "1003", patientName: "Hassan", medicine: "Metformin", dose: "850mg", timesPerDay: 1, durationDays: 14, createdAt: nowISO(), dispensed: false, accepted: false }
   ]);
 
-  const [route, setRoute] = useState("Pick Up Orders");
+  const [route] = useState("Pick Up Orders");
   const [q, setQ] = useState("");
 
   const rowsDelivery = useMemo(() => rxs.filter(r => !r.dispensed && !r.accepted), [rxs]);
   const rowsPending  = useMemo(() => rxs.filter(r => !r.dispensed && r.accepted), [rxs]);
-
-  const routes = ["Pick Up Orders", "Delivery Orders", "Pending Orders"];
 
   function addNotification(payload) {
     console.log("PharmacyApp notification:", payload);
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#f8fafc", color: brand.ink, fontFamily: "Arial, sans-serif" }}>
-      {/* Sidebar */}
-      <aside style={{ width: 220, background: `linear-gradient(to bottom, ${brand.purple}, ${brand.teal})`, color: "#fff", padding: 16 }}>
-        <div style={{ fontWeight: 700 }}>TrustDose — Pharmacy</div>
-        <div style={{ marginTop: 16 }}>
-          {routes.map((r) => (
-            <div
-              key={r}
-              onClick={() => setRoute(r)}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                cursor: "pointer",
-                marginBottom: 8,
-                background: route === r ? "rgba(255,255,255,.3)" : "transparent"
-              }}
-            >
-              {r}
-            </div>
-          ))}
-        </div>
-      </aside>
-
-      {/* Main */}
-      <main style={{ flex: 1, padding: 24 }}>
+    <div style={{ minHeight: "100vh", background: "#f8fafc", color: brand.ink, fontFamily: "Arial, sans-serif" }}>
+      <main style={{ padding: 24 }}>
         <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
           {route === "Pick Up Orders" && (
             <PickUpSection setRxs={setRxs} q={q} setQ={setQ} addNotification={addNotification} />
@@ -147,153 +126,170 @@ export default function PharmacyApp() {
   );
 }
 
+/** ========================= PickUp (البحث والتسليم في الصيدلية) ========================= */
 function PickUpSection({ setRxs, q, setQ, addNotification }) {
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState(null); // null | { ...normalized }
-  const [alreadyDispensedMsg, setAlreadyDispensedMsg] = useState("");
 
-  // ====== حسبة الإدخال ======
+  // ✅ النتائج كمصفوفة — لدعم أكثر من وصفة للمريض
+  const [results, setResults] = useState([]); // [{...normalized}, ...]
+  const [infoMsg, setInfoMsg] = useState("");
+  const [validationMsg, setValidationMsg] = useState("");
+
+  // ====== منطق الإدخال ======
   const raw = String(q || "").trim();
-  const onlyDigits = /^[\d\u0660-\u0669\u06F0-\u06F9]+$/.test(raw); // كله أرقام؟
-  const natDigits = onlyDigits ? toEnglishDigits(raw).slice(0, 10) : ""; // حد أقصى 10 أرقام
-  const rxUpper = !onlyDigits ? raw.toUpperCase() : ""; // إذا ليس أرقام، نعاملها كـ Rx ID
+  const isPatientIdMode = /^\d/.test(raw); // إذا بدأ برقم → Patient ID
+  const natDigitsAll = toEnglishDigits(raw).replace(/\D/g, "");
+  const natDigits = isPatientIdMode ? natDigitsAll.slice(0, 10) : ""; // حد أقصى 10 أرقام
+  const rxUpper = !isPatientIdMode ? raw.toUpperCase() : ""; // Prescription ID
+
+  // ====== تنسيق آمن (يمنع 0 غير مفيد) ======
+  const safeInt = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const showOrDash = (v) => {
+    if (v === null || v === undefined) return "-";
+    const n = Number(v);
+    if (Number.isFinite(n)) return n > 0 ? n : "-";
+    const s = String(v).trim();
+    return s === "" || s === "0" ? "-" : s;
+  };
 
   function normalizeFromDB(data = {}, docId = "") {
+    const pid = (data.nationalID !== undefined && data.nationalID !== null)
+      ? String(data.nationalID).trim()
+      : "-";
+
+    const onchain = safeInt(data.onchainId);
+
     return {
       ref: data.prescriptionID || docId || "-",
-      onchainId: (typeof data.onchainId === "number" && Number.isFinite(data.onchainId))
-        ? data.onchainId
-        : (data.onchainId ? Number(data.onchainId) : undefined),
-      patientId: (data.nationalID ?? "-") + "",
+      onchainId: onchain,
+      patientId: pid,
       patientName: data.patientName || "-",
       medicine: data.medicineName || data.medicine || "-",
       dose: data.dosage || data.dose || "-",
-      timesPerDay: data.timesPerDay ?? "-",
-      durationDays:
-        typeof data.durationDays === "number" ? data.durationDays : (data.durationDays || "-"),
+      timesPerDay: showOrDash(data.timesPerDay),
+      durationDays: showOrDash(data.durationDays),
       createdAt: toMaybeISO(data.createdAt) || nowISO(),
       status: data.status || "-",
       dispensed: !!data.dispensed,
       dispensedAt: toMaybeISO(data.dispensedAt) || undefined,
       dispensedBy: data.dispensedBy || undefined,
-      sensitivity: data.sensitivity || "-",   // NonSensitive فقط
+      sensitivity: data.sensitivity || "-",
       _docId: docId,
     };
   }
 
-  // handler يمنع إدخال أكثر من 10 أرقام لو كان الإدخال أرقام
+  // ====== منع العربية + تحضير القيمة ======
   function handleChange(v) {
-    const isDigits = /^[\d\u0660-\u0669\u06F0-\u06F9]+$/.test(String(v).trim());
-    if (isDigits) {
-      const ten = toEnglishDigits(v).slice(0, 10);
-      setQ(ten);
+    const s = String(v).replace(ARABIC_LETTERS_RE, "");
+    if (/^\d/.test(s)) {
+      const digits = toEnglishDigits(s).replace(/\D/g, "").slice(0, 10);
+      setQ(digits);
+      if (digits.length && digits[0] !== "1" && digits[0] !== "2") {
+        setValidationMsg("Patient ID must start with 1 or 2.");
+      } else {
+        setValidationMsg("");
+      }
     } else {
-      setQ(v);
+      setQ(s);
+      setValidationMsg("");
     }
     setSearched(false);
-    setResult(null);
+    setResults([]);
     setError("");
-    setAlreadyDispensedMsg("");
+    setInfoMsg("");
   }
 
   async function runSearch() {
     setSearched(true);
     setLoading(true);
     setError("");
-    setResult(null);
-    setAlreadyDispensedMsg("");
+    setResults([]);
+    setInfoMsg("");
+
+    if (isPatientIdMode) {
+      const firstOk = natDigits.length > 0 && (natDigits[0] === "1" || natDigits[0] === "2");
+      const lenOk = natDigits.length === 10;
+      if (!firstOk || !lenOk) {
+        setLoading(false);
+        setValidationMsg(!firstOk ? "Patient ID must start with 1 or 2." : "Patient ID must be exactly 10 digits.");
+        return;
+      }
+    }
 
     try {
       const col = collection(db, "prescriptions");
-      const tasks = [];
 
-      // 🔎 فلترة من المصدر: غير مصروفة + غير حساسة
+      // === Prescription ID: نتيجة واحدة (حتى لو غير مؤهلة، للشفافية) ===
       if (rxUpper) {
-        tasks.push(getDocs(query(
-          col,
-          where("prescriptionID", "==", rxUpper),
-          where("dispensed", "==", false),
-          where("sensitivity", "==", "NonSensitive"),
-          limit(1)
-        )));
+        const snap = await getDocs(query(col, where("prescriptionID", "==", rxUpper)));
+        if (!snap.empty) {
+          const d = snap.docs[0];
+          const n = normalizeFromDB(d.data(), d.id);
+          setResults([n]);
+        } else {
+          setResults([]);
+        }
+        setLoading(false);
+        return;
       }
 
-      if (natDigits && natDigits.length === 10) {
-        tasks.push(getDocs(query(
+      // === Patient ID: كل غير الحساسة + غير المصروفة + onchainId صالح ===
+      const tasks = [
+        getDocs(query(
           col,
           where("nationalID", "==", natDigits),
           where("dispensed", "==", false),
-          where("sensitivity", "==", "NonSensitive"),
-          limit(1)
+          where("sensitivity", "==", "NonSensitive")
+        )),
+      ];
+      const nNum = Number(natDigits);
+      if (!Number.isNaN(nNum)) {
+        tasks.push(getDocs(query(
+          col,
+          where("nationalID", "==", nNum),
+          where("dispensed", "==", false),
+          where("sensitivity", "==", "NonSensitive")
         )));
-        const nNum = Number(natDigits);
-        if (!Number.isNaN(nNum)) {
-          tasks.push(getDocs(query(
-            col,
-            where("nationalID", "==", nNum),
-            where("dispensed", "==", false),
-            where("sensitivity", "==", "NonSensitive"),
-            limit(1)
-          )));
-        }
       }
 
       const snaps = await Promise.all(tasks);
-      const prefer = (snap, check) => {
-        if (!snap || snap.empty) return null;
-        const doc = snap.docs.find(check);
-        return doc || snap.docs[0];
-      };
-      const byRxId  = prefer(snaps[0], d => d.data().prescriptionID === rxUpper);
-      const byNatS  = prefer(snaps[1], d => String(d.data().nationalID || "") === natDigits);
-      const byNatN  = prefer(snaps[2], d => d.data().nationalID === Number(natDigits));
 
-      let pick = byRxId || byNatS || byNatN || null;
+      // دمج بلا تكرار + فلترة onchainId
+      const seen = new Set();
+      const list = [];
+      for (const s of snaps) {
+        if (!s || s.empty) continue;
+        s.forEach(doc => {
+          if (seen.has(doc.id)) return;
+          seen.add(doc.id);
+          const n = normalizeFromDB(doc.data(), doc.id);
+          if (n.sensitivity === "NonSensitive" && n.dispensed === false && Number.isFinite(n.onchainId)) {
+            list.push(n);
+          }
+        });
+      }
 
-      // لو ما لقينا غير المصروفة، نتحقق هل فيه وصفة لكن مصروفة مسبقًا لنعرض رسالة واضحة
-      if (!pick) {
-        const fallbackTasks = [];
-        if (rxUpper) {
-          fallbackTasks.push(getDocs(query(col, where("prescriptionID", "==", rxUpper), limit(1))));
-        }
-        if (natDigits && natDigits.length === 10) {
-          fallbackTasks.push(getDocs(query(col, where("nationalID", "==", natDigits), limit(1))));
-          const nNum = Number(natDigits);
-          if (!Number.isNaN(nNum)) {
-            fallbackTasks.push(getDocs(query(col, where("nationalID", "==", nNum), limit(1))));
-          }
-        }
-        const fallSnaps = fallbackTasks.length ? await Promise.all(fallbackTasks) : [];
-        const fallDoc = fallSnaps.find(s => s && !s.empty)?.docs?.[0] || null;
-        if (fallDoc) {
-          const normalized = normalizeFromDB(fallDoc.data(), fallDoc.id);
-          setResult(normalized);
-          if (normalized.dispensed) {
-            // CHANGED: English message without time
-            setAlreadyDispensedMsg("This prescription was already dispensed.");
-          } else {
-            // CHANGED: English message
-setAlreadyDispensedMsg("This medicine is sensitive and cannot be dispensed .");
-          }
-          setLoading(false);
-          return;
+      if (list.length === 0) {
+        // فallback: هل فيه وصفات موجودة بس غير مؤهلة (حساسة/مصروفة/بدون onchainId)؟
+        const fbTasks = [ getDocs(query(col, where("nationalID", "==", natDigits))) ];
+        if (!Number.isNaN(nNum)) fbTasks.push(getDocs(query(col, where("nationalID", "==", nNum))));
+        const fbSnaps = await Promise.all(fbTasks);
+        const haveAny = fbSnaps.some(s => s && !s.empty);
+        if (haveAny) {
+          setInfoMsg("No eligible pickup prescriptions. They may be sensitive, already dispensed, or missing on-chain id.");
         }
       }
 
-      if (pick) {
-        setResult(normalizeFromDB(pick.data(), pick.id));
-        setSearched(true);
-      } else {
-        setResult(null);
-        setSearched(false);
-      }
+      setResults(list);
     } catch (e) {
       console.error(e);
       setError("Could not complete search. Check your internet or Firestore access.");
-      setResult(null);
-      setSearched(false);
+      setResults([]);
     } finally {
       setLoading(false);
     }
@@ -302,46 +298,43 @@ setAlreadyDispensedMsg("This medicine is sensitive and cannot be dispensed .");
   function resetSearch() {
     setQ("");
     setSearched(false);
-    setResult(null);
+    setResults([]);
     setError("");
-    setAlreadyDispensedMsg("");
+    setInfoMsg("");
+    setValidationMsg("");
   }
 
-  // ✅ Confirm → فحوصات مسبقة → Dispense.dispense(id) → Firestore → UI
-  async function markDispensed(ref) {
-    if (!result || !result._docId) return;
+  // ✅ Confirm → فحوصات مسبقة → Dispense.dispense(id) → Firestore → UI (لكل عنصر)
+  async function markDispensed(item) {
+    if (!item || !item._docId) return;
 
-    // إضافة حماية: لا تسمح أبداً بصرف المصروفة مسبقاً
-    if (result.dispensed) {
-      // CHANGED: English message without time
-      setAlreadyDispensedMsg("This prescription was already dispensed.");
+    if (item.dispensed) {
+      setInfoMsg("This prescription was already dispensed.");
       return;
     }
-    if (result.sensitivity !== "NonSensitive") return;
+    if (item.sensitivity !== "NonSensitive") return;
 
-    if (!Number.isFinite(result.onchainId)) {
+    if (!Number.isFinite(item.onchainId)) {
       setError("On-chain id is missing for this prescription.");
       return;
     }
 
     const ok = window.confirm(
-      `Confirm dispensing prescription ${result.ref} for patient ${result.patientName || ""}?`
+      `Confirm dispensing prescription ${item.ref} for patient ${item.patientName || ""}?`
     );
     if (!ok) return;
 
     try {
       setLoading(true);
       setError("");
-      setAlreadyDispensedMsg("");
+      setInfoMsg("");
 
-      // محفظة + عقود
       const signer = await getSignerEnsured();
       const pharmacistAddr = await signer.getAddress();
 
       const presc    = new ethers.Contract(PRESCRIPTION_ADDRESS, PRESCRIPTION.abi, signer);
       const dispense = new ethers.Contract(DISPENSE_ADDRESS,     DISPENSE.abi,     signer);
 
-      // 0) تأكّد أن Dispense مربوط بنفس Prescription
       const linked = await dispense.prescription();
       if (linked?.toLowerCase?.() !== PRESCRIPTION_ADDRESS.toLowerCase()) {
         setError("Dispense contract is linked to a different Prescription address.");
@@ -349,7 +342,6 @@ setAlreadyDispensedMsg("This medicine is sensitive and cannot be dispensed .");
         return;
       }
 
-      // 1) تأكّد أن الحساب صيدلي مفعّل
       const isPh = await dispense.isPharmacist(pharmacistAddr);
       if (!isPh) {
         setError("Your wallet is not enabled as a pharmacist on-chain (Not pharmacist).");
@@ -357,21 +349,18 @@ setAlreadyDispensedMsg("This medicine is sensitive and cannot be dispensed .");
         return;
       }
 
-      // 2) تحقق مسبق من صلاحية الوصفة
-      const stillValid = await presc.isValid(result.onchainId);
+      const stillValid = await presc.isValid(item.onchainId);
       if (!stillValid) {
         setError("Prescription is expired or inactive on-chain.");
         setLoading(false);
         return;
       }
 
-      // 3) الصرف الفعلي على عقد Dispense
-      const tx = await dispense.dispense(result.onchainId);
+      const tx = await dispense.dispense(item.onchainId);
       const receipt = await tx.wait();
       const txHash = receipt?.hash || tx.hash;
 
-      // 4) تحديث Firestore
-      const docRef = fsDoc(db, "prescriptions", result._docId);
+      const docRef = fsDoc(db, "prescriptions", item._docId);
       await updateDoc(docRef, {
         dispensed: true,
         dispensedAt: serverTimestamp(),
@@ -379,18 +368,14 @@ setAlreadyDispensedMsg("This medicine is sensitive and cannot be dispensed .");
         dispenseTx: txHash,
       });
 
-      // 5) تحديث الواجهة
-      setResult(prev => prev ? {
-        ...prev,
-        dispensed: true,
-        dispensedAt: new Date().toISOString(),
-        dispensedBy: pharmacistAddr,
-        dispenseTx: txHash,
-      } : prev);
+      // تحديث القائمة في الواجهة
+      setResults(prev => prev.map(r =>
+        r._docId === item._docId
+          ? { ...r, dispensed: true, dispensedAt: new Date().toISOString(), dispensedBy: pharmacistAddr, dispenseTx: txHash }
+          : r
+      ));
 
-      setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, dispensed: true } : rx));
-
-      addNotification(`Prescription ${ref} dispensed on-chain ✓`);
+      addNotification(`Prescription ${item.ref} dispensed on-chain ✓`);
     } catch (e) {
       console.error(e);
       setError(niceErr(e));
@@ -398,13 +383,6 @@ setAlreadyDispensedMsg("This medicine is sensitive and cannot be dispensed .");
       setLoading(false);
     }
   }
-
-  const eligible = result
-    ? (result.sensitivity === "NonSensitive") && (result.dispensed === false) && Number.isFinite(result.onchainId)
-    : false;
-
-  // عدّاد الأرقام للمساعدة البصرية
-  const digitsLen = onlyDigits ? toEnglishDigits(q).length : 0;
 
   return (
     <section style={{ display: "grid", gap: 20 }}>
@@ -419,25 +397,13 @@ setAlreadyDispensedMsg("This medicine is sensitive and cannot be dispensed .");
             <input
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:border-transparent transition-all"
               style={{ outlineColor: brand.purple }}
-              placeholder="Enter Patient ID (10 digits) or Prescription ID"
+              placeholder="Enter Patient ID (10 digits, starts with 1 or 2) or Prescription ID"
               value={q}
               maxLength={50}
               onChange={(e) => handleChange(e.target.value)}
-              onKeyDown={(e) => {
-                // منع تجاوز 10 أرقام عند الإدخال الرقمي
-                if (onlyDigits) {
-                  const len = toEnglishDigits(q).length;
-                  const isCharInput = e.key.length === 1; // حرف/رقم جديد
-                  if (isCharInput && len >= 10) {
-                    e.preventDefault();
-                    return;
-                  }
-                }
-                if (e.key === "Enter") runSearch();
-              }}
+              onKeyDown={(e) => { if (e.key === "Enter") runSearch(); }}
               inputMode="numeric"
             />
-            {/* زر مسح */}
             {!!q && (
               <button
                 type="button"
@@ -449,12 +415,6 @@ setAlreadyDispensedMsg("This medicine is sensitive and cannot be dispensed .");
                 ✕
               </button>
             )}
-            {/* معلومة الحد الأقصى */}
-            {onlyDigits && (
-              <div className="text-sm mt-1" style={{ color: "#6b7280" }}>
-                {digitsLen}/10 — National ID accepts up to 10 digits
-              </div>
-            )}
           </div>
 
           <button
@@ -464,51 +424,77 @@ setAlreadyDispensedMsg("This medicine is sensitive and cannot be dispensed .");
             style={{ backgroundColor: brand.purple }}
             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#9F76B4")}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = brand.purple)}
-            disabled={loading || !q.trim() || (onlyDigits && toEnglishDigits(q).length > 10)}
+            disabled={loading || !q.trim()}
           >
             {loading ? "Searching..." : (<><Search size={18} /> Search</>)}
           </button>
         </div>
 
-        {!!error && <p className="text-red-600 mt-3">{error}</p>}
-        {!!alreadyDispensedMsg && <p className="text-red-600 mt-3">{alreadyDispensedMsg}</p>}
+       {(!!q || results.length > 0) && (
+          <div className="flex justify-end mt-2">
+            <button
+              onClick={resetSearch}
+              className="px-6 py-3 rounded-xl font-semibold"
+              style={{ background: "#F3F4F6", color: "#374151" }}
+            >
+              Clear Search
+            </button>
+          </div>
+        )}
+
+        {(!!error || !!infoMsg || !!validationMsg) && (
+          <div className="mt-3 text-red-600 font-medium">
+            {validationMsg || infoMsg || error}
+          </div>
+        )}
       </section>
 
-      {result && !result._notFound && (
-        <div style={card}>
-          <>
-            <div><b>Prescription:</b> {result.ref}</div>
-            <div><b>National ID:</b> {result.patientId}</div>
-            <div><b>Patient:</b> {result.patientName}</div>
-            <div><b>Medicine:</b> {result.medicine}</div>
-            <div><b>Dosage:</b> {result.dose}</div>
-            <div><b>Times/Day:</b> {result.timesPerDay}</div>
-            <div><b>Duration:</b> {result.durationDays}</div>
-            <div><b>Status:</b> {result.status || "-"}</div>
-            <div><b>Created:</b> {fmt(result.createdAt)}</div>
-            <div><b>Sensitivity:</b> {result.sensitivity}</div>
-            {Number.isFinite(result.onchainId) && <div><b>On-chain ID:</b> #{result.onchainId}</div>}
+      {/* ====== النتائج ====== */}
+      {searched && !loading && results.length === 0 && !error && !infoMsg && (
+        <div className="text-gray-600">No matching prescriptions found.</div>
+      )}
 
-            
-            <div style={{ marginTop: 8 }}>
-              <button
-                onClick={() => markDispensed(result.ref)}
-                style={{ ...btnStyle, background: result.dispensed ? "#d1fae5" : "#fff" }}
-                disabled={!eligible}
-                title={
-                  result.dispensed
-                    ? "Prescription already dispensed"
-                    : (!Number.isFinite(result.onchainId)
-                        ? "Missing on-chain id"
-                        : (result.sensitivity !== "NonSensitive" ? "Sensitive: pickup not allowed" : "")
-                      )
-                }
-              >
-                {result.dispensed ? "✓ Dispensed" : (eligible ? "Confirm & Dispense" : "Not eligible")}
-              </button>
-            </div>
-          </>
-        </div>
+      {results.length > 0 && (
+        <section style={{ display: "grid", gap: 12 }}>
+          {results.map((r) => {
+            const eligible =
+              r.sensitivity === "NonSensitive" &&
+              r.dispensed === false &&
+              Number.isFinite(r.onchainId);
+
+            return (
+              <div key={r._docId} style={card}>
+                <div><b>Prescription:</b> {r.ref}</div>
+                <div><b>National ID:</b> {r.patientId}</div>
+                <div><b>Patient:</b> {r.patientName}</div>
+                <div><b>Medicine:</b> {r.medicine}</div>
+                <div><b>Dosage:</b> {r.dose}</div>
+                <div><b>Times/Day:</b> {r.timesPerDay}</div>
+                <div><b>Duration:</b> {r.durationDays}</div>
+                <div><b>Created:</b> {fmt(r.createdAt)}</div>
+                <div><b>Sensitivity:</b> {r.sensitivity}</div>
+
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    onClick={() => markDispensed(r)}
+                    style={{ ...btnStyle, background: r.dispensed ? "#d1fae5" : "#fff" }}
+                    disabled={!eligible}
+                    title={
+                      r.dispensed
+                        ? "Prescription already dispensed"
+                        : (!Number.isFinite(r.onchainId)
+                            ? "Missing on-chain id"
+                            : (r.sensitivity !== "NonSensitive" ? "Sensitive: pickup not allowed" : "")
+                          )
+                    }
+                  >
+                    {r.dispensed ? "✓ Dispensed" : (eligible ? "Confirm & Dispense" : "Not eligible")}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </section>
       )}
     </section>
   );

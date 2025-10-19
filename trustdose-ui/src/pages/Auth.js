@@ -335,28 +335,28 @@ export default function TrustDoseAuth() {
 
   // ===== فقط هذا تغيّر: دعم B-1 للصيدلية =====
   function detectSource(id) {
-  const clean = String(id || "").trim();
+    const clean = String(id || "").trim();
 
-  // ✅ Pharmacy branch like "B-1" is stored in collection("pharmacies") with field BranchID
-  if (/^B-\d+$/i.test(clean)) {
-    return { coll: "pharmacies", idFields: ["BranchID"], role: "pharmacy" };
+    // ✅ Pharmacy branch like "B-1" is stored in collection("pharmacies") with field BranchID
+    if (/^B-\d+$/i.test(clean)) {
+      return { coll: "pharmacies", idFields: ["BranchID"], role: "pharmacy" };
+    }
+
+    if (/^dr[-_]?\w+/i.test(clean)) {
+      return { coll: "doctors", idFields: ["DoctorID"], role: "doctor" };
+    }
+
+    if (/^(ph|phar|pharmacy)[-_]?\w+/i.test(clean)) {
+      // generic pharmacy IDs if you have other formats
+      return { coll: "pharmacies", idFields: ["BranchID", "PharmacyID"], role: "pharmacy" };
+    }
+
+    if (/^\d{10,12}$/.test(clean)) {
+      return { coll: "patients", idFields: ["nationalID", "nationalId"], role: "patient" };
+    }
+
+    return { coll: "logistics", idFields: ["companyName"], role: "logistics" };
   }
-
-  if (/^dr[-_]?\w+/i.test(clean)) {
-    return { coll: "doctors", idFields: ["DoctorID"], role: "doctor" };
-  }
-
-  if (/^(ph|phar|pharmacy)[-_]?\w+/i.test(clean)) {
-    // generic pharmacy IDs if you have other formats
-    return { coll: "pharmacies", idFields: ["BranchID", "PharmacyID"], role: "pharmacy" };
-  }
-
-  if (/^\d{10,12}$/.test(clean)) {
-    return { coll: "patients", idFields: ["nationalID", "nationalId"], role: "patient" };
-  }
-
-  return { coll: "logistics", idFields: ["companyName"], role: "logistics" };
-}
 
   // ===== Sign in =====
   async function handleSignIn(e) {
@@ -371,11 +371,12 @@ export default function TrustDoseAuth() {
 
       const { coll, idFields, role } = detectSource(id);
       let user = null;
+      let userDocId = null; // ⬅️ نحتفظ بـ docId
 
       if (role === "patient") {
         try {
           const p = await getDoc(doc(db, "patients", `Ph_${id}`));
-          if (p.exists()) user = p.data();
+          if (p.exists()) { user = p.data(); userDocId = p.id; }
         } catch {}
       }
 
@@ -384,12 +385,12 @@ export default function TrustDoseAuth() {
         try {
           // Phar_Nahdi
           let snap = await getDocs(query(collection(db, "Phar_Nahdi"), where("BranchID", "==", id)));
-          if (!snap.empty) user = snap.docs[0].data();
+          if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
 
           // pharmacies (لو فيه نسخة ثانية)
           if (!user) {
             snap = await getDocs(query(collection(db, "pharmacies"), where("BranchID", "==", id)));
-            if (!snap.empty) user = snap.docs[0].data();
+            if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
           }
         } catch {}
       }
@@ -402,6 +403,7 @@ export default function TrustDoseAuth() {
             const snap = await getDocs(q);
             if (!snap.empty) {
               user = snap.docs[0].data();
+              userDocId = snap.docs[0].id; // ⬅️
               break;
             }
           } catch {}
@@ -433,8 +435,16 @@ export default function TrustDoseAuth() {
       }
 
       const displayName = user.name || user.companyName || id;
-      localStorage.setItem("userId", id);
-      localStorage.setItem("userRole", role);
+
+      // ⬇️ تخزين role و المعرّفات بالصورة الصحيحة
+      if (role === "pharmacy") {
+        localStorage.setItem("userRole", "pharmacy");
+        localStorage.setItem("userId", userDocId || id);            // الأفضل docId (مثل Phar_Nahdi)
+        if (user.BranchID) localStorage.setItem("pharmacyBranchId", user.BranchID); // مثال B-1
+      } else {
+        localStorage.setItem("userId", id);
+        localStorage.setItem("userRole", role);
+      }
 
       setMsg(`✅ Logged in as ${role}. Welcome ${displayName}!`);
 
@@ -697,8 +707,8 @@ export default function TrustDoseAuth() {
                 ...buttonStyle,
                 filter: loading ? "grayscale(30%) brightness(.9)" : undefined,
               }}
-              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(.99)")}
-              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(.99)") }
+              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)") }
             >
               {loading ? "Signing in..." : "Sign in"}
             </button>
