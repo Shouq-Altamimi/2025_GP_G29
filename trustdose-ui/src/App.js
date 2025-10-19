@@ -7,9 +7,12 @@ import DoctorHome from "./DoctorHome";
 import TrustDoseAuth from "./pages/Auth";
 import Doctor from "./pages/Doctor";
 import Shell from "./pages/Shell";
-import Pharmacy from "./pages/pharmacy.jsx";
 import Patient from "./pages/Patient";
 import PrescriptionsPage from "./pages/PrescriptionsPage";
+
+// الصيدلية
+import PharmacyShell from "./pages/PharmacyShell";
+import Pharmacy from "./pages/pharmacy.jsx";
 
 export default function App() {
   return (
@@ -29,12 +32,16 @@ export default function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/doctor-home" element={<DoctorHome />} />
 
-        {/* صفحات داخل الشِل */}
+        {/* 🟣 صفحات الطبيب داخل شِل الطبيب */}
         <Route element={<Shell />}>
           <Route path="/doctor" element={<Doctor />} />
-          <Route path="/pharmacy" element={<Pharmacy />} />
-          <Route path="/patient" element={<Patient />} />
           <Route path="/prescriptions" element={<PrescriptionsPage />} />
+          <Route path="/patient" element={<Patient />} />
+        </Route>
+
+        {/* 🟢 صفحات الصيدلية داخل شِل الصيدلية */}
+        <Route path="/pharmacy" element={<PharmacyShell />}>
+          <Route index element={<Pharmacy />} />
         </Route>
 
         <Route path="*" element={<div style={{ padding: 24 }}>Page not found</div>} />
