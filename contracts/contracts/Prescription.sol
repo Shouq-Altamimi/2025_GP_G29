@@ -23,6 +23,7 @@ contract Prescription {
         isDoctor[account] = enabled;
         emit RoleUpdated("DOCTOR", account, enabled);
     }
+
     function setPharmacist(address account, bool enabled) external onlyAdmin {
         isPharmacist[account] = enabled;
         emit RoleUpdated("PHARMACIST", account, enabled);
@@ -52,6 +53,35 @@ contract Prescription {
     uint256 private _counter;
     mapping(uint256 => PrescriptionData) public prescriptions;
     mapping(uint256 => ExtensionRequest) public extensionRequests;
+
+    /// ✅ دالة قراءة آمنة لإرجاع تفاصيل الوصفة
+    function getPrescription(uint256 _id)
+        external
+        view
+        returns (
+            bytes32 patientHash,
+            string memory medicine,
+            string memory dose,
+            string memory frequency,
+            string memory durationText,
+            uint256 createdAt,
+            uint256 expiresAt,
+            bool isActive
+        )
+    {
+        require(_exists(_id), "Invalid ID");
+        PrescriptionData storage p = prescriptions[_id];
+        return (
+            p.patientHash,
+            p.medicine,
+            p.dose,
+            p.frequency,
+            p.durationText,
+            p.createdAt,
+            p.expiresAt,
+            p.isActive
+        );
+    }
 
     // ======= أحداث =======
     event PrescriptionCreated(
@@ -182,6 +212,7 @@ contract Prescription {
 
     // ======= داخلية =======
     function _exists(uint256 id) internal view returns (bool) {
+        // mapping ما لها length — نستخدم العداد الداخلي
         return id > 0 && id <= _counter;
     }
 }

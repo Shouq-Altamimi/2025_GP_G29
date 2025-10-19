@@ -1,12 +1,22 @@
 // @ts-nocheck
-
 import React, { useMemo, useState } from "react";
+import { ethers } from "ethers";
 
+// ===== Firestore =====
+import { db } from "../firebase";
+import {
+  collection, query, where, getDocs, limit,
+  doc as fsDoc, updateDoc, serverTimestamp
+} from "firebase/firestore";
 
-/** utils */
-function nowISO() {
-  return new Date().toISOString();
-}
+// ===== عقد الصرف Dispense (TRUFFLE ARTIFACT) =====
+import DISPENSE from "../contracts/Dispense.json";
+
+// (اختياري) عنوان احتياطي إذا لم يُقرأ من networks
+const FALLBACK_DISPENSE_ADDRESS = "0xaa66b0449cA9fCee6e4825c2E6c3F17aDC7867b3";
+
+// ===== Utils =====
+function nowISO() { return new Date().toISOString(); }
 function fmt(dateISO) {
   if (!dateISO) return "-";
   const s = String(dateISO);
@@ -24,47 +34,35 @@ function toEnglishDigits(s) {
   return out;
 }
 
-/** branding */
+// ===== UI helpers =====
 const brand = { purple: "#B08CC1", teal: "#52B9C4", ink: "#4A2C59" };
-const card = {
-  background: "#fff",
-  border: "1px solid #e6e9ee",
-  borderRadius: 12,
-  boxShadow: "0 4px 10px rgba(0,0,0,.05)",
-  padding: 16,
-};
-const btnStyle = {
-  height: 36,
-  padding: "0 14px",
-  borderRadius: 8,
-  border: "1px solid #e6e9ee",
-  background: "#fff",
-  cursor: "pointer",
-};
+const card = { background: "#fff", border: "1px solid #e6e9ee", borderRadius: 12, boxShadow: "0 4px 10px rgba(0,0,0,.05)", padding: 16 };
+const btnStyle = { height: 36, padding: "0 14px", borderRadius: 8, border: "1px solid #e6e9ee", background: "#fff", cursor: "pointer" };
+
+/** استخرج عنوان العقد من artifact بحسب chainId */
+function getAddressFromArtifact(artifact, chainIdBigInt) {
+  try {
+    if (!artifact?.networks) return null;
+    const idStr = chainIdBigInt?.toString?.();
+    if (!idStr) return null;
+    const rec = artifact.networks[idStr];
+    return rec?.address || null;
+  } catch { return null; }
+}
 
 export default function PharmacyApp() {
-  const [rxs, setRxs] = useState([
-    { ref: "RX-001", patientId: "1001", patientName: "Salem", medicine: "Insulin", dose: "10u", timesPerDay: 2, durationDays: 30, createdAt: nowISO(), dispensed: false, accepted: false },
-    { ref: "RX-002", patientId: "1002", patientName: "Maha", medicine: "Panadol", dose: "500mg", timesPerDay: 3, durationDays: 5, createdAt: nowISO(), dispensed: false, accepted: false },
-    { ref: "RX-003", patientId: "1003", patientName: "Hassan", medicine: "Metformin", dose: "850mg", timesPerDay: 1, durationDays: 14, createdAt: nowISO(), dispensed: false, accepted: false }
-  ]);
-
+  const [rxs, setRxs] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [route, setRoute] = useState("Pick Up Orders");
   const [q, setQ] = useState("");
 
-  // views
   const rowsDelivery = useMemo(() => rxs.filter(r => !r.dispensed && !r.accepted), [rxs]);
   const rowsPending  = useMemo(() => rxs.filter(r => !r.dispensed && r.accepted), [rxs]);
-
-  const routes = ["Pick Up Orders", "Delivery Orders", "Pending Orders", "Notifications", "Statistics"];
+  const routes = ["Pick Up Orders", "Delivery Orders", "Pending Orders"];
 
   function addNotification(payload) {
-    if (typeof payload === "string") {
-      setNotifications(prev => [{ text: payload, time: fmt(nowISO()) }, ...prev]);
-    } else if (payload && typeof payload === "object") {
-      setNotifications(prev => [{ ...payload, time: fmt(nowISO()), done: false }, ...prev]);
-    }
+    const item = typeof payload === "string" ? { text: payload } : payload || {};
+    setNotifications(prev => [{ ...item, time: fmt(nowISO()) }, ...prev]);
   }
 
   return (
@@ -79,184 +77,162 @@ export default function PharmacyApp() {
       </aside>
 
       <main style={{ flex: 1, padding: 24 }}>
-        {route === "Pick Up Orders" && (
-          <PickUpSection rows={rxs} setRxs={setRxs} q={q} setQ={setQ} addNotification={addNotification} />
-        )}
-        {route === "Delivery Orders" && (
-          <DeliverySection rows={rowsDelivery} setRxs={setRxs} addNotification={addNotification} />
-        )}
-        {route === "Pending Orders" && (
-          <PendingSection rows={rowsPending} setRxs={setRxs} addNotification={addNotification} /> 
-        )}
-        {route === "Notifications" && (
-          <section style={{ display: "grid", gap: 12 }}>
-            <h1 style={{ marginTop: 0 }}>Notifications</h1>
-            {notifications.length === 0 ? (
-              <div style={{ ...card, color: "#6b7280" }}>No notifications yet</div>
-            ) : (
-              notifications.map((n, i) => (
-                <div key={i} style={{ ...card }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                    <div>
-                      <div>{n.text}</div>
-                      <div style={{ fontSize: 12, color: "#6b7280" }}>{n.time}</div>
-                    </div>
-                    {(n.type === 'logistics_cancel' || n.type === 'cancel') && !n.done && (
-                      <button
-                        onClick={() => {
-                          setRxs(prev => prev.map(rx => rx.ref === n.ref ? { ...rx, redispensedAt: nowISO() } : rx));
-                          setNotifications(prev => prev.map((x, idx) => idx === i ? { ...x, done: true, text: `${n.text} — ✓ Re-dispensed` } : x));
-                        }}
-                        style={{ ...btnStyle, background: n.done ? '#d1fae5' : '#fff' }}
-                        disabled={n.done}
-                      >
-                        {n.done ? '✓ Re-dispensed' : 'Re-dispense'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </section>
-        )}
-        {route === "Statistics" && (
-          <section style={{ display: "grid", gap: 12 }}>
-            <h1 style={{ marginTop: 0 }}>Statistics</h1>
-            <div style={{ ...card }}>Statistics content here</div>
-          </section>
-        )}
+        {route === "Pick Up Orders" && (<PickUpSection setRxs={setRxs} q={q} setQ={setQ} addNotification={addNotification} />)}
+        {route === "Delivery Orders" && (<DeliverySection rows={rowsDelivery} setRxs={setRxs} addNotification={addNotification} />)}
+        {route === "Pending Orders" && (<PendingSection rows={rowsPending} setRxs={setRxs} addNotification={addNotification} />)}
       </main>
     </div>
   );
 }
 
-/** Pick Up: prototype search then show one card only */
-function PickUpSection({ rows = [], setRxs, q, setQ, addNotification }) {
+/* ============ Pick Up (Search + on-chain dispense) ============ */
+function PickUpSection({ setRxs, q, setQ, addNotification }) {
   const [searched, setSearched] = useState(false);
-  const digits = toEnglishDigits(q);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState("");
+  const [result, setResult]     = useState(null);
 
-  const result = useMemo(() => {
-    if (!searched || !digits) return null;
-    const found = rows.find(
-      (r) => r.patientId.includes(digits) || r.ref.toLowerCase().includes(String(digits).toLowerCase())
-    );
-    if (found) return found;
-    // prototype fallback
+  const raw       = String(q || "").trim();
+  const natDigits = toEnglishDigits(raw);
+  const rxUpper   = raw.toUpperCase();
+
+  function normalizeFromDB(data = {}, docId = "") {
+    const createdAtISO =
+      data.createdAt?.toDate?.() ? data.createdAt.toDate().toISOString() :
+      typeof data.createdAt === "string" ? data.createdAt : nowISO();
+
     return {
-      ref: `RX-${digits}`,
-      patientId: digits,
-      patientName: "-",
-      medicine: "-",
-      dose: "-",
-      timesPerDay: "-",
-      durationDays: "-",
-      createdAt: nowISO(),
-      dispensed: false,
+      ref: data.prescriptionID || docId || "-",
+      onchainId: typeof data.onchainId === "number" ? data.onchainId : (data.onchainId ? Number(data.onchainId) : undefined),
+      patientId: (data.nationalID ?? "-") + "",
+      patientName: data.patientName || "-",
+      medicine: data.medicineName || data.medicine || "-",
+      dose: data.dosage || data.dose || "-",
+      timesPerDay: data.timesPerDay ?? "-",
+      durationDays: typeof data.durationDays === "number" ? data.durationDays : (data.durationDays || "-"),
+      createdAt: createdAtISO,
+      status: data.status || "-",
+      dispensed: !!data.dispensed,
+      dispensedAt: data.dispensedAt?.toDate?.()?.toISOString(),
+      sensitivity: data.sensitivity || "-",
+      _docId: docId,
     };
-  }, [rows, digits, searched]);
-
-  function runSearch() { setSearched(true); }
-  function markDispensed(ref) {
-    setRxs((prev) => prev.map((rx) => rx.ref === ref ? { ...rx, dispensed: true, dispensedAt: nowISO() } : rx));
-    addNotification(`Prescription ${ref} dispensed`);
   }
+
+  async function runSearch() {
+    setSearched(true);
+    setLoading(true);
+    setError("");
+    setResult(null);
+
+    try {
+      const col = collection(db, "prescriptions");
+      const snaps = await getDocs(query(
+        col,
+        where("prescriptionID", "==", rxUpper),
+        where("dispensed", "==", false),
+        where("sensitivity", "==", "NonSensitive"),
+        limit(1)
+      ));
+      if (!snaps.empty) {
+        setResult(normalizeFromDB(snaps.docs[0].data(), snaps.docs[0].id));
+      } else setResult(null);
+    } catch (e) {
+      console.error(e);
+      setError("Could not complete search. Check Firestore connection.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function resetSearch() {
+    setQ(""); setSearched(false); setResult(null); setError("");
+  }
+
+  // ===== Dispense function with debugging =====
+  async function confirmDispense() {
+    if (!result || !result._docId) return;
+    if (!Number.isFinite(result.onchainId)) {
+      setError("Missing on-chain ID for this prescription.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      if (!window.ethereum) throw new Error("MetaMask not detected.");
+      await window.ethereum.request({ method: "eth_requestAccounts" });
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const network  = await provider.getNetwork();
+      const chainId  = network?.chainId;
+      const signer   = await provider.getSigner();
+      const pharmacistAddr = await signer.getAddress();
+
+      console.log(
+        "ABI_has_dispense?",
+        Array.isArray(DISPENSE?.abi) && DISPENSE.abi.some(x => x.type === "function" && x.name === "dispense")
+      );
+      console.log(
+        "networks keys:",
+        DISPENSE.networks && Object.keys(DISPENSE.networks || {})
+      );
+      console.log("current chainId:", chainId?.toString?.());
+
+      const addrFromArtifact = getAddressFromArtifact(DISPENSE, chainId);
+      const address = addrFromArtifact || FALLBACK_DISPENSE_ADDRESS;
+      console.log("Dispense contract address used:", address);
+
+      const contract = new ethers.Contract(address, DISPENSE.abi, signer);
+      const id = BigInt(result.onchainId);
+      const tx = await contract.dispense(id);
+      const receipt = await tx.wait();
+      const txHash = receipt?.hash || tx.hash;
+
+      const docRef = fsDoc(db, "prescriptions", result._docId);
+      await updateDoc(docRef, {
+        dispensed: true,
+        dispensedAt: serverTimestamp(),
+        dispensedBy: pharmacistAddr,
+        dispenseTx: txHash,
+      });
+
+      setResult(prev => ({ ...prev, dispensed: true, dispensedAt: new Date().toISOString(), dispenseTx: txHash }));
+      addNotification(`Prescription ${result.ref} dispensed on-chain ✓`);
+    } catch (e) {
+      console.error(e);
+      setError(e?.shortMessage || e?.info?.error?.message || e?.message || "On-chain dispense failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const eligible = result && result.sensitivity === "NonSensitive" && !result.dispensed;
 
   return (
     <section style={{ display: "grid", gap: 12 }}>
       <h1>Pick Up Orders</h1>
       <div style={{ display: "flex", gap: 8 }}>
-        <input
-          value={q}
-          onChange={(e) => { setQ(e.target.value); setSearched(false); }}
-          onKeyDown={(e) => { if (e.key === "Enter") runSearch(); }}
-          placeholder="Search by Patient ID or Prescription"
-          style={{ flex: 1, ...btnStyle }}
-          inputMode="numeric"
-        />
-        <button onClick={runSearch} style={{ ...btnStyle }}>Search</button>
+        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runSearch()} placeholder="Search Prescription ID" style={{ flex: 1, ...btnStyle }} />
+        <button onClick={runSearch} style={btnStyle} disabled={loading}>{loading ? "Searching..." : "Search"}</button>
+        {!!q && <button onClick={resetSearch} style={btnStyle}>Clear</button>}
       </div>
+
+      {!!error && <div style={{ color: "#b91c1c" }}>{error}</div>}
 
       {result && (
         <div style={card}>
-          <div><b>Prescription {result.ref}</b></div>
-          <div>Patient: {result.patientName} ({result.patientId})</div>
-          <div>Medicine: {result.medicine}</div>
-          <div>Dose: {result.dose}</div>
-          <div>Times/Day: {result.timesPerDay}</div>
-          <div>Duration: {result.durationDays} days</div>
-          <div>Created: {fmt(result.createdAt)}</div>
-          <div style={{ marginTop: 8 }}>
-            <button onClick={() => markDispensed(result.ref)} style={{ ...btnStyle, background: result.dispensed ? "#d1fae5" : "#fff" }} disabled={result.dispensed}>
-              {result.dispensed ? "✓ Dispensed" : "Dispense"}
-            </button>
-          </div>
+          <div><b>Prescription:</b> {result.ref} (on-chain #{result.onchainId})</div>
+          <div><b>Patient:</b> {result.patientName}</div>
+          <div><b>Medicine:</b> {result.medicine}</div>
+          <div><b>Dosage:</b> {result.dose}</div>
+          <div><b>Sensitivity:</b> {result.sensitivity}</div>
+          <button onClick={confirmDispense} style={{ ...btnStyle, background: result.dispensed ? "#d1fae5" : "#fff" }} disabled={!eligible || loading}>
+            {result.dispensed ? "✓ Dispensed" : "Confirm & Dispense"}
+          </button>
         </div>
       )}
     </section>
   );
 }
 
-/** Delivery: Accept moves item to Pending */
-function DeliverySection({ rows = [], setRxs, addNotification }) {
-  function acceptOrder(ref) {
-    setRxs((prev) => prev.map((rx) => rx.ref === ref ? { ...rx, accepted: true, acceptedAt: nowISO() } : rx));
-    addNotification(`Prescription ${ref} accepted for delivery`);
-  }
-  return (
-    <section style={{ display: "grid", gap: 12 }}>
-      <h1>Delivery Orders</h1>
-      {rows.map(r => (
-        <div key={r.ref} style={card}>
-          <div><b>Prescription {r.ref}</b></div>
-          <div>Patient: {r.patientName} ({r.patientId})</div>
-          <div>Medicine: {r.medicine}</div>
-          <div>Dose: {r.dose}</div>
-          <div>Times/Day: {r.timesPerDay}</div>
-          <div>Duration: {r.durationDays} days</div>
-          <div>Created: {fmt(r.createdAt)}</div>
-          {r.acceptedAt && <div>Accepted At: {fmt(r.acceptedAt)}</div>}
-          <div style={{ marginTop: 8 }}>
-            <button onClick={() => acceptOrder(r.ref)} style={{ ...btnStyle, background: r.accepted ? "#d1fae5" : "#fff" }} disabled={r.accepted}>
-              {r.accepted ? "✓ Accepted" : "Accept"}
-            </button>
-          </div>
-        </div>
-      ))}
-    </section>
-  );
-}
-
-/** Pending: Cancel returns to Delivery, Contact marks contacted */
-function PendingSection({ rows = [], setRxs, addNotification }) {
-  function cancel(ref) {
-    setRxs((prev) => prev.map((rx) => rx.ref === ref ? { ...rx, accepted: false, acceptedAt: undefined } : rx));
-    addNotification({ type: 'cancel', ref, text: `Prescription ${ref} cancelled` });
-  }
-  function contact(ref) {
-    setRxs((prev) => prev.map((rx) => rx.ref === ref ? { ...rx, contactedAt: nowISO() } : rx));
-    addNotification(`Prescription ${ref} contacted logistics`);
-  }
-  return (
-    <section style={{ display: "grid", gap: 12 }}>
-      <h1>Pending Orders</h1>
-      {rows.map(r => (
-        <div key={r.ref} style={card}>
-          <div><b>Prescription {r.ref}</b></div>
-          <div>Patient: {r.patientName} ({r.patientId})</div>
-          <div>Medicine: {r.medicine}</div>
-          <div>Dose: {r.dose}</div>
-          <div>Times/Day: {r.timesPerDay}</div>
-          <div>Duration: {r.durationDays} days</div>
-          <div>Accepted At: {fmt(r.acceptedAt)}</div>
-          {r.contactedAt && <div>Contacted At: {fmt(r.contactedAt)}</div>}
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <button onClick={() => cancel(r.ref)} style={{ ...btnStyle }}>Cancel</button>
-            <button onClick={() => contact(r.ref)} style={{ ...btnStyle, background: r.contactedAt ? "#d1fae5" : "#fff" }} disabled={!!r.contactedAt}>
-              {r.contactedAt ? "✓ Contacted" : "Contact"}
-            </button>
-          </div>
-        </div>
-      ))}
-    </section>
-  );
-}
+function DeliverySection() { return <div>Delivery Orders</div>; }
+function PendingSection() { return <div>Pending Orders</div>; }

@@ -19,7 +19,7 @@ import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "luci
 import PRESCRIPTION from "../contracts/Prescription.json";
 
 // ===== Contract (kept as-is) =====
-const CONTRACT_ADDRESS = "0x438B5B4931C51EC0F11DD4033587cCF99628500d";
+const CONTRACT_ADDRESS = "0x69728294747F07aBE362684487135164aAD8E3DC";
 
 /* UI colors */
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
@@ -80,7 +80,7 @@ async function getSignerEnsured() {
   await window.ethereum.request({ method: "eth_requestAccounts" });
   const provider = new ethers.BrowserProvider(window.ethereum);
   const network = await provider.getNetwork();
-  const allowed = [1337n, 5777n];
+  const allowed = [1337n, 5777n, 31337n]; // ← أضفنا 31337
   if (!allowed.includes(network.chainId)) {
     console.warn("⚠ Running on unexpected chainId =", network.chainId.toString());
   }
@@ -225,7 +225,7 @@ export default function Doctor() {
       const natIdHashHex = natId ? await sha256Hex(natId) : "";
       const patientHashBytes32 = natIdHashHex ? "0x" + natIdHashHex : "0x" + "0".repeat(64);
 
-      // ===== blockchain (kept as-is) =====
+      // ===== blockchain =====
       const signer = await getSignerEnsured();
       const doctorAddress = await signer.getAddress();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, PRESCRIPTION.abi, signer);
@@ -240,6 +240,21 @@ export default function Doctor() {
       );
       const receipt = await tx.wait();
       const txHash = receipt?.hash || tx.hash;
+
+      // === extract on-chain id from PrescriptionCreated event ===
+      let onchainId = null;
+      try {
+        const iface = new ethers.Interface(PRESCRIPTION.abi);
+        for (const log of receipt.logs || []) {
+          try {
+            const parsed = iface.parseLog(log);
+            if (parsed?.name === "PrescriptionCreated") {
+              onchainId = Number(parsed.args?.id ?? parsed.args?.[0]);
+              break;
+            }
+          } catch {}
+        }
+      } catch {}
 
       // ===== Firestore payload (secure) =====
       const payload = {
@@ -256,10 +271,16 @@ export default function Doctor() {
         [F.onchainTx]: txHash,
         [F.patientDisplayId]: natId ? natId.slice(-4) : "",
         [F.patientNationalIdHash]: "0x" + natIdHashHex,
+
+        // ⬇⬇⬇ إضافات مطلوبة للصيدلية
+        nationalID: natId,                 // للبحث بالهوية
+        patientName: selectedPatient.name, // لعرض الاسم
+        onchainId: onchainId ?? null,      // رقم الوصفة على السلسلة للصرف on-chain
+
         reason: mc,                                // keep 'reason' mirroring medicalCondition
         prescriptionID: generatePrescriptionId(),  // e.g., RX-9G7K4B2T
         expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
-         dispensed: false,
+        dispensed: false,
       };
 
       // Store sensitivity ONLY if present on medicine (no alerts/assumptions/UI logic)
