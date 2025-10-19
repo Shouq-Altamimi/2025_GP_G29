@@ -31,21 +31,19 @@ const LIMITS = Object.freeze({
   notes: { min: 0, max: 300 },
 });
 
-/* خيارات الجرعات حسب الشكل الصيدلاني */
 const DOSAGE_BY_FORM = {
-  tablet: ["1 tablet", "2 tablets", "½ tablet", "¼ tablet"],
+  tablet: ["1 tablet", "2 tablets", "½ tablet"],
   capsule: ["1 capsule", "2 capsules"],
   inhaler: ["1 puff", "2 puffs"],
   suspension: ["2.5 mL", "5 mL", "10 mL", "15 mL"],
   drops: ["1 drop", "2 drops", "3 drops"],
-  injection: ["0.3 mL", "0.5 mL", "1 vial", "2 vials"],
+  injection: ["0.3 mL", "0.5 mL"],
   cream: ["Apply thin layer"],
   ointment: ["Apply thin layer"],
 };
 const OTHER_VALUE = "__OTHER__";
 function getDoseOptions(form) { return form ? DOSAGE_BY_FORM[form] || [] : []; }
 
-/* أسماء الحقول في Firestore */
 const F = Object.freeze({
   createdAt: "createdAt",
   doctorId: "doctorId",

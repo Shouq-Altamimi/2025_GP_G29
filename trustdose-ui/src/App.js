@@ -37,14 +37,12 @@ export default function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/doctor-home" element={<DoctorHome />} />
 
-        {/* 🟣 صفحات الطبيب داخل شِل الطبيب */}
         <Route element={<Shell />}>
           <Route path="/doctor" element={<Doctor />} />
           {/* (اختياري) لو عندك صفحة وصفات خاصة بالطبيب خليها هنا */}
           {/* <Route path="/prescriptions" element={<PrescriptionsPage />} /> */}
         </Route>
 
-        {/* 🔵 صفحات المريض داخل شِل المريض */}
         <Route path="/patient" element={<PShell />}>
           {/* منيو المريض (الصفحة الرئيسية) */}
           <Route index element={<Patient />} />
@@ -52,7 +50,6 @@ export default function App() {
           <Route path="prescriptions" element={<PrescriptionsPage />} />
         </Route>
 
-        {/* 🟢 صفحات الصيدلية داخل شِل الصيدلية */}
         <Route path="/pharmacy" element={<PharmacyShell />}>
           <Route index element={<Pharmacy />} />
         </Route>

@@ -33,9 +33,6 @@
   { "name":"cephalexin", "label":"cephalexin 250 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
   { "name":"cephalexin", "label":"cephalexin 500 mg", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
 
-  { "name":"ceftriaxone", "label":"ceftriaxone 1 g (vial)", "dosageForm":"injection", "sensitivity":"NonSensitive" },
-  { "name":"ceftriaxone", "label":"ceftriaxone 2 g (vial)", "dosageForm":"injection", "sensitivity":"NonSensitive" },
-
   { "name":"co-trimoxazole (sulfamethoxazole/trimethoprim)", "label":"co-trimoxazole 400/80 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
   { "name":"co-trimoxazole (sulfamethoxazole/trimethoprim)", "label":"co-trimoxazole 800/160 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
 
@@ -51,6 +48,7 @@
   { "name":"insulin glargine", "label":"insulin glargine 100 units/mL", "dosageForm":"injection", "sensitivity":"Sensitive", "minSafeTemp":2, "maxSafeTemp":8 },
   { "name":"insulin regular", "label":"insulin regular 100 units/mL", "dosageForm":"injection", "sensitivity":"Sensitive", "minSafeTemp":2, "maxSafeTemp":8 },
   { "name":"insulin NPH", "label":"insulin NPH 100 units/mL", "dosageForm":"injection", "sensitivity":"Sensitive", "minSafeTemp":2, "maxSafeTemp":8 },
+  { "name":"insulin aspart", "label":"NovoRapid 100 units/mL", "dosageForm":"injection", "sensitivity":"Sensitive", "minSafeTemp":2, "maxSafeTemp":8 },
 
   { "name":"atorvastatin", "label":"atorvastatin 10 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
   { "name":"atorvastatin", "label":"atorvastatin 20 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
@@ -132,8 +130,12 @@
   { "name":"folic acid", "label":"folic acid 1 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
   { "name":"folic acid", "label":"folic acid 5 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
 
+  { "name":"vitamin D3 (cholecalciferol)", "label":"vitamin D3 400 IU", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
   { "name":"vitamin D3 (cholecalciferol)", "label":"vitamin D3 1000 IU", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+  { "name":"vitamin D3 (cholecalciferol)", "label":"vitamin D3 2000 IU", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
   { "name":"vitamin D3 (cholecalciferol)", "label":"vitamin D3 5000 IU", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+  { "name":"vitamin D3 (cholecalciferol)", "label":"vitamin D3 10000 IU", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
+  { "name":"vitamin D3 (cholecalciferol)", "label":"vitamin D3 50000 IU", "dosageForm":"capsule", "sensitivity":"NonSensitive" },
 
   { "name":"clopidogrel", "label":"clopidogrel 75 mg", "dosageForm":"tablet", "sensitivity":"NonSensitive" },
 
