@@ -261,7 +261,6 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
             <Row label="Pharmacy ID" value={pharmacy?.BranchID || "—"} />
            
     
-            <Row label="Contact" value={pharmacy?.contact || "—"} />
             <Row label="Address" value={pharmacy?.address || "—"} />
         
 

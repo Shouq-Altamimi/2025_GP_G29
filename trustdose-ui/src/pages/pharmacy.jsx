@@ -16,7 +16,7 @@ import DISPENSE from "../contracts/Dispense.json";
 
 // ✅ عناوين العقود من Ganache (بدّليها إذا أعدتِ النشر)
 const PRESCRIPTION_ADDRESS = "0x30cb3cDcf8dF0b552E2e258FbbbCFbAe107b110d"; // Prescription
-const DISPENSE_ADDRESS     = "0x87955D26f408797176109fc86dB88022f3629a3F"; // Dispense
+const DISPENSE_ADDRESS     = "0xaa66b0449cA9fCee6e4825c2E6c3F17aDC7867b3"; // Dispense
 
 // ✅ يطلب MetaMask ويضمن شبكة التطوير
 async function getSignerEnsured() {
@@ -163,6 +163,12 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       : "-";
 
     const onchain = safeInt(data.onchainId);
+    // ----- Doctor + Frequency (ADD-ONLY) -----
+const docName  = data.doctorName ?? data.doctor?.name ?? "-";
+const docPhone = data.doctorPhone || data.doctor_phone || data.phone || "-";
+// اتركي الهاتف كسلسلة حتى لا نفقد +966
+const freq     = data.frequency ?? data.freq ?? (data.timesPerDay ? `${data.timesPerDay} times/day` : "-");
+
 
     return {
       ref: data.prescriptionID || docId || "-",
@@ -179,6 +185,11 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       dispensedAt: toMaybeISO(data.dispensedAt) || undefined,
       dispensedBy: data.dispensedBy || undefined,
       sensitivity: data.sensitivity || "-",
+        // (ADD-ONLY)
+  doctorName: docName,
+  doctorPhone: docPhone,
+  frequency: freq,
+
       _docId: docId,
     };
   }
@@ -467,9 +478,14 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
                 <div><b>Prescription:</b> {r.ref}</div>
                 <div><b>National ID:</b> {r.patientId}</div>
                 <div><b>Patient:</b> {r.patientName}</div>
+                {/* ADD-ONLY: Doctor info & frequency */}
+<div><b>Doctor:</b> {r.doctorName || "-"}</div>
+<div><b>Phone:</b> {r.doctorPhone || "-"}</div>
+<div><b>Frequency:</b> {r.frequency || "-"}</div>
+
                 <div><b>Medicine:</b> {r.medicine}</div>
                 <div><b>Dosage:</b> {r.dose}</div>
-                <div><b>Times/Day:</b> {r.timesPerDay}</div>
+             
                 <div><b>Duration:</b> {r.durationDays}</div>
                 <div><b>Created:</b> {fmt(r.createdAt)}</div>
                 <div><b>Sensitivity:</b> {r.sensitivity}</div>
