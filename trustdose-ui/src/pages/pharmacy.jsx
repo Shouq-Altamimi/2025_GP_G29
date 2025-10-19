@@ -15,8 +15,8 @@ import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
 // ✅ عناوين العقود من Ganache (بدّليها إذا أعدتِ النشر)
-const PRESCRIPTION_ADDRESS = "0x30cb3cDcf8dF0b552E2e258FbbbCFbAe107b110d"; // Prescription
-const DISPENSE_ADDRESS     = "0xaa66b0449cA9fCee6e4825c2E6c3F17aDC7867b3"; // Dispense
+const PRESCRIPTION_ADDRESS = "0xF2378A8bCE96fed68b58b7D418830FC5D276A006"; // Prescription
+const DISPENSE_ADDRESS     = "0x6576E39aBEf4088170Cd9E5d846365EDa8DDf002"; // Dispense
 
 // ✅ يطلب MetaMask ويضمن شبكة التطوير
 async function getSignerEnsured() {
@@ -214,97 +214,106 @@ const freq     = data.frequency ?? data.freq ?? (data.timesPerDay ? `${data.time
     setError("");
     setInfoMsg("");
   }
+async function runSearch() {
+  setSearched(true);
+  setLoading(true);
+  setError("");
+  setResults([]);
+  setInfoMsg("");
 
-  async function runSearch() {
-    setSearched(true);
-    setLoading(true);
-    setError("");
-    setResults([]);
-    setInfoMsg("");
-
-    if (isPatientIdMode) {
-      const firstOk = natDigits.length > 0 && (natDigits[0] === "1" || natDigits[0] === "2");
-      const lenOk = natDigits.length === 10;
-      if (!firstOk || !lenOk) {
-        setLoading(false);
-        setValidationMsg(!firstOk ? "Patient ID must start with 1 or 2." : "Patient ID must be exactly 10 digits.");
-        return;
-      }
-    }
-
-    try {
-      const col = collection(db, "prescriptions");
-
-      // === Prescription ID: نتيجة واحدة (حتى لو غير مؤهلة، للشفافية) ===
-      if (rxUpper) {
-        const snap = await getDocs(query(col, where("prescriptionID", "==", rxUpper)));
-        if (!snap.empty) {
-          const d = snap.docs[0];
-          const n = normalizeFromDB(d.data(), d.id);
-          setResults([n]);
-        } else {
-          setResults([]);
-        }
-        setLoading(false);
-        return;
-      }
-
-      // === Patient ID: كل غير الحساسة + غير المصروفة + onchainId صالح ===
-      const tasks = [
-        getDocs(query(
-          col,
-          where("nationalID", "==", natDigits),
-          where("dispensed", "==", false),
-          where("sensitivity", "==", "NonSensitive")
-        )),
-      ];
-      const nNum = Number(natDigits);
-      if (!Number.isNaN(nNum)) {
-        tasks.push(getDocs(query(
-          col,
-          where("nationalID", "==", nNum),
-          where("dispensed", "==", false),
-          where("sensitivity", "==", "NonSensitive")
-        )));
-      }
-
-      const snaps = await Promise.all(tasks);
-
-      // دمج بلا تكرار + فلترة onchainId
-      const seen = new Set();
-      const list = [];
-      for (const s of snaps) {
-        if (!s || s.empty) continue;
-        s.forEach(doc => {
-          if (seen.has(doc.id)) return;
-          seen.add(doc.id);
-          const n = normalizeFromDB(doc.data(), doc.id);
-          if (n.sensitivity === "NonSensitive" && n.dispensed === false && Number.isFinite(n.onchainId)) {
-            list.push(n);
-          }
-        });
-      }
-
-      if (list.length === 0) {
-        // فallback: هل فيه وصفات موجودة بس غير مؤهلة (حساسة/مصروفة/بدون onchainId)؟
-        const fbTasks = [ getDocs(query(col, where("nationalID", "==", natDigits))) ];
-        if (!Number.isNaN(nNum)) fbTasks.push(getDocs(query(col, where("nationalID", "==", nNum))));
-        const fbSnaps = await Promise.all(fbTasks);
-        const haveAny = fbSnaps.some(s => s && !s.empty);
-        if (haveAny) {
-          setInfoMsg("No eligible pickup prescriptions. They may be sensitive, already dispensed, or missing on-chain id.");
-        }
-      }
-
-      setResults(list);
-    } catch (e) {
-      console.error(e);
-      setError("Could not complete search. Check your internet or Firestore access.");
-      setResults([]);
-    } finally {
+  if (isPatientIdMode) {
+    const firstOk = natDigits.length > 0 && (natDigits[0] === "1" || natDigits[0] === "2");
+    const lenOk = natDigits.length === 10;
+    if (!firstOk || !lenOk) {
       setLoading(false);
+      setValidationMsg(!firstOk ? "Patient ID must start with 1 or 2." : "Patient ID must be exactly 10 digits.");
+      return;
     }
   }
+
+  try {
+    const col = collection(db, "prescriptions");
+
+    // === Prescription ID: نتيجة واحدة (حتى لو غير مؤهلة، للشفافية) ===
+    if (rxUpper) {
+      const snap = await getDocs(query(col, where("prescriptionID", "==", rxUpper)));
+      if (!snap.empty) {
+        const d = snap.docs[0];
+        const n = normalizeFromDB(d.data(), d.id);
+
+        // 👇 التعديل الوحيد: لو Sensitive لا نعرض الكارد ونطلع رسالة إنجليزية
+        const isNonSensitive = String(n.sensitivity || "").toLowerCase() === "nonsensitive";
+        if (!isNonSensitive) {
+          setError("This prescription is for a sensitive medication and cannot be dispensed .");
+          setResults([]); // لا تظهر الكارد
+          setLoading(false);
+          return;
+        }
+
+        setResults([n]); // NonSensitive: نعرضها كالمعتاد
+      } else {
+        setResults([]);
+      }
+      setLoading(false);
+      return;
+    }
+
+    // === Patient ID: كل غير الحساسة + غير المصروفة + onchainId صالح ===
+    const tasks = [
+      getDocs(query(
+        col,
+        where("nationalID", "==", natDigits),
+        where("dispensed", "==", false),
+        where("sensitivity", "==", "NonSensitive")
+      )),
+    ];
+    const nNum = Number(natDigits);
+    if (!Number.isNaN(nNum)) {
+      tasks.push(getDocs(query(
+        col,
+        where("nationalID", "==", nNum),
+        where("dispensed", "==", false),
+        where("sensitivity", "==", "NonSensitive")
+      )));
+    }
+
+    const snaps = await Promise.all(tasks);
+
+    // دمج بلا تكرار + فلترة onchainId
+    const seen = new Set();
+    const list = [];
+    for (const s of snaps) {
+      if (!s || s.empty) continue;
+      s.forEach(doc => {
+        if (seen.has(doc.id)) return;
+        seen.add(doc.id);
+        const n = normalizeFromDB(doc.data(), doc.id);
+        if (n.sensitivity === "NonSensitive" && n.dispensed === false && Number.isFinite(n.onchainId)) {
+          list.push(n);
+        }
+      });
+    }
+
+    if (list.length === 0) {
+      // فallback: هل فيه وصفات موجودة بس غير مؤهلة (حساسة/مصروفة/بدون onchainId)؟
+      const fbTasks = [ getDocs(query(col, where("nationalID", "==", natDigits))) ];
+      if (!Number.isNaN(nNum)) fbTasks.push(getDocs(query(col, where("nationalID", "==", nNum))));
+      const fbSnaps = await Promise.all(fbTasks);
+      const haveAny = fbSnaps.some(s => s && !s.empty);
+      if (haveAny) {
+        setInfoMsg("No eligible pickup prescriptions. They may be sensitive, already dispensed, or missing on-chain id.");
+      }
+    }
+
+    setResults(list);
+  } catch (e) {
+    console.error(e);
+    setError("Could not complete search. Check your internet or Firestore access.");
+    setResults([]);
+  } finally {
+    setLoading(false);
+  }
+}
 
   function resetSearch() {
     setQ("");
