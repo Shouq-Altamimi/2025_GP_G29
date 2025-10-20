@@ -19,7 +19,7 @@ import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "luci
 import PRESCRIPTION from "../contracts/Prescription.json";
 
 // ===== عقد البرسكربشن =====
-const CONTRACT_ADDRESS = "0x30cb3cDcf8dF0b552E2e258FbbbCFbAe107b110d";
+const CONTRACT_ADDRESS = "0x884FA1D4eEADF75A0f0A916aC88AfD11462e7f25";
 
 /* UI */
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
@@ -50,6 +50,7 @@ const F = Object.freeze({
   doctorId: "doctorId",
   doctorName: "doctorName",
   doctorPhone: "doctorPhone",
+  doctorFacility: "doctorFacility",
   dosage: "dosage",
   durationDays: "durationDays",
   frequency: "frequency",
@@ -226,7 +227,7 @@ export default function Doctor() {
     if (!selectedPatient) return setRxMsg("Please search for a patient first.");
     if (!selectedMed) return setRxMsg("Please choose a medicine from the list.");
 
-    // حلّ "Other..."
+    // حلّ "Other..." (إدخال يدوي)
     const finalDose = dose === OTHER_VALUE ? "" : dose;
     const finalFreq = timesPerDay === OTHER_VALUE ? "" : timesPerDay;
     const finalDuration = durationDays === OTHER_VALUE ? "" : durationDays;
@@ -282,10 +283,9 @@ export default function Doctor() {
         throw new Error("Transaction reverted or failed.");
       }
 
-      // هاش المعاملة
       const txHash = receipt?.hash || receipt?.transactionHash || tx.hash;
 
-      // 5.3 — استخراج onchainId من الحدث ونخزّنه في فايربيس
+      // 5.3 — استخراج onchainId من الحدث
       let onchainId = null;
       try {
         const iface = new ethers.Interface(PRESCRIPTION.abi);
@@ -302,28 +302,32 @@ export default function Doctor() {
 
       // 5.4 — حفظ في Firestore (بعد النجاح فقط)
       const payload = {
-        createdAt: serverTimestamp(),
-        doctorId: doctorAddress,
-        doctorName: doctor?.name || "",
-        doctorPhone: doctor?.phone || "",
-        doctorFacility: doctor?.healthFacility || "", // منشأة الطبيب
+        [F.createdAt]: serverTimestamp(),
 
-        medicineLabel: selectedMed.label,
-        medicineName: selectedMed.name,
-        dosageForm: selectedMed.dosageForm || "",
-        dosage: finalDose,
-        frequency: finalFreq,
-        durationDays: finalDuration,
-        medicalCondition: mc,
-        notes: notes || "",
-        onchainTx: txHash,
-        patientDisplayId: natId ? natId.slice(-4) : "",
-        patientNationalIdHash: "0x" + natIdHashHex,
+        // معلومات الطبيب — نحفظ الاسم والمنشأة
+        [F.doctorId]: doctorAddress,
+        [F.doctorName]: doctor?.name || "",
+        [F.doctorPhone]: doctor?.phone || "",
+        [F.doctorFacility]: doctor?.healthFacility || "",
+
+        // معلومات الدواء
+        [F.medicineLabel]: selectedMed.label,
+        [F.medicineName]: selectedMed.name,
+        [F.dosageForm]: selectedMed.dosageForm || "",
+        [F.dosage]: finalDose,
+        [F.frequency]: finalFreq,
+        [F.durationDays]: finalDuration, // لا نحفظ expiration منفصل
+        [F.medicalCondition]: mc,
+        [F.notes]: notes || "",
+
+        [F.onchainTx]: txHash,
+        [F.patientDisplayId]: natId ? natId.slice(-4) : "",
+        [F.patientNationalIdHash]: "0x" + natIdHashHex,
 
         // إضافات للعرض
         nationalID: natId,
         patientName: selectedPatient.name,
-        onchainId: onchainId ?? null,   // ✅ تخزين الأون-تشين آي دي
+        onchainId: onchainId ?? null,
         reason: mc,
         prescriptionID: generatePrescriptionId(),
         dispensed: false,
@@ -342,7 +346,6 @@ export default function Doctor() {
       setRxMsg("Prescription created & confirmed on-chain ✓");
       setTimeout(() => setRxMsg(""), 3000);
 
-      // ✅ انتقل لمسار الراوتر الصحيح (ليس مسار ملف)
       navigate("/prescriptions", {
         state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
       });
@@ -656,9 +659,15 @@ function InfoCard({ label, value, bold = false, highlight = false }) {
 
 /** Select يدعم Other */
 function SelectField({ label, value, onChange, placeholder, options, required = false, allowOther = false }) {
-  const isCustom = allowOther && !!value && !options.includes(value);
+  const isCustom = allowOther && !!value && !options.includes(value) && value !== OTHER_VALUE;
   const selectValue = isCustom ? OTHER_VALUE : (value || "");
-  const missing = required && ((selectValue === "" && !isCustom) || (isCustom && !value));
+  const customActive = allowOther && (isCustom || selectValue === OTHER_VALUE);
+
+  const missing = required && (
+    (customActive ? (!isCustom) : (selectValue === "")) ||
+    (isCustom && !value)
+  );
+
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -671,7 +680,7 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
           value={selectValue}
           onChange={(e) => {
             const v = e.target.value;
-            if (allowOther && v === OTHER_VALUE) onChange("");
+            if (allowOther && v === OTHER_VALUE) onChange(OTHER_VALUE);
             else onChange(v);
           }}
         >
@@ -681,7 +690,8 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
         </select>
         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">▾</div>
       </div>
-      {(allowOther && (isCustom || selectValue === OTHER_VALUE)) && (
+
+      {customActive && (
         <div className="mt-2">
           <input
             className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"}`}
@@ -699,9 +709,15 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
 
 /** Dosage select يدعم Other */
 function DosageSelect({ value, onChange, options = [], required = true, placeholder = "Select dosage", allowOther = true }) {
-  const isCustom = allowOther && !!value && !options.includes(value);
+  const isCustom = allowOther && !!value && !options.includes(value) && value !== OTHER_VALUE;
   const selectValue = isCustom ? OTHER_VALUE : (value || "");
-  const missing = required && ((selectValue === "" && !isCustom) || (isCustom && !value));
+  const customActive = allowOther && (isCustom || selectValue === OTHER_VALUE);
+
+  const missing = required && (
+    (customActive ? (!isCustom) : (selectValue === "")) ||
+    (isCustom && !value)
+  );
+
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -714,7 +730,7 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
           value={selectValue}
           onChange={(e) => {
             const v = e.target.value;
-            if (allowOther && v === OTHER_VALUE) onChange("");
+            if (allowOther && v === OTHER_VALUE) onChange(OTHER_VALUE);
             else onChange(v);
           }}
         >
@@ -724,7 +740,8 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
         </select>
         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">▾</div>
       </div>
-      {(allowOther && (isCustom || selectValue === OTHER_VALUE)) && (
+
+      {customActive && (
         <div className="mt-2">
           <input
             className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"}`}

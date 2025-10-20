@@ -15,8 +15,8 @@ import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
 // ✅ عناوين العقود من Ganache (بدّليها إذا أعدتِ النشر)
-const PRESCRIPTION_ADDRESS = "0xF2378A8bCE96fed68b58b7D418830FC5D276A006"; // Prescription
-const DISPENSE_ADDRESS     = "0x6576E39aBEf4088170Cd9E5d846365EDa8DDf002"; // Dispense
+const PRESCRIPTION_ADDRESS = "0x884FA1D4eEADF75A0f0A916aC88AfD11462e7f25"; // Prescription
+const DISPENSE_ADDRESS     = "0xC346f14ECf5Eeb5d1c4043400A86a05305A56770"; // Dispense
 
 // ✅ يطلب MetaMask ويضمن شبكة التطوير
 async function getSignerEnsured() {
