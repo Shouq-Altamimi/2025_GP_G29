@@ -18,19 +18,16 @@ import { ethers } from "ethers";
 import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "lucide-react";
 import PRESCRIPTION from "../contracts/Prescription.json";
 
-/* ================= UI ================= */
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
 
-/* ===== عنوان عقد البرسكربشن ===== */
+//contract
 const CONTRACT_ADDRESS = "0x34Ae4732678f7a12273a9639552Eb051Fdc7c5bd";
 
-/* حدود الإدخال */
 const LIMITS = Object.freeze({
   medicalCondition: { min: 3, max: 120 },
   notes: { min: 0, max: 300 },
 });
 
-/* خيارات الجرعات حسب الشكل الصيدلاني */
 const DOSAGE_BY_FORM = {
   tablet: ["1 tablet", "2 tablets", "½ tablet", "¼ tablet"],
   capsule: ["1 capsule", "2 capsules"],
@@ -44,7 +41,7 @@ const DOSAGE_BY_FORM = {
 const OTHER_VALUE = "__OTHER__";
 function getDoseOptions(form) { return form ? DOSAGE_BY_FORM[form] || [] : []; }
 
-/* أسماء الحقول في Firestore (prescriptions) */
+//data base
 const F = Object.freeze({
   createdAt: "createdAt",
   doctorId: "doctorId",
@@ -65,7 +62,7 @@ const F = Object.freeze({
   medicalCondition: "medicalCondition",
 });
 
-/* ================= Helpers ================= */
+//welcomw
 function readWelcomeSync() {
   try {
     const raw = localStorage.getItem("welcome_doctor");
@@ -80,25 +77,47 @@ async function sha256Hex(input) {
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+//metamask
 async function getSignerEnsured() {
+  //install
   if (!window.ethereum) throw new Error("MetaMask not detected. Please install/enable it.");
+  //request access
   await window.ethereum.request({ method: "eth_requestAccounts" });
+
   const provider = new ethers.BrowserProvider(window.ethereum);
   return provider.getSigner();
 }
 
+//prescription ID
 function generatePrescriptionId(prefix = "RX-", len = 8) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let id = prefix;
-  for (let i = 0; i < len; i++) id += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < len; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return id;
+}
+//to ensure uniqueness
+async function generateUniquePrescriptionId() {
+  let id;
+  let exists = true;
+
+  while (exists) {
+    id = generatePrescriptionId();
+    const qSnap = await getDocs(
+      query(collection(db, "prescriptions"), where("prescriptionID", "==", id))
+    );
+    exists = !qSnap.empty; 
+  }
+
   return id;
 }
 
-/* ======================= الصفحة ======================= */
+
+
 export default function Doctor() {
   const navigate = useNavigate();
 
-  // 🔒 حارس: إن ما فيه جلسة دكتور، رجّع للأوث
   useEffect(() => {
     const role = localStorage.getItem("userRole");
     const wd = localStorage.getItem("welcome_doctor");
@@ -107,10 +126,9 @@ export default function Doctor() {
     }
   }, [navigate]);
 
-  // اقرأ الترحيب من localStorage
   const [welcome] = useState(() => readWelcomeSync());
 
-  // Patient search
+  // patient search
   const [q, setQ] = useState("");
   const [searchMsg, setSearchMsg] = useState("");
   const [searched, setSearched] = useState(false);
@@ -128,14 +146,14 @@ export default function Doctor() {
   const [medicalCondition, setMedicalCondition] = useState("");
   const [notes, setNotes] = useState("");
 
-  // ui messages
+  //created prescription message
   const [rxMsg, setRxMsg] = useState("");
 
-  // UX
+  
   const mcRef = useRef(null);
   const [mcTouched, setMcTouched] = useState(false);
 
-  /* 1) تحميل الأدوية */
+//medicines load
   useEffect(() => {
     (async () => {
       const snap = await getDocs(collection(db, "medicines"));
@@ -150,7 +168,6 @@ export default function Doctor() {
     setSearchMsg("");
   }
 
-  /* 2) البحث عن المريض */
   async function runSearch() {
     const id = q.trim();
     if (!/^[12]\d{9}$/.test(id)) {
@@ -182,7 +199,7 @@ export default function Doctor() {
     }
   }
 
-  /* 3) تأكيد وإنشاء الوصفة — البلوك تشين أولاً، ثم Firestore */
+//blockchain then saving 
   async function confirmAndSave() {
     if (!selectedPatient) return setRxMsg("Please search for a patient first.");
     if (!selectedMed) return setRxMsg("Please choose a medicine from the list.");
@@ -194,6 +211,7 @@ export default function Doctor() {
     if (!finalDose) return setRxMsg("Please enter/select a dosage.");
     if (!finalFreq) return setRxMsg("Please enter/select a frequency.");
     if (!finalDuration) return setRxMsg("Please enter/select a duration.");
+
 
     const mc = medicalCondition.trim();
     if (mc.length < LIMITS.medicalCondition.min) {
@@ -234,7 +252,12 @@ export default function Doctor() {
         finalDuration
       );
 
+      // wait for confirmation
       const receipt = await tx.wait();
+      console.log("Transaction Receipt:", receipt);
+      console.log(" Status:", receipt.status);
+      console.log(" Hash:", receipt.transactionHash || tx.hash);
+
       if (receipt?.status !== 1) throw new Error("Transaction reverted or failed.");
       const txHash = receipt?.hash || receipt?.transactionHash || tx.hash;
 
@@ -302,12 +325,10 @@ export default function Doctor() {
     }
   }
 
-  // لو ما فيه جلسة، لا نرسم شيء (الحارس سيرجعك للأوث)
   if (!welcome) return null;
 
   return (
     <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-6 py-6 md:py-8">
-      {/* Header — يظهر فقط بوجود جلسة */}
       {(welcome.name || welcome.healthFacility || welcome.speciality) && (
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -329,7 +350,6 @@ export default function Doctor() {
       )}
 
       <section className="space-y-6">
-        {/* Search patient */}
         <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <Search size={20} style={{ color: C.primary }} />
@@ -398,10 +418,8 @@ export default function Doctor() {
           )}
         </section>
 
-        {/* Patient + form */}
         {searched && selectedPatient && (
           <>
-            {/* Patient info */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 relative">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
                 <ClipboardList size={20} style={{ color: C.primary }} />
@@ -429,7 +447,6 @@ export default function Doctor() {
               </div>
             </section>
 
-            {/* Create Rx */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
                 <FileText size={20} style={{ color: C.primary }} />
@@ -450,7 +467,6 @@ export default function Doctor() {
                 </div>
               )}
 
-              {/* medicine search */}
               <div className="mb-4">
                 <MedicineSearch
                   value={selectedMed?.label || ""}
@@ -523,7 +539,6 @@ export default function Doctor() {
                 </div>
               )}
 
-              {/* Medical condition */}
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Medical Condition <span className="text-rose-500">*</span>
@@ -549,7 +564,6 @@ export default function Doctor() {
                 </div>
               </div>
 
-              {/* notes */}
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
                 <textarea
@@ -613,7 +627,6 @@ function InfoCard({ label, value, bold = false, highlight = false }) {
   );
 }
 
-/** Select يدعم Other */
 function SelectField({ label, value, onChange, placeholder, options, required = false, allowOther = false }) {
   const isCustom = allowOther && !!value && !options.includes(value) && value !== OTHER_VALUE;
   const selectValue = isCustom ? OTHER_VALUE : (value || "");
@@ -663,7 +676,6 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
   );
 }
 
-/** Dosage select يدعم Other */
 function DosageSelect({ value, onChange, options = [], required = true, placeholder = "Select dosage", allowOther = true }) {
   const isCustom = allowOther && !!value && !options.includes(value) && value !== OTHER_VALUE;
   const selectValue = isCustom ? OTHER_VALUE : (value || "");
@@ -713,7 +725,6 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
   );
 }
 
-/* ========= MedicineSearch ========= */
 function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine name" }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState(value || "");
@@ -829,7 +840,6 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
   );
 }
 
-/* ================= helpers ================= */
 function toAgeAny(birthValue) {
   try {
     if (!birthValue) return "—";
