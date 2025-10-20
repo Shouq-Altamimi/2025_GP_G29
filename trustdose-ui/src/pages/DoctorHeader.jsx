@@ -1,4 +1,4 @@
-// src/pages/Shell.jsx
+// src/pages/DoctorHeader.jsx
 "use client";
 import React, { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -15,8 +15,10 @@ import {
   limit as fsLimit,
   updateDoc,
   deleteField,
+  serverTimestamp,
 } from "firebase/firestore";
 import { FilePlus2, User, LogOut, X } from "lucide-react";
+import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
@@ -37,6 +39,7 @@ function normalizeDoctor(raw) {
     licenseNumber: pickStr(raw, ["licenseNumber"]),
     DoctorID: pickStr(raw, ["DoctorID"]),
     phone: pickStr(raw, ["phone"]),
+    email: pickStr(raw, ["email"]),
   };
 }
 
@@ -54,7 +57,7 @@ function validateAndNormalizePhone(raw) {
   return { ok: false, reason: "Must start with 05 or +9665 followed by 8 digits." };
 }
 
-export default function Shell() {
+export default function DoctorHeader() {
   const location = useLocation();
   const navigate = useNavigate();
   const isPatientPage = location.pathname.includes("/patient");
@@ -103,6 +106,7 @@ export default function Shell() {
               DoctorID: norm?.DoctorID || String(userDoctorID),
               name: norm?.name || "",
               phone: norm?.phone || "",
+              email: norm?.email || "",
               healthFacility: norm?.healthFacility || "",
               speciality: norm?.speciality || "",
             })
@@ -220,7 +224,7 @@ function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
   const styles = active
     ? "bg-white text-[#5B3A70]"
     : variant === "ghost"
-    ? "text-white/90 hover:bg-white/10"
+    ? "text白/90 hover:bg-white/10".replace("白", "white")
     : "bg-white/25 text-white hover:bg-white/35";
   return (
     <button onClick={onClick} className={`${base} ${styles}`}>
@@ -230,6 +234,7 @@ function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
 }
 
 function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
+  // ===== Phone =====
   const [phone, setPhone] = useState(doctor?.phone || "");
   const [phoneInfo, setPhoneInfo] = useState({ ok: false, reason: "", normalized: "" });
   const [saving, setSaving] = useState(false);
@@ -263,6 +268,53 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
     }
   }
 
+  // ===== Email + Verify (doctor only now) =====
+  const [emailInput, setEmailInput] = useState("");
+  const [emailMsg, setEmailMsg] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
+
+  const hasEmail = !!doctor?.email;
+
+  async function sendVerifyLink() {
+  try {
+    setEmailMsg("");
+    const raw = String(emailInput || "").trim().toLowerCase();
+    const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
+    if (!ok) { 
+      setEmailMsg("الرجاء إدخال بريد إلكتروني صالح."); 
+      return; 
+    }
+
+    // 🔥 الحل: استخدمي الـ origin الحالي بدال web.app
+    const BASE = window.location.origin; // هذا يعطيك localhost:5173 لو على المحلي
+    
+    const params = new URLSearchParams({
+      col: "doctors",
+      doc: String(doctorDocId || ""),
+      e: raw,
+      redirect: "/doctor",
+    });
+
+    const settings = {
+      url: `${BASE}/auth-email?${params.toString()}`,
+      handleCodeInApp: true,
+    };
+
+    console.log("📧 Sending verification link to:", settings.url);
+
+    setEmailLoading(true);
+    await sendSignInLinkToEmail(getAuth(), raw, settings);
+
+    localStorage.setItem("td_email_pending", JSON.stringify({ email: raw, ts: Date.now() }));
+    setEmailMsg("تم إرسال رابط التحقق إلى بريدك. افتحيه ثم ارجعي للتطبيق.");
+  } catch (e) {
+    console.error("Firebase:", e.code, e.message);
+    setEmailMsg(`Firebase: ${e?.code || e?.message || "تعذر إرسال رابط التحقق."}`);
+  } finally {
+    setEmailLoading(false);
+  }
+}
+
   return (
     <>
       <div className="fixed inset-0 bg-black/40 z-50" onClick={onClose} />
@@ -288,6 +340,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
             <Row label="Doctor ID" value={doctor?.DoctorID || "—"} />
             <Row label="License No." value={doctor?.licenseNumber || "—"} />
 
+            {/* Phone */}
             <div>
               <label className="block text-sm text-gray-700 mb-1">
                 Phone <span className="text-rose-600">*</span>
@@ -309,6 +362,50 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                 {!phone && <span style={{ color: "#888" }}>Enter phone starting with 05 or +9665</span>}
                 {phone && !phoneInfo.ok && <span style={{ color: "#b91c1c" }}>{phoneInfo.reason}</span>}
               </div>
+            </div>
+
+            {/* Email */}
+            <div className="mt-3">
+              <label className="block text-sm text-gray-700 mb-1">Email</label>
+
+              {hasEmail ? (
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-gray-800">{doctor.email}</span>
+                  <span
+                    className="text-[12px] px-2 py-0.5 rounded-full border"
+                    style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}
+                  >
+                    Verified
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
+                      style={{ outlineColor: C.primary }}
+                      placeholder="name@example.com"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      inputMode="email"
+                    />
+                    <button
+                      onClick={sendVerifyLink}
+                      disabled={emailLoading}
+                      className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
+                      style={{ background: C.primary }}
+                    >
+                      {emailLoading ? "Sending..." : "Send Verify"}
+                    </button>
+                  </div>
+
+                  {!!emailMsg && (
+                    <div className="mt-2 text-sm" style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534" }}>
+                      {emailMsg}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {!!msg && <div className="text-sm">{msg}</div>}

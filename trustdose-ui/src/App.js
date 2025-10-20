@@ -18,6 +18,9 @@ import PrescriptionsPage from "./pages/PrescriptionsPage";
 import PharmacyShell from "./pages/PharmacyShell";
 import Pharmacy from "./pages/pharmacy.jsx";
 
+// ✅ أضيفي هذا السطر
+import AuthEmailHandler from "./pages/AuthEmailHandler";
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -33,6 +36,10 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/auth" replace />} />
         <Route path="/auth" element={<TrustDoseAuth />} />
+        
+        {/* ✅ أضيفي هذا الـ route للتحقق من الإيميل */}
+        <Route path="/auth-email" element={<AuthEmailHandler />} />
+        
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/doctor-home" element={<DoctorHome />} />
 
