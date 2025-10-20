@@ -75,6 +75,22 @@ export default function PharmacyShell() {
         const s = await getDoc(doc(db, "pharmacies", String(userId)));
         if (s.exists()) {
           setPharmacy(normalizePharmacy(s.data()));
+          const norm = normalizePharmacy(s.data()); // أو d.data()
+setPharmacy(norm);
+setPharmacyDocId(s.id); // أو d.id
+
+// خزّن نسخة خفيفة للصفحات الداخلية
+try {
+  sessionStorage.setItem(
+    "td_pharmacy",
+    JSON.stringify({
+      name: norm?.name || "",
+      pharmacyName: norm?.pharmacyName || norm?.name || "",
+      BranchID: norm?.BranchID || ""
+    })
+  );
+} catch {}
+
           setPharmacyDocId(s.id);
           return;
         }
@@ -112,6 +128,38 @@ export default function PharmacyShell() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header hideMenu={false} onMenuClick={() => setOpen(true)} />
+
+      {/* ✅ هيدر الصيدلية بنفس تنسيق الدكتور */}
+      {isPharmacyArea && (
+        <div className="mx-auto w-full max-w-6xl px-4 md:px-6 mt-4">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <img
+                src="/Images/TrustDose-pill.png"
+                alt="TrustDose Capsule"
+                style={{ width: 56, height: "auto" }}
+              />
+              <div>
+                <div className="font-extrabold text-lg" style={{ color: "#334155" }}>
+                  {pharmacy?.pharmacyName || pharmacy?.name
+                    ? `Welcome, ${pharmacy.pharmacyName || pharmacy.name}`
+                    : "Welcome, Pharmacy"}
+                </div>
+                {pharmacy?.BranchID && (
+                  <div className="text-sm text-gray-500">
+                    Branch: {pharmacy.BranchID}
+                  </div>
+                )}
+              </div>
+            </div>
+            {!pharmacy && (
+              <div className="text-sm text-rose-700">
+                Pharmacy record not found.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex-1">
         <Outlet />
@@ -259,10 +307,7 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
           <div className="space-y-3 text-sm">
             <Row label="Pharmacy" value={pharmacy?.pharmacyName || pharmacy?.name || "—"} />
             <Row label="Pharmacy ID" value={pharmacy?.BranchID || "—"} />
-           
-    
             <Row label="Address" value={pharmacy?.address || "—"} />
-        
 
             <div>
               <label className="block text-sm text-gray-700 mb-1">

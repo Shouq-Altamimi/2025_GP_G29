@@ -15,8 +15,8 @@ import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
 // ✅ عناوين العقود من Ganache (بدّليها إذا أعدتِ النشر)
-const PRESCRIPTION_ADDRESS = "0x884FA1D4eEADF75A0f0A916aC88AfD11462e7f25"; // Prescription
-const DISPENSE_ADDRESS     = "0xC346f14ECf5Eeb5d1c4043400A86a05305A56770"; // Dispense
+const PRESCRIPTION_ADDRESS = "0x0289d467A0D9732FCD08cbE5A768C4c2cE7c5fba"; // Prescription
+const DISPENSE_ADDRESS     = "0xE9B6fD4a462bC13F38FA110b719ccBeaCbA2f71C"; // Dispense
 
 // ✅ يطلب MetaMask ويضمن شبكة التطوير
 async function getSignerEnsured() {
@@ -109,6 +109,7 @@ export default function PharmacyApp() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", color: brand.ink, fontFamily: "Arial, sans-serif" }}>
+      
       <main style={{ padding: 24 }}>
         <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
           {route === "Pick Up Orders" && (
@@ -124,6 +125,47 @@ export default function PharmacyApp() {
       </main>
     </div>
   );
+}
+// عرض وقت Firestore مثل لوحة فايربيز: "20 October 2025 at 12:00:13 UTC+3"
+function formatFsCreatedAt(v) {
+  if (!v) return "-";
+  if (typeof v === "string") return v;
+
+  let d;
+  try {
+    if (typeof v?.toDate === "function") d = v.toDate();
+    else if (typeof v?.seconds === "number")
+      d = new Date(v.seconds * 1000 + Math.floor((v.nanoseconds || 0) / 1e6));
+  } catch {}
+
+  if (!(d instanceof Date) || isNaN(d)) return String(v);
+
+  // ننسق حسب توقيت الرياض (UTC+3) تمامًا مثل ما تشوفينه في الكونسول
+  const base = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Riyadh",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(d); // ex: "20 October 2025, 12:00:13"
+
+  return base.replace(",", "") + " UTC+3";
+}
+
+// يعرض الوقت كما هو مخزّن في Firestore (UTC) مع الثواني
+function fmtUTC(ts) {
+  if (!ts) return "-";
+  const d = ts?.toDate ? ts.toDate() : new Date(ts);
+  if (isNaN(d)) return "-";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false
+  }).format(d) + " UTC";
 }
 
 /** ========================= PickUp (البحث والتسليم في الصيدلية) ========================= */
@@ -179,10 +221,11 @@ const freq     = data.frequency ?? data.freq ?? (data.timesPerDay ? `${data.time
       dose: data.dosage || data.dose || "-",
       timesPerDay: showOrDash(data.timesPerDay),
       durationDays: showOrDash(data.durationDays),
-      createdAt: toMaybeISO(data.createdAt) || nowISO(),
+     createdAt: formatFsCreatedAt(data.createdAt),
+
       status: data.status || "-",
       dispensed: !!data.dispensed,
-      dispensedAt: toMaybeISO(data.dispensedAt) || undefined,
+ dispensedAt: data.dispensedAt ? formatFsCreatedAt(data.dispensedAt) : undefined,
       dispensedBy: data.dispensedBy || undefined,
       sensitivity: data.sensitivity || "-",
         // (ADD-ONLY)
@@ -496,7 +539,8 @@ async function runSearch() {
                 <div><b>Dosage:</b> {r.dose}</div>
              
                 <div><b>Duration:</b> {r.durationDays}</div>
-                <div><b>Created:</b> {fmt(r.createdAt)}</div>
+               <div><b>Created:</b> {r.createdAt}</div>
+
                 <div><b>Sensitivity:</b> {r.sensitivity}</div>
 
                 <div style={{ marginTop: 8 }}>
