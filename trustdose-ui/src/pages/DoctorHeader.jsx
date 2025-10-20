@@ -84,7 +84,6 @@ export default function Shell() {
       }
 
       try {
-        // 👇 نعتمد حصريًا على DoctorID
         const qy = query(
           collection(db, "doctors"),
           where("DoctorID", "==", String(userDoctorID)),
@@ -111,7 +110,6 @@ export default function Shell() {
           return;
         }
 
-        // لو ما لقينا شي بهوية DoctorID — نفرّغ
         setDoctor(null);
         setDoctorDocId(null);
         sessionStorage.removeItem("td_doctor");
