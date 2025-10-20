@@ -1643,12 +1643,22 @@
     "5777": {
       "events": {},
       "links": {},
+<<<<<<< HEAD
       "address": "0xd03B2F8CB4ff7569c1CeECd3C1b84078C60894b9",
       "transactionHash": "0xedc837ac01f6b504c01c83a59adc30300d8d4d70a00858cd78d9a6c8a588c4e7"
     }
   },
   "schemaVersion": "3.4.16",
   "updatedAt": "2025-10-20T07:44:23.960Z",
+=======
+      "address": "0x9002178743b193023b19A18aDA4877c9e5AB0224",
+      "transactionHash": "0x120b9d675d7828d90eec9e5cb25045a53f5b27e2c85a5c5260e9b57d6a6ea612"
+    }
+  },
+  "schemaVersion": "3.4.16",
+  "updatedAt": "2025-10-20T12:54:28.665Z",
+  "networkType": "ethereum",
+>>>>>>> 7cf9ee3dd5e4862f649577d7d4d42b74918a94b3
   "devdoc": {
     "kind": "dev",
     "methods": {},

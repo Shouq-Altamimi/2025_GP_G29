@@ -36,20 +36,16 @@ export default function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/doctor-home" element={<DoctorHome />} />
 
-        {/* شِل الطبيب */}
         <Route element={<Shell />}>
           <Route path="/doctor" element={<Doctor />} />
-          {/* صفحة الوصفات التي يستخدمها زر الطبيب */}
           <Route path="/prescriptions" element={<PrescriptionsPage />} />
         </Route>
 
-        {/* شِل المريض */}
         <Route path="/patient" element={<PShell />}>
           <Route index element={<Patient />} />
           <Route path="prescriptions" element={<PrescriptionsPage />} />
         </Route>
 
-        {/* شِل الصيدلية */}
         <Route path="/pharmacy" element={<PharmacyShell />}>
           <Route index element={<Pharmacy />} />
         </Route>

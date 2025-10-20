@@ -19,7 +19,7 @@ import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "luci
 import PRESCRIPTION from "../contracts/Prescription.json";
 
 // ===== عقد البرسكربشن =====
-const CONTRACT_ADDRESS = "0x884FA1D4eEADF75A0f0A916aC88AfD11462e7f25";
+const CONTRACT_ADDRESS = "0x4Da9370dd1289eeF0776D68963f3E1752632Ccab";
 
 /* UI */
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
