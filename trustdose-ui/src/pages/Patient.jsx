@@ -121,7 +121,7 @@ async function fetchPrescriptionsSmart(foundDocId, nid) {
   return { items, blocked: false, error: lastError };
 }
 
-/* ============ Name hydration (uses local map first) ============ */
+/* ============ Name hydration ============ */
 async function hydrateNames(items) {
   const out = [];
   for (const p of items) {
@@ -246,7 +246,7 @@ function WelcomeHeader({ name }) {
       <img
         src="/Images/TrustDose-pill.png"
         alt="TrustDose pill"
-        style={{ width: 28, height: 28, objectFit: "contain" }}
+        style={{ width: 60, height: 60, objectFit: "contain" }}
       />
       <div>
         <div style={{ fontSize: 22, fontWeight: 800, color: TD.brand.ink }}>
