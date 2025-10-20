@@ -121,10 +121,78 @@ async function fetchPrescriptionsSmart(foundDocId, nid) {
   return { items, blocked: false, error: lastError };
 }
 
-/* ============ Name hydration ============ */
+/* ========= Doctor lookups ========= */
+const __doctorCacheById = new Map();     // "Dr-1" => {name, facility}
+const __doctorCacheByCode = new Map();   // "Dr-001" => {name, facility}
+const __doctorCacheByName = new Map();   // "Khalid Altamimi" => {name, facility}
+
+async function fetchDoctorByDocId(docId) {
+  if (!docId) return null;
+  if (__doctorCacheById.has(docId)) return __doctorCacheById.get(docId);
+  try {
+    const ref = doc(db, "doctors", String(docId));
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const d = snap.data();
+      const meta = {
+        name: d.name || d.fullName || d.doctorName || "",
+        facility:
+          d.healthFacility || d.facility || d.hospitalName || (d.hospital && d.hospital.name) || "",
+      };
+      __doctorCacheById.set(docId, meta);
+      return meta;
+    }
+  } catch {}
+  return null;
+}
+
+async function fetchDoctorByCode(code) {
+  if (!code) return null;
+  if (__doctorCacheByCode.has(code)) return __doctorCacheByCode.get(code);
+  try {
+    const col = collection(db, "doctors");
+    const q = fsQuery(col, where("DoctorID", "==", String(code)), fsLimit(1));
+    const qs = await getDocs(q);
+    if (!qs.empty) {
+      const d = qs.docs[0].data();
+      const meta = {
+        name: d.name || d.fullName || d.doctorName || "",
+        facility:
+          d.healthFacility || d.facility || d.hospitalName || (d.hospital && d.hospital.name) || "",
+      };
+      __doctorCacheByCode.set(code, meta);
+      return meta;
+    }
+  } catch {}
+  return null;
+}
+
+async function fetchDoctorByName(name) {
+  if (!name) return null;
+  if (__doctorCacheByName.has(name)) return __doctorCacheByName.get(name);
+  try {
+    const col = collection(db, "doctors");
+    const q = fsQuery(col, where("name", "==", String(name)), fsLimit(1));
+    const qs = await getDocs(q);
+    if (!qs.empty) {
+      const d = qs.docs[0].data();
+      const meta = {
+        name: d.name || d.fullName || d.doctorName || "",
+        facility:
+          d.healthFacility || d.facility || d.hospitalName || (d.hospital && d.hospital.name) || "",
+      };
+      __doctorCacheByName.set(name, meta);
+      return meta;
+    }
+  } catch {}
+  return null;
+}
+
+/* ============ Hydrate doctor + facility ============ */
 async function hydrateNames(items) {
   const out = [];
   for (const p of items) {
+    // Gather current values from RX
     let doctorName =
       p.doctorName ||
       p.doctorFullName ||
@@ -137,18 +205,65 @@ async function hydrateNames(items) {
     let facilityName =
       p.facilityName ||
       p.facility ||
+      p.healthFacility ||
+      p.healthcareFacility ||
       p.clinicName ||
       p.hospitalName ||
       p.locationName ||
       p.pharmacyName ||
       (p.facility && p.facility.name) ||
+      (p.hospital && p.hospital.name) ||
       "";
 
+    // Try DOCTOR_MAP (e.g., wallet address)
     if ((!doctorName || !facilityName) && p.doctorId) {
       const m = DOCTOR_MAP[String(p.doctorId)];
       if (m) {
         if (!doctorName) doctorName = m.name || "";
         if (!facilityName) facilityName = m.facility || "";
+      }
+    }
+
+    // Try by explicit IDs/codes from RX
+    if (!doctorName || !facilityName) {
+      const idCandidates = [
+        p.doctorId,      // e.g., "Dr-1"
+        p.doctorRef,
+        p.createdBy,     // sometimes holds "Dr-1"
+      ].filter(Boolean);
+
+      for (const idc of idCandidates) {
+        const meta = await fetchDoctorByDocId(idc);
+        if (meta) {
+          if (!doctorName) doctorName = meta.name || "";
+          if (!facilityName) facilityName = meta.facility || "";
+          if (doctorName && facilityName) break;
+        }
+      }
+    }
+
+    if (!doctorName || !facilityName) {
+      const codeCandidates = [
+        p.doctorCode,    // e.g., "Dr-001" (matches DoctorID)
+        p.prescriberId,  // if you store DoctorID here
+      ].filter(Boolean);
+
+      for (const code of codeCandidates) {
+        const meta = await fetchDoctorByCode(code);
+        if (meta) {
+          if (!doctorName) doctorName = meta.name || "";
+          if (!facilityName) facilityName = meta.facility || "";
+          if (doctorName && facilityName) break;
+        }
+      }
+    }
+
+    // Last resort: match by name (common in your data)
+    if ((!facilityName || !doctorName) && doctorName) {
+      const meta = await fetchDoctorByName(doctorName);
+      if (meta) {
+        if (!doctorName) doctorName = meta.name || "";
+        if (!facilityName) facilityName = meta.facility || "";
       }
     }
 
@@ -458,7 +573,7 @@ export default function PatientPage() {
 
                       <Row label="Patient Name" value={fullName} />
                       <Row label="National ID" value={maskNid(p.patientNationalID || p.nationalID)} />
-                      <Row label="Facility" value={facility} />
+                      <Row label="Healthcare Facility" value={facility} />
                       <Row label="Doctor Name" value={doctor} />
                       <Row label="Date & Time" value={createdFull} />
 
@@ -478,7 +593,6 @@ export default function PatientPage() {
                         <Row label="Frequency" value={p.frequency || p.timesPerDay || "—"} />
                         <Row label="Duration" value={p.durationDays ?? "—"} />
 
-                        {/* ✅ تعديل عرض الحساسية مع شرطة */}
                         {p.sensitivity && (
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <div style={{ color: "#6b7280", width: 170 }}>Sensitivity</div>
