@@ -14,16 +14,10 @@ import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
-// ✅ عناوين العقود من Ganache (بدّليها إذا أعدتِ النشر)
-<<<<<<< HEAD
-const PRESCRIPTION_ADDRESS = "0x0289d467A0D9732FCD08cbE5A768C4c2cE7c5fba"; // Prescription
-const DISPENSE_ADDRESS     = "0xE9B6fD4a462bC13F38FA110b719ccBeaCbA2f71C"; // Dispense
-=======
-const PRESCRIPTION_ADDRESS = "0x4Da9370dd1289eeF0776D68963f3E1752632Ccab"; // Prescription
-const DISPENSE_ADDRESS     = "0x6e245b8b7AdfEb5F9362c5BF0f89ba1A918019Bc"; // Dispense
->>>>>>> 7cf9ee3dd5e4862f649577d7d4d42b74918a94b3
+const PRESCRIPTION_ADDRESS = "0x34Ae4732678f7a12273a9639552Eb051Fdc7c5bd"; // Prescription
+const DISPENSE_ADDRESS     = "0xF7590CfeB10C1C45EF0ee104a666619b2eD40B74"; // Dispense
 
-// ✅ يطلب MetaMask ويضمن شبكة التطوير
+// ✅ يطلب MetaMask ويضمن شبكة التطوي
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected.");
   await window.ethereum.request({ method: "eth_requestAccounts" });

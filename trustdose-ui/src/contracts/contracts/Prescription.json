@@ -11339,12 +11339,12 @@
     "5777": {
       "events": {},
       "links": {},
-      "address": "0x4Da9370dd1289eeF0776D68963f3E1752632Ccab",
-      "transactionHash": "0x0f3545c27e0c4694447b07c85161d9f226b5b5754e8b6927e75550d2cbc2ab77"
+      "address": "0x34Ae4732678f7a12273a9639552Eb051Fdc7c5bd",
+      "transactionHash": "0xb2050d178f592dbdfbd68f80d20df4476c56e816ba0fdfafb4669cab3802b5a3"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-10-20T12:54:28.641Z",
+  "updatedAt": "2025-10-20T16:04:04.053Z",
   "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",

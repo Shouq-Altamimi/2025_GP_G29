@@ -448,7 +448,25 @@ export default function TrustDoseAuth() {
 
       setMsg(`✅ Logged in as ${role}. Welcome ${displayName}!`);
 
-      if (role === "doctor") navigate("/doctor", { replace: true });
+          if (role === "doctor") {
+        const welcomeDoctor = {
+          DoctorID: user.DoctorID || id,
+          name: user.name || "",
+          healthFacility: user.healthFacility || user.healthFacilityName || "",
+          speciality: user.speciality || user.specialization || "",
+          phone: user.phone || "",
+        };
+
+        localStorage.setItem("welcome_doctor", JSON.stringify(welcomeDoctor));
+        localStorage.setItem("userRole", "doctor");
+        localStorage.setItem("userId", user.DoctorID || id);
+
+        setMsg(`✅ Logged in as doctor. Welcome ${user.name || id}!`);
+        navigate("/doctor", { replace: true });
+        setLoading(false);
+        return; 
+      }
+      
       else if (role === "pharmacy") navigate("/pharmacy", { replace: true });
       else if (role === "patient") navigate("/patient", { replace: true });
       else navigate("/", { replace: true });
