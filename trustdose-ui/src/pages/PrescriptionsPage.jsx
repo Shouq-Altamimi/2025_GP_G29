@@ -5,7 +5,6 @@ import { collection, query, where, getDocs } from "firebase/firestore";
 
 const C = { primary: "#B08CC1", ink: "#0f172a", pale: "#F6F1FA" };
 
-// SHA-256 (نفس المساعدة في Doctor.jsx)
 async function sha256Hex(input) {
   const enc = new TextEncoder();
   const hash = await crypto.subtle.digest("SHA-256", enc.encode(input));
@@ -69,7 +68,6 @@ export default function PrescriptionsPage() {
           Prescriptions {patientName ? `for ${patientName}` : ""}
         </h1>
 
-        {/* خانة البحث أكبر */}
         <div className="mt-3 flex gap-2">
           <input
             className="flex-1 px-4 py-3 border rounded-xl text-base"

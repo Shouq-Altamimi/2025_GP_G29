@@ -2,13 +2,12 @@
 pragma solidity ^0.8.19;
 
 /// @title TrustDose Prescription Registry
-/// @notice يسجّل الوصفات على السلسلة.
+/// @notice 
 contract Prescription {
-    // ======= إعدادات عامة =======
-    uint256 public constant DEFAULT_VALIDITY = 48 hours;   // الصلاحية الافتراضية
-    uint256 public constant MAX_EXTENSION    = 30 days;    // حد أقصى للتمديد في الطلب الواحد
+    uint256 public constant DEFAULT_VALIDITY = 48 hours;   
+    uint256 public constant MAX_EXTENSION    = 30 days;    
 
-    // ======= صلاحيات بسيطة بدون مكتبات خارجية =======
+//roles
     address public admin;
     mapping(address => bool) public isDoctor;
     mapping(address => bool) public isPharmacist;
