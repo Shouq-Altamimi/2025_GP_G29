@@ -17,7 +17,6 @@ import DISPENSE from "../contracts/Dispense.json";
 const PRESCRIPTION_ADDRESS = "0x34Ae4732678f7a12273a9639552Eb051Fdc7c5bd"; // Prescription
 const DISPENSE_ADDRESS     = "0xF7590CfeB10C1C45EF0ee104a666619b2eD40B74"; // Dispense
 
-// ✅ يطلب MetaMask ويضمن شبكة التطوي
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected.");
   await window.ethereum.request({ method: "eth_requestAccounts" });
