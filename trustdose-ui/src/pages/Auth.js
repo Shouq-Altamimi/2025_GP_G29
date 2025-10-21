@@ -31,7 +31,23 @@ const TD = {
 };
 
 /* =========================
-   PBKDF2-SHA256 (WebCrypto)
+   SHA-256 Hashing (for doctors & pharmacies)
+   ========================= */
+async function hashPasswordSHA256(password) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function verifyPasswordSHA256(inputPassword, storedHash) {
+  const inputHash = await hashPasswordSHA256(inputPassword);
+  return inputHash === storedHash;
+}
+
+/* =========================
+   PBKDF2-SHA256 (for patients)
    ========================= */
 async function pbkdf2Hash(password, saltBase64, iterations = 100_000) {
   const enc = new TextEncoder();
@@ -333,11 +349,10 @@ export default function TrustDoseAuth() {
     [mode]
   );
 
-  // ===== فقط هذا تغيّر: دعم B-1 للصيدلية =====
   function detectSource(id) {
     const clean = String(id || "").trim();
 
-    // ✅ Pharmacy branch like "B-1" is stored in collection("pharmacies") with field BranchID
+    // Pharmacy branch like "B-1"
     if (/^B-\d+$/i.test(clean)) {
       return { coll: "pharmacies", idFields: ["BranchID"], role: "pharmacy" };
     }
@@ -347,7 +362,6 @@ export default function TrustDoseAuth() {
     }
 
     if (/^(ph|phar|pharmacy)[-_]?\w+/i.test(clean)) {
-      // generic pharmacy IDs if you have other formats
       return { coll: "pharmacies", idFields: ["BranchID", "PharmacyID"], role: "pharmacy" };
     }
 
@@ -358,7 +372,7 @@ export default function TrustDoseAuth() {
     return { coll: "logistics", idFields: ["companyName"], role: "logistics" };
   }
 
-  // ===== Sign in =====
+  // ===== Sign in with SHA-256 support =====
   async function handleSignIn(e) {
     e.preventDefault();
     setMsg("");
@@ -371,8 +385,9 @@ export default function TrustDoseAuth() {
 
       const { coll, idFields, role } = detectSource(id);
       let user = null;
-      let userDocId = null; // ⬅️ نحتفظ بـ docId
+      let userDocId = null;
 
+      // Patient lookup
       if (role === "patient") {
         try {
           const p = await getDoc(doc(db, "patients", `Ph_${id}`));
@@ -380,14 +395,12 @@ export default function TrustDoseAuth() {
         } catch {}
       }
 
-      // ✅ Fallback خاص بالصيدلية: جرّب Phar_Nahdi ثم pharmacies إذا كان النمط B-<num>
+      // Pharmacy lookup (B-1 pattern)
       if (!user && /^B-\d+$/i.test(id)) {
         try {
-          // Phar_Nahdi
           let snap = await getDocs(query(collection(db, "Phar_Nahdi"), where("BranchID", "==", id)));
           if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
 
-          // pharmacies (لو فيه نسخة ثانية)
           if (!user) {
             snap = await getDocs(query(collection(db, "pharmacies"), where("BranchID", "==", id)));
             if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
@@ -395,7 +408,7 @@ export default function TrustDoseAuth() {
         } catch {}
       }
 
-      // منطقك الأصلي كما هو
+      // General lookup
       if (!user) {
         for (const f of idFields) {
           try {
@@ -403,7 +416,7 @@ export default function TrustDoseAuth() {
             const snap = await getDocs(q);
             if (!snap.empty) {
               user = snap.docs[0].data();
-              userDocId = snap.docs[0].id; // ⬅️
+              userDocId = snap.docs[0].id;
               break;
             }
           } catch {}
@@ -415,32 +428,61 @@ export default function TrustDoseAuth() {
         return;
       }
 
+      // ===== Password verification =====
+      console.log('🔐 Verifying password for role:', role);
+      console.log('User has passwordHash?', 'passwordHash' in user);
+      console.log('User has password?', 'password' in user);
+
+      // For patients: PBKDF2
       if ("passwordHash" in user && "passwordSalt" in user) {
         if (!pass) {
           setMsg("Please enter your password.");
           return;
         }
+        console.log('Using PBKDF2 verification (patient)');
         const derived = await pbkdf2Hash(pass, user.passwordSalt, 100_000);
         if (derived !== user.passwordHash) {
           setMsg("❌ ID or password incorrect.");
           return;
         }
-      } else if ("password" in user) {
-        if (!pass || String(user.password) !== pass) {
+      } 
+      // For doctors & pharmacies: SHA-256 or plain text
+      else if ("password" in user) {
+        if (!pass) {
+          setMsg("Please enter your password.");
+          return;
+        }
+
+        const storedPassword = String(user.password);
+        let isCorrect = false;
+
+        // Check if it's SHA-256 hashed (64 hex characters)
+        const isHashed = storedPassword.length === 64 && /^[a-f0-9]+$/.test(storedPassword);
+        
+        if (isHashed) {
+          console.log('Using SHA-256 verification');
+          isCorrect = await verifyPasswordSHA256(pass, storedPassword);
+        } else {
+          console.log('Using plain text verification');
+          isCorrect = pass === storedPassword;
+        }
+
+        if (!isCorrect) {
           setMsg("❌ ID or password incorrect.");
           return;
         }
-      } else {
+      } 
+      else {
         console.warn(`[Auth] user has no password fields (allowed in dev).`);
       }
 
       const displayName = user.name || user.companyName || id;
 
-      // ⬇️ تخزين role و المعرّفات بالصورة الصحيحة
+      // Store credentials
       if (role === "pharmacy") {
         localStorage.setItem("userRole", "pharmacy");
-        localStorage.setItem("userId", userDocId || id);            // الأفضل docId (مثل Phar_Nahdi)
-        if (user.BranchID) localStorage.setItem("pharmacyBranchId", user.BranchID); // مثال B-1
+        localStorage.setItem("userId", userDocId || id);
+        if (user.BranchID) localStorage.setItem("pharmacyBranchId", user.BranchID);
       } else {
         localStorage.setItem("userId", id);
         localStorage.setItem("userRole", role);
@@ -448,7 +490,7 @@ export default function TrustDoseAuth() {
 
       setMsg(`✅ Logged in as ${role}. Welcome ${displayName}!`);
 
-          if (role === "doctor") {
+      if (role === "doctor") {
         const welcomeDoctor = {
           DoctorID: user.DoctorID || id,
           name: user.name || "",
@@ -480,112 +522,107 @@ export default function TrustDoseAuth() {
 
   // ===== Patient Sign up =====
   async function handleSignUp(e) {
-  e.preventDefault();
-  setMsg("");
-  setLoading(true);
+    e.preventDefault();
+    setMsg("");
+    setLoading(true);
 
-  try {
-    // ‼️ حوّل كل شيء لأرقام/نصوص ASCII قبل أي فحص
-    const nidAscii = toEnglishDigits(String(nationalId ?? "")).trim();
-    if (!isValidNationalIdStrict(nidAscii)) {
-      throw new Error("National ID must be 10 digits starting with 1 or 2 (ASCII digits only, no spaces).");
+    try {
+      const nidAscii = toEnglishDigits(String(nationalId ?? "")).trim();
+      if (!isValidNationalIdStrict(nidAscii)) {
+        throw new Error("National ID must be 10 digits starting with 1 or 2 (ASCII digits only, no spaces).");
+      }
+
+      const phoneRaw = String(phone ?? "");
+      const phoneCheck = validateAndNormalizePhone(phoneRaw);
+
+      const pass  = String(password ?? "").trim();
+      const pass2 = String(confirmPassword ?? "").trim();
+      const nm    = String(name ?? "").trim();
+      const g     = String(gender ?? "").trim();
+      const c     = String(city ?? "").trim();
+      const d     = String(district === "__OTHER__" ? (districtOther ?? "") : (district ?? "")).trim();
+
+      const bdateStr = String(birthDate ?? "").trim();
+      let bdObj;
+      {
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(bdateStr);
+        if (!m) throw new Error("Invalid birth date.");
+        const y = Number(m[1]), mo = Number(m[2]), dy = Number(m[3]);
+        bdObj = new Date(Date.UTC(y, mo - 1, dy, 0, 0, 0));
+      }
+      if (Number.isNaN(bdObj.getTime())) throw new Error("Invalid birth date.");
+
+      const maxBirth = new Date(Date.UTC(2007, 11, 31, 23, 59, 59));
+      if (bdObj > maxBirth) throw new Error("Birth date must be 2007 or earlier.");
+
+      if (!phoneCheck.ok) throw new Error(phoneCheck.reason || "Invalid phone.");
+      const phoneNorm = phoneCheck.normalized;
+
+      if (!nidAscii || !phoneRaw || !pass || !pass2 || !nm || !g || !bdateStr || !c || !d) {
+        throw new Error("Please fill all fields.");
+      }
+      if (!["Male", "Female"].includes(g)) throw new Error("Gender must be Male or Female.");
+
+      const pw = passwordStrength(pass);
+      const meetsPolicy = pw.len8 && pw.hasLower && pw.hasUpper && pw.hasDigit;
+      if (!meetsPolicy) throw new Error("Password must be at least 8 chars and include lowercase, uppercase, and a digit.");
+      if (pass !== pass2) throw new Error("Passwords do not match.");
+
+      const docId = `Ph_${nidAscii}`;
+
+      const existsSnap = await getDoc(doc(db, "patients", docId));
+      if (existsSnap.exists()) throw new Error("An account with this National ID already exists.");
+
+      const phoneQ = query(collection(db, "patients"), where("contact", "==", phoneNorm));
+      const phoneSnap = await getDocs(phoneQ);
+      if (!phoneSnap.empty) throw new Error("This phone number is already registered.");
+
+      const saltB64 = genSaltBase64(16);
+      const hashB64 = await pbkdf2Hash(pass, saltB64, 100_000);
+
+      console.log("[signup] hashLen:", hashB64.length, "saltLen:", saltB64.length);
+
+      const payload = {
+        locationCity: c,
+        locationDistrict: d,
+        locationLabel: `${c}, ${d}`,
+        birthDate: Timestamp.fromDate(bdObj),
+        contact: phoneNorm,
+        gender: g,
+        name: nm,
+        nationalID: nidAscii,
+        nationalId: nidAscii,
+        passwordHash: hashB64,
+        passwordSalt: saltB64,
+        passwordAlgo: "PBKDF2-SHA256-100k",
+        createdAt: serverTimestamp(),
+      };
+
+      await setDoc(doc(db, "patients", docId), payload);
+
+      setMsg("🎉 Patient account created successfully. You can sign in now.");
+      setMode("signin");
+      setAccountId(nidAscii);
+      setPassword("");
+      setConfirmPassword("");
+      setName("");
+      setGender("");
+      setBirthDate("");
+      setPhone("");
+      setCity("");
+      setDistrict("");
+      setDistrictOther("");
+      setPhoneInfo({ ok: false, reason: "", normalized: "" });
+      setPhoneTaken(false);
+      setNationalIdErr("");
+      setBirthDateErr("");
+    } catch (err) {
+      console.error("signup error:", err?.code, err?.message, err);
+      setMsg(`❌ ${err?.code || ""} ${err?.message || err}`);
+    } finally {
+      setLoading(false);
     }
-
-    const phoneRaw = String(phone ?? "");
-    const phoneCheck = validateAndNormalizePhone(phoneRaw);
-
-    const pass  = String(password ?? "").trim();
-    const pass2 = String(confirmPassword ?? "").trim();
-    const nm    = String(name ?? "").trim();
-    const g     = String(gender ?? "").trim(); // "Male" | "Female"
-    const c     = String(city ?? "").trim();
-    const d     = String(district === "__OTHER__" ? (districtOther ?? "") : (district ?? "")).trim();
-
-    // تاريخ الميلاد: فسّره بشكل صارم من input type=date (YYYY-MM-DD)
-    const bdateStr = String(birthDate ?? "").trim();
-    let bdObj;
-    {
-      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(bdateStr);
-      if (!m) throw new Error("Invalid birth date.");
-      const y = Number(m[1]), mo = Number(m[2]), dy = Number(m[3]);
-      bdObj = new Date(Date.UTC(y, mo - 1, dy, 0, 0, 0));
-    }
-    if (Number.isNaN(bdObj.getTime())) throw new Error("Invalid birth date.");
-
-    const maxBirth = new Date(Date.UTC(2007, 11, 31, 23, 59, 59));
-    if (bdObj > maxBirth) throw new Error("Birth date must be 2007 or earlier.");
-
-    if (!phoneCheck.ok) throw new Error(phoneCheck.reason || "Invalid phone.");
-    const phoneNorm = phoneCheck.normalized;
-
-    if (!nidAscii || !phoneRaw || !pass || !pass2 || !nm || !g || !bdateStr || !c || !d) {
-      throw new Error("Please fill all fields.");
-    }
-    if (!["Male", "Female"].includes(g)) throw new Error("Gender must be Male or Female.");
-
-    const pw = passwordStrength(pass);
-    const meetsPolicy = pw.len8 && pw.hasLower && pw.hasUpper && pw.hasDigit;
-    if (!meetsPolicy) throw new Error("Password must be at least 8 chars and include lowercase, uppercase, and a digit.");
-    if (pass !== pass2) throw new Error("Passwords do not match.");
-
-    const docId = `Ph_${nidAscii}`;
-
-    const existsSnap = await getDoc(doc(db, "patients", docId));
-    if (existsSnap.exists()) throw new Error("An account with this National ID already exists.");
-
-    const phoneQ = query(collection(db, "patients"), where("contact", "==", phoneNorm));
-    const phoneSnap = await getDocs(phoneQ);
-    if (!phoneSnap.empty) throw new Error("This phone number is already registered.");
-
-    // كلمة المرور: PBKDF2-SHA256 32 بايت -> Base64 طوله 44
-    const saltB64 = genSaltBase64(16); // 16 بايت -> Base64 طوله 24
-    const hashB64 = await pbkdf2Hash(pass, saltB64, 100_000);
-
-    // لوج للتأكد من الأطوال المطلوبة في الrules
-    console.log("[signup] hashLen:", hashB64.length, "saltLen:", saltB64.length);
-
-    const payload = {
-      locationCity: c,
-      locationDistrict: d,
-      locationLabel: `${c}, ${d}`,
-      birthDate: Timestamp.fromDate(bdObj),
-      contact: phoneNorm,
-      gender: g,
-      name: nm,
-      nationalID: nidAscii,
-      nationalId: nidAscii,
-      passwordHash: hashB64,
-      passwordSalt: saltB64,
-      passwordAlgo: "PBKDF2-SHA256-100k",
-      createdAt: serverTimestamp(),
-    };
-
-    await setDoc(doc(db, "patients", docId), payload);
-
-    setMsg("🎉 Patient account created successfully. You can sign in now.");
-    setMode("signin");
-    setAccountId(nidAscii);
-    setPassword("");
-    setConfirmPassword("");
-    setName("");
-    setGender("");
-    setBirthDate("");
-    setPhone("");
-    setCity("");
-    setDistrict("");
-    setDistrictOther("");
-    setPhoneInfo({ ok: false, reason: "", normalized: "" });
-    setPhoneTaken(false);
-    setNationalIdErr("");
-    setBirthDateErr("");
-  } catch (err) {
-    console.error("signup error:", err?.code, err?.message, err);
-    setMsg(`❌ ${err?.code || ""} ${err?.message || err}`);
-  } finally {
-    setLoading(false);
   }
-}
-
 
   const currentDistricts = useMemo(
     () => (city ? DISTRICTS_BY_CITY[city] || ["Other…"] : []),

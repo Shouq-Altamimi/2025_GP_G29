@@ -15,9 +15,8 @@ import {
   limit as fsLimit,
   updateDoc,
   deleteField,
-  serverTimestamp,
 } from "firebase/firestore";
-import { FilePlus2, User, LogOut, X } from "lucide-react";
+import { FilePlus2, User, LogOut, X, Eye, EyeOff, Lock, CheckCircle, XCircle } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
@@ -30,6 +29,20 @@ function pickStr(obj, keys) {
   return "";
 }
 
+// دوال التشفير SHA-256
+async function hashPassword(password) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function verifyPassword(inputPassword, storedHash) {
+  const inputHash = await hashPassword(inputPassword);
+  return inputHash === storedHash;
+}
+
 function normalizeDoctor(raw) {
   if (!raw) return null;
   return {
@@ -40,6 +53,7 @@ function normalizeDoctor(raw) {
     DoctorID: pickStr(raw, ["DoctorID"]),
     phone: pickStr(raw, ["phone"]),
     email: pickStr(raw, ["email"]),
+    password: raw?.password || "",
   };
 }
 
@@ -224,7 +238,7 @@ function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
   const styles = active
     ? "bg-white text-[#5B3A70]"
     : variant === "ghost"
-    ? "text白/90 hover:bg-white/10".replace("白", "white")
+    ? "text-white/90 hover:bg-white/10"
     : "bg-white/25 text-white hover:bg-white/35";
   return (
     <button onClick={onClick} className={`${base} ${styles}`}>
@@ -268,7 +282,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
     }
   }
 
-  // ===== Email + Verify (doctor only now) =====
+  // ===== Email =====
   const [emailInput, setEmailInput] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
@@ -276,49 +290,45 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   const hasEmail = !!doctor?.email;
 
   async function sendVerifyLink() {
-  try {
-    setEmailMsg("");
-    const raw = String(emailInput || "").trim().toLowerCase();
-    const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
-    if (!ok) { 
-      setEmailMsg("الرجاء إدخال بريد إلكتروني صالح."); 
-      return; 
+    try {
+      setEmailMsg("");
+      const raw = String(emailInput || "").trim().toLowerCase();
+      const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
+      if (!ok) {
+        setEmailMsg("الرجاء إدخال بريد إلكتروني صالح.");
+        return;
+      }
+
+      const BASE = window.location.origin;
+      const params = new URLSearchParams({
+        col: "doctors",
+        doc: String(doctorDocId || ""),
+        e: raw,
+        redirect: "/doctor",
+      });
+
+      const settings = {
+        url: `${BASE}/auth-email?${params.toString()}`,
+        handleCodeInApp: true,
+      };
+
+      setEmailLoading(true);
+      await sendSignInLinkToEmail(getAuth(), raw, settings);
+
+      localStorage.setItem("td_email_pending", JSON.stringify({ email: raw, ts: Date.now() }));
+      setEmailMsg("تم إرسال رابط التحقق إلى بريدك. افتحيه ثم ارجعي للتطبيق.");
+    } catch (e) {
+      console.error("Firebase:", e.code, e.message);
+      setEmailMsg(`Firebase: ${e?.code || e?.message || "تعذر إرسال رابط التحقق."}`);
+    } finally {
+      setEmailLoading(false);
     }
-
-    // 🔥 الحل: استخدمي الـ origin الحالي بدال web.app
-    const BASE = window.location.origin; // هذا يعطيك localhost:5173 لو على المحلي
-    
-    const params = new URLSearchParams({
-      col: "doctors",
-      doc: String(doctorDocId || ""),
-      e: raw,
-      redirect: "/doctor",
-    });
-
-    const settings = {
-      url: `${BASE}/auth-email?${params.toString()}`,
-      handleCodeInApp: true,
-    };
-
-    console.log("📧 Sending verification link to:", settings.url);
-
-    setEmailLoading(true);
-    await sendSignInLinkToEmail(getAuth(), raw, settings);
-
-    localStorage.setItem("td_email_pending", JSON.stringify({ email: raw, ts: Date.now() }));
-    setEmailMsg("تم إرسال رابط التحقق إلى بريدك. افتحيه ثم ارجعي للتطبيق.");
-  } catch (e) {
-    console.error("Firebase:", e.code, e.message);
-    setEmailMsg(`Firebase: ${e?.code || e?.message || "تعذر إرسال رابط التحقق."}`);
-  } finally {
-    setEmailLoading(false);
   }
-}
 
   return (
     <>
       <div className="fixed inset-0 bg-black/40 z-50" onClick={onClose} />
-      <div className="fixed inset-0 z-50 grid place-items-center px-4">
+      <div className="fixed inset-0 z-50 grid place-items-center px-4 overflow-y-auto py-8">
         <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-semibold" style={{ color: C.ink }}>
@@ -400,13 +410,27 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                   </div>
 
                   {!!emailMsg && (
-                    <div className="mt-2 text-sm" style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534" }}>
+                    <div
+                      className="mt-2 text-sm"
+                      style={{
+                        color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534",
+                      }}
+                    >
                       {emailMsg}
                     </div>
                   )}
                 </>
               )}
             </div>
+
+            {/* Password Reset Section - Only show if email is verified */}
+            {hasEmail && (
+              <PasswordResetSection 
+                doctor={doctor}
+                doctorDocId={doctorDocId}
+                onSaved={onSaved}
+              />
+            )}
 
             {!!msg && <div className="text-sm">{msg}</div>}
           </div>
@@ -427,6 +451,280 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
         </div>
       </div>
     </>
+  );
+}
+
+// ===== Password Reset Component =====
+function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
+  const [showOld, setShowOld] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  
+  const [oldPass, setOldPass] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [confirmPass, setConfirmPass] = useState('');
+  
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [msgType, setMsgType] = useState('');
+
+  // نفس دالة passwordStrength من Auth.js
+  const passwordStrength = (pw) => {
+    const p = String(pw || "");
+    let score = 0;
+    const hasLower = /[a-z]/.test(p);
+    const hasUpper = /[A-Z]/.test(p);
+    const hasDigit = /\d/.test(p);
+    const hasSymbol = /[^A-Za-z0-9]/.test(p);
+    const len8 = p.length >= 8;
+    const len12 = p.length >= 12;
+    if (len8) score++;
+    if (hasLower) score++;
+    if (hasUpper) score++;
+    if (hasDigit) score++;
+    if (hasSymbol) score++;
+    if (len12) score++;
+    let label = "Weak";
+    let color = "#ef4444";
+    if (score >= 4) { label = "Medium"; color = "#f59e0b"; }
+    if (score >= 5) { label = "Strong"; color = "#10b981"; }
+    const width = Math.min(100, Math.round((score / 6) * 100));
+    return { score, label, color, width, hasLower, hasUpper, hasDigit, hasSymbol, len8 };
+  };
+
+  const pwInfo = passwordStrength(newPass);
+  
+  // إضافة passValidation هنا
+  const passValidation = (() => {
+    const p = String(newPass || "");
+    if (!p) return { ok: false, msg: "Password is required" };
+    if (p.length < 8) return { ok: false, msg: "At least 8 characters required" };
+    if (!/[a-z]/.test(p)) return { ok: false, msg: "Must include lowercase letter" };
+    if (!/[A-Z]/.test(p)) return { ok: false, msg: "Must include uppercase letter" };
+    if (!/\d/.test(p)) return { ok: false, msg: "Must include number" };
+    return { ok: true, msg: "Password meets requirements" };
+  })();
+  
+  const meetsPolicy = pwInfo.len8 && pwInfo.hasLower && pwInfo.hasUpper && pwInfo.hasDigit;
+
+  const handleResetPassword = async () => {
+    try {
+      setMsg('');
+      setMsgType('');
+
+      console.log('🔐 Starting password reset...');
+      console.log('Doctor Doc ID:', doctorDocId);
+
+      if (!oldPass || !newPass || !confirmPass) {
+        setMsg('Please fill all fields');
+        setMsgType('error');
+        return;
+      }
+
+      if (!passValidation.ok) {
+        setMsg(passValidation.msg);
+        setMsgType('error');
+        return;
+      }
+
+      if (newPass !== confirmPass) {
+        setMsg('New passwords do not match');
+        setMsgType('error');
+        return;
+      }
+
+      if (oldPass === newPass) {
+        setMsg('New password must be different from old password');
+        setMsgType('error');
+        return;
+      }
+
+      setLoading(true);
+
+      const docRef = doc(db, 'doctors', doctorDocId);
+      console.log('📄 Fetching doctor document...');
+      const docSnap = await getDoc(docRef);
+      
+      if (!docSnap.exists()) {
+        console.error('❌ Doctor document not found');
+        setMsg('Doctor record not found');
+        setMsgType('error');
+        setLoading(false);
+        return;
+      }
+
+      const currentPassword = docSnap.data().password;
+      console.log('Current password in DB:', currentPassword);
+      console.log('Old password entered:', oldPass);
+
+      // التحقق من كلمة المرور القديمة
+      let isOldCorrect = false;
+      
+      // فحص إذا كانت الباسوورد مشفرة (SHA-256 = 64 حرف hex)
+      const isHashed = currentPassword && currentPassword.length === 64 && /^[a-f0-9]+$/.test(currentPassword);
+      console.log('Is password hashed?', isHashed);
+      
+      if (isHashed) {
+        // الباسوورد مشفرة، نستخدم verifyPassword
+        isOldCorrect = await verifyPassword(oldPass, currentPassword);
+        console.log('Hashed verification result:', isOldCorrect);
+      } else {
+        // الباسوورد plain text
+        isOldCorrect = oldPass === currentPassword;
+        console.log('Plain text verification result:', isOldCorrect);
+      }
+
+      if (!isOldCorrect) {
+        console.error('❌ Current password is incorrect');
+        setMsg('Current password is incorrect');
+        setMsgType('error');
+        setLoading(false);
+        return;
+      }
+
+      // تشفير الباسوورد الجديدة
+      console.log('🔒 Hashing new password...');
+      const hashedPassword = await hashPassword(newPass);
+      console.log('New hashed password:', hashedPassword);
+
+      // تحديث الباسوورد في Firebase
+      console.log('💾 Updating password in Firebase...');
+      await updateDoc(docRef, {
+        password: hashedPassword,
+        passwordUpdatedAt: new Date(),
+      });
+
+      console.log('✅ Password updated successfully!');
+      setMsg('Password updated successfully! ✓');
+      setMsgType('success');
+      
+      setOldPass('');
+      setNewPass('');
+      setConfirmPass('');
+
+      onSaved?.({ passwordUpdated: true });
+
+    } catch (error) {
+      console.error('❌ Password reset error:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      setMsg(error.message || 'Failed to update password');
+      setMsgType('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-6 pt-6 border-t border-gray-200">
+      <div className="flex items-center gap-2 mb-4">
+        <Lock size={18} style={{ color: C.primary }} />
+        <h4 className="font-semibold text-gray-800">Change Password</h4>
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm text-gray-700 mb-1">
+            Current Password <span className="text-rose-600">*</span>
+          </label>
+          <div className="relative">
+            <input
+              type={showOld ? "text" : "password"}
+              value={oldPass}
+              onChange={(e) => setOldPass(e.target.value)}
+              className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:border-transparent"
+              style={{ outlineColor: C.primary }}
+              placeholder="Enter current password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowOld(!showOld)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+            >
+              {showOld ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm text-gray-700 mb-1">
+            New Password <span className="text-rose-600">*</span>
+          </label>
+          <div className="relative">
+            <input
+              type={showNew ? "text" : "password"}
+              value={newPass}
+              onChange={(e) => setNewPass(e.target.value)}
+              className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:border-transparent"
+              style={{ outlineColor: C.primary }}
+              placeholder="Enter new password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowNew(!showNew)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+            >
+              {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+          {newPass && (
+            <div className={`text-xs mt-1 flex items-center gap-1 ${passValidation.ok ? 'text-green-600' : 'text-rose-600'}`}>
+              {passValidation.ok ? <CheckCircle size={14} /> : <XCircle size={14} />}
+              {passValidation.msg}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm text-gray-700 mb-1">
+            Confirm New Password <span className="text-rose-600">*</span>
+          </label>
+          <div className="relative">
+            <input
+              type={showConfirm ? "text" : "password"}
+              value={confirmPass}
+              onChange={(e) => setConfirmPass(e.target.value)}
+              className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:border-transparent"
+              style={{ outlineColor: C.primary }}
+              placeholder="Confirm new password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirm(!showConfirm)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+            >
+              {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+          {confirmPass && newPass !== confirmPass && (
+            <div className="text-xs mt-1 text-rose-600 flex items-center gap-1">
+              <XCircle size={14} />
+              Passwords do not match
+            </div>
+          )}
+        </div>
+
+        {msg && (
+          <div className={`p-3 rounded-lg text-sm ${
+            msgType === 'success' 
+              ? 'bg-green-50 text-green-800 border border-green-200' 
+              : 'bg-rose-50 text-rose-800 border border-rose-200'
+          }`}>
+            {msg}
+          </div>
+        )}
+
+        <button
+          onClick={handleResetPassword}
+          disabled={loading || !oldPass || !newPass || !confirmPass || newPass !== confirmPass || !passValidation.ok}
+          className="w-full py-2.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-[1.02]"
+          style={{ background: C.primary }}
+        >
+          {loading ? 'Updating...' : 'Update Password'}
+        </button>
+      </div>
+
+    </div>
   );
 }
 
