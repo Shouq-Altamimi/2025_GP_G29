@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 
 /* =========================
-   Local mapping
+   0) Local mapping (اختياري)
    ========================= */
 const DOCTOR_MAP = {
   "0x4F5b09D9940a1fF83463De89BD25C216fBd86E5C": {
@@ -127,43 +127,23 @@ async function fetchPrescriptionsSmart(foundDocId, nid) {
 }
 
 /* =========================
-   Doctor info helpers
+   Hydrate doctor info (from prescription only)
    ========================= */
-const __doctorCacheById = new Map();
-
-async function fetchDoctorByDocId(docId) {
-  if (!docId) return null;
-  if (__doctorCacheById.has(docId)) return __doctorCacheById.get(docId);
-  try {
-    const ref = doc(db, "doctors", String(docId));
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      const d = snap.data();
-      const meta = {
-        name: d.name || d.fullName || d.doctorName || "",
-        facility:
-          d.healthFacility || d.facility || d.hospitalName || (d.hospital && d.hospital.name) || "",
-      };
-      __doctorCacheById.set(docId, meta);
-      return meta;
-    }
-  } catch {}
-  return null;
-}
-
 async function hydrateNames(items) {
   const out = [];
   for (const p of items) {
-    let doctorName =
+    const doctorName =
       p.doctorName ||
       p.doctorFullName ||
       p.prescriberName ||
       p.createdByName ||
       p.practitionerName ||
       p.practitionerFullName ||
+      (p.doctor && p.doctor.name) ||
       "";
 
-    let facilityName =
+    const facilityName =
+      p.doctorFacility || // ✅ الحقل الموجود في prescriptions
       p.facilityName ||
       p.facility ||
       p.healthFacility ||
@@ -175,26 +155,6 @@ async function hydrateNames(items) {
       (p.facility && p.facility.name) ||
       (p.hospital && p.hospital.name) ||
       "";
-
-    if ((!doctorName || !facilityName) && p.doctorId) {
-      const m = DOCTOR_MAP[String(p.doctorId)];
-      if (m) {
-        if (!doctorName) doctorName = m.name || "";
-        if (!facilityName) facilityName = m.facility || "";
-      }
-    }
-
-    if (!doctorName || !facilityName) {
-      const idCandidates = [p.doctorId, p.doctorRef, p.createdBy].filter(Boolean);
-      for (const idc of idCandidates) {
-        const meta = await fetchDoctorByDocId(idc);
-        if (meta) {
-          if (!doctorName) doctorName = meta.name || "";
-          if (!facilityName) facilityName = meta.facility || "";
-          if (doctorName && facilityName) break;
-        }
-      }
-    }
 
     out.push({
       ...p,
