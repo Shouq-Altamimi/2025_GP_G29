@@ -27,9 +27,7 @@ const C = { primary: "#B08CC1", ink: "#4A2C59" };
 const enc = new TextEncoder();
 
 function bytesToHex(arr) {
-  return [...new Uint8Array(arr)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return [...new Uint8Array(arr)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 function bytesToBase64(bytes) {
   let bin = "";
@@ -60,18 +58,18 @@ async function pbkdf2HashBase64(password, saltBytes, iterations = 100_000, lengt
   return btoa(bin);
 }
 
-// يستخرج عدد الدورات من النص مثل "PBKDF2-SHA256-100k" أو "pbkdf2-150k"
+// Extract iterations like "PBKDF2-SHA256-100k"
 function parseItersFromAlgo(algo) {
   const m = String(algo || "").toLowerCase().match(/(\d+)\s*k/);
   if (m) return parseInt(m[1], 10) * 1000;
   return 100_000;
 }
 
-// ✅ تحقق كلمة السر للمريض/الطبيب مع كل الأنماط المدعومة
+// Verify patient/doctor password across supported formats
 async function verifyPatientPassword(inputPw, docData) {
   const algo = String(docData?.passwordAlgo || "").toUpperCase();
 
-  // نمط PBKDF2 (مرضى)
+  // PBKDF2 (patients)
   if (algo.startsWith("PBKDF2") && docData?.passwordHash && docData?.passwordSalt) {
     const iters = Number(docData?.passwordIter) || parseItersFromAlgo(algo) || 100_000;
     const saltBytes = base64ToBytes(docData.passwordSalt);
@@ -79,13 +77,13 @@ async function verifyPatientPassword(inputPw, docData) {
     return derived === docData.passwordHash;
   }
 
-  // نمط SHA-256 hex (بعض الأطباء/دعم قديم)
+  // SHA-256 hex (legacy)
   if (docData?.password && /^[a-f0-9]{64}$/i.test(docData.password)) {
     const hex = await sha256Hex(inputPw);
     return hex.toLowerCase() === String(docData.password).toLowerCase();
   }
 
-  // نص صريح (توافق قديم)
+  // Plain text (legacy)
   if (typeof docData?.password === "string") {
     return inputPw === docData.password;
   }
@@ -93,7 +91,7 @@ async function verifyPatientPassword(inputPw, docData) {
   return false;
 }
 
-// ✅ بناء حقل الباسوورد للمرضى (افتراضي 100k)
+// Build PBKDF2 payload for password updates (default 100k)
 async function buildPBKDF2Update(newPassword, iterations = 100_000) {
   const salt = new Uint8Array(16);
   crypto.getRandomValues(salt);
@@ -108,7 +106,7 @@ async function buildPBKDF2Update(newPassword, iterations = 100_000) {
 }
 
 /* =========================
-   Helpers (data)
+   Data helpers
    ========================= */
 function pickStr(obj, keys) {
   for (const k of keys) {
@@ -126,8 +124,6 @@ function normalizePatient(raw) {
   const phone = pickStr(raw, ["phone", "mobile", "contact"]);
   const email = pickStr(raw, ["email", "Email"]);
   const emailVerifiedAt = raw?.emailVerifiedAt || null;
-
-  // نعرض الحي فقط
   const location = pickStr(raw, ["locationDistrict", "district"]);
 
   let gender = pickStr(raw, ["gender", "sex"]);
@@ -157,7 +153,7 @@ function resolvePatientId() {
 }
 
 /* =========================
-   PShell (Patient)
+   PShell (Patient shell)
    ========================= */
 export default function PShell() {
   const location = useLocation();
@@ -232,7 +228,7 @@ export default function PShell() {
         }}
       />
 
-      {/* الصفحات الفرعية */}
+      {/* Child routes */}
       <div className="flex-1">
         <Outlet />
       </div>
@@ -310,6 +306,15 @@ function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
   );
 }
 
+function Row({ label, value }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-gray-500">{label}</span>
+      <span className="font-medium text-gray-800 text-right">{value}</span>
+    </div>
+  );
+}
+
 function PatientProfileModal({ patient, patientDocId, onClose }) {
   const [emailInput, setEmailInput] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
@@ -345,7 +350,7 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
         redirect: "/patient",
       });
       const settings = {
-        url: `${BASE}/auth-email?${params.toString()}`, // أو /auth-email-handler حسب ما عرفتيه في الراوتر
+        url: `${BASE}/auth-email?${params.toString()}`,
         handleCodeInApp: true,
       };
       setEmailLoading(true);
@@ -436,15 +441,6 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
   );
 }
 
-function Row({ label, value }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-gray-500">{label}</span>
-      <span className="font-medium text-gray-800 text-right">{value}</span>
-    </div>
-  );
-}
-
 function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
@@ -516,7 +512,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
 
       const payload = await buildPBKDF2Update(newPass, Number(data?.passwordIter) || parseItersFromAlgo(data?.passwordAlgo) || 100_000);
 
-      // تنظيف أي حقل password قديم إن وجد
+      // Clean legacy field if exists
       if (data?.password) payload.password = deleteField();
 
       await updateDoc(ref, payload);
