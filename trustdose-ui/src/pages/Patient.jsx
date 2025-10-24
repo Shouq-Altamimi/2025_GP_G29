@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 
 /* =========================
-   0) Local mapping (no DB changes)
+   0) Local mapping 
    ========================= */
 const DOCTOR_MAP = {
   "0x4F5b09D9940a1fF83463De89BD25C216fBd86E5C": {
@@ -122,9 +122,9 @@ async function fetchPrescriptionsSmart(foundDocId, nid) {
 }
 
 /* ========= Doctor lookups ========= */
-const __doctorCacheById = new Map();     // "Dr-1" => {name, facility}
-const __doctorCacheByCode = new Map();   // "Dr-001" => {name, facility}
-const __doctorCacheByName = new Map();   // "Khalid Altamimi" => {name, facility}
+const __doctorCacheById = new Map();
+const __doctorCacheByCode = new Map();
+const __doctorCacheByName = new Map();
 
 async function fetchDoctorByDocId(docId) {
   if (!docId) return null;
@@ -192,7 +192,6 @@ async function fetchDoctorByName(name) {
 async function hydrateNames(items) {
   const out = [];
   for (const p of items) {
-    // Gather current values from RX
     let doctorName =
       p.doctorName ||
       p.doctorFullName ||
@@ -215,7 +214,6 @@ async function hydrateNames(items) {
       (p.hospital && p.hospital.name) ||
       "";
 
-    // Try DOCTOR_MAP (e.g., wallet address)
     if ((!doctorName || !facilityName) && p.doctorId) {
       const m = DOCTOR_MAP[String(p.doctorId)];
       if (m) {
@@ -224,14 +222,8 @@ async function hydrateNames(items) {
       }
     }
 
-    // Try by explicit IDs/codes from RX
     if (!doctorName || !facilityName) {
-      const idCandidates = [
-        p.doctorId,      // e.g., "Dr-1"
-        p.doctorRef,
-        p.createdBy,     // sometimes holds "Dr-1"
-      ].filter(Boolean);
-
+      const idCandidates = [p.doctorId, p.doctorRef, p.createdBy].filter(Boolean);
       for (const idc of idCandidates) {
         const meta = await fetchDoctorByDocId(idc);
         if (meta) {
@@ -243,11 +235,7 @@ async function hydrateNames(items) {
     }
 
     if (!doctorName || !facilityName) {
-      const codeCandidates = [
-        p.doctorCode,    // e.g., "Dr-001" (matches DoctorID)
-        p.prescriberId,  // if you store DoctorID here
-      ].filter(Boolean);
-
+      const codeCandidates = [p.doctorCode, p.prescriberId].filter(Boolean);
       for (const code of codeCandidates) {
         const meta = await fetchDoctorByCode(code);
         if (meta) {
@@ -258,7 +246,6 @@ async function hydrateNames(items) {
       }
     }
 
-    // Last resort: match by name (common in your data)
     if ((!facilityName || !doctorName) && doctorName) {
       const meta = await fetchDoctorByName(doctorName);
       if (meta) {
@@ -336,12 +323,21 @@ function Row({ label, value }) {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "170px 1fr",
+        gridTemplateColumns: "220px 1fr", // ↑ كبّرنا العمود حتى ما يلف
         alignItems: "center",
         gap: 12,
       }}
     >
-      <div style={{ color: "#6b7280" }}>{label}</div>
+      <div
+        style={{
+          color: "#6b7280",
+          whiteSpace: "nowrap",     // يمنع النزول لسطر جديد
+          overflow: "hidden",
+          textOverflow: "ellipsis", // يظهر … إذا العنوان طويل جداً
+        }}
+      >
+        {label}
+      </div>
       <div style={{ fontWeight: 600, wordBreak: "break-word" }}>{value ?? "-"}</div>
     </div>
   );
@@ -575,7 +571,7 @@ export default function PatientPage() {
                       <Row label="National ID" value={maskNid(p.patientNationalID || p.nationalID)} />
                       <Row label="Healthcare Facility" value={facility} />
                       <Row label="Doctor Name" value={doctor} />
-                      <Row label="Date & Time" value={createdFull} />
+                      <Row label="Date & Time Consultation" value={createdFull} />
 
                       <div
                         style={{
@@ -595,7 +591,9 @@ export default function PatientPage() {
 
                         {p.sensitivity && (
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <div style={{ color: "#6b7280", width: 170 }}>Sensitivity</div>
+                            <div style={{ color: "#6b7280", width: 220 /* match Row label width */ }}>
+                              Sensitivity
+                            </div>
                             <div
                               style={{
                                 fontSize: 13,

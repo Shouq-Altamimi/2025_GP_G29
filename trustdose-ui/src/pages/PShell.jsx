@@ -21,10 +21,15 @@ import { User, LogOut, X, Eye, EyeOff, Lock, CheckCircle, XCircle } from "lucide
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
+/* =========================
+   Crypto helpers
+   ========================= */
 const enc = new TextEncoder();
 
 function bytesToHex(arr) {
-  return [...new Uint8Array(arr)].map(b => b.toString(16).padStart(2, "0")).join("");
+  return [...new Uint8Array(arr)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 function bytesToBase64(bytes) {
   let bin = "";
@@ -42,14 +47,8 @@ async function sha256Hex(str) {
   const buf = await crypto.subtle.digest("SHA-256", enc.encode(str));
   return bytesToHex(buf);
 }
-async function pbkdf2HashBase64(password, saltBytes, iterations = 150_000, length = 32) {
-  const keyMat = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(password),
-    { name: "PBKDF2" },
-    false,
-    ["deriveBits"]
-  );
+async function pbkdf2HashBase64(password, saltBytes, iterations = 100_000, length = 32) {
+  const keyMat = await crypto.subtle.importKey("raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
     { name: "PBKDF2", hash: "SHA-256", salt: saltBytes, iterations },
     keyMat,
@@ -60,28 +59,47 @@ async function pbkdf2HashBase64(password, saltBytes, iterations = 150_000, lengt
   for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
   return btoa(bin);
 }
+
+// يستخرج عدد الدورات من النص مثل "PBKDF2-SHA256-100k" أو "pbkdf2-150k"
+function parseItersFromAlgo(algo) {
+  const m = String(algo || "").toLowerCase().match(/(\d+)\s*k/);
+  if (m) return parseInt(m[1], 10) * 1000;
+  return 100_000;
+}
+
+// ✅ تحقق كلمة السر للمريض/الطبيب مع كل الأنماط المدعومة
 async function verifyPatientPassword(inputPw, docData) {
-  if (docData?.passwordAlgo === "PBKDF2" && docData?.passwordHash && docData?.passwordSalt) {
-    const iters = Number(docData.passwordIter || 150_000);
+  const algo = String(docData?.passwordAlgo || "").toUpperCase();
+
+  // نمط PBKDF2 (مرضى)
+  if (algo.startsWith("PBKDF2") && docData?.passwordHash && docData?.passwordSalt) {
+    const iters = Number(docData?.passwordIter) || parseItersFromAlgo(algo) || 100_000;
     const saltBytes = base64ToBytes(docData.passwordSalt);
     const derived = await pbkdf2HashBase64(inputPw, saltBytes, iters, 32);
     return derived === docData.passwordHash;
   }
+
+  // نمط SHA-256 hex (بعض الأطباء/دعم قديم)
   if (docData?.password && /^[a-f0-9]{64}$/i.test(docData.password)) {
     const hex = await sha256Hex(inputPw);
     return hex.toLowerCase() === String(docData.password).toLowerCase();
   }
+
+  // نص صريح (توافق قديم)
   if (typeof docData?.password === "string") {
     return inputPw === docData.password;
   }
+
   return false;
 }
-async function buildPBKDF2Update(newPassword, iterations = 150_000) {
+
+// ✅ بناء حقل الباسوورد للمرضى (افتراضي 100k)
+async function buildPBKDF2Update(newPassword, iterations = 100_000) {
   const salt = new Uint8Array(16);
   crypto.getRandomValues(salt);
   const hashB64 = await pbkdf2HashBase64(newPassword, salt, iterations, 32);
   return {
-    passwordAlgo: "PBKDF2",
+    passwordAlgo: `PBKDF2-SHA256-${Math.round(iterations / 1000)}k`,
     passwordIter: iterations,
     passwordSalt: bytesToBase64(salt),
     passwordHash: hashB64,
@@ -89,6 +107,9 @@ async function buildPBKDF2Update(newPassword, iterations = 150_000) {
   };
 }
 
+/* =========================
+   Helpers (data)
+   ========================= */
 function pickStr(obj, keys) {
   for (const k of keys) {
     const v = obj?.[k];
@@ -100,12 +121,15 @@ function pickStr(obj, keys) {
 function normalizePatient(raw) {
   if (!raw) return null;
 
-  const fullName   = pickStr(raw, ["fullName", "name", "fullname"]);
+  const fullName = pickStr(raw, ["fullName", "name", "fullname"]);
   const nationalId = pickStr(raw, ["nationalId", "nationalID", "nid", "NID"]);
-  const phone      = pickStr(raw, ["phone", "mobile", "contact"]);
-  const email      = pickStr(raw, ["email", "Email"]);
+  const phone = pickStr(raw, ["phone", "mobile", "contact"]);
+  const email = pickStr(raw, ["email", "Email"]);
   const emailVerifiedAt = raw?.emailVerifiedAt || null;
+
+  // نعرض الحي فقط
   const location = pickStr(raw, ["locationDistrict", "district"]);
+
   let gender = pickStr(raw, ["gender", "sex"]);
   if (gender) {
     const g = gender.trim().toLowerCase();
@@ -132,6 +156,9 @@ function resolvePatientId() {
   return null;
 }
 
+/* =========================
+   PShell (Patient)
+   ========================= */
 export default function PShell() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -205,12 +232,14 @@ export default function PShell() {
         }}
       />
 
+      {/* الصفحات الفرعية */}
       <div className="flex-1">
         <Outlet />
       </div>
 
       <Footer />
 
+      {/* ====== Sidebar ====== */}
       {isPatientPage && patientDocId && (
         <>
           <div
@@ -259,25 +288,21 @@ export default function PShell() {
         </>
       )}
 
+      {/* ====== Modal: My Profile ====== */}
       {showProfile && (
-        <PatientProfileModal
-          patient={patient}
-          patientDocId={patientDocId}
-          onClose={() => setShowProfile(false)}
-        />
+        <PatientProfileModal patient={patient} patientDocId={patientDocId} onClose={() => setShowProfile(false)} />
       )}
     </div>
   );
 }
 
+/* =========================
+   Components
+   ========================= */
 function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
-  const base =
-    "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
-  const styles = active
-    ? "bg-white text-[#5B3A70]"
-    : variant === "ghost"
-    ? "text-white/90 hover:bg-white/10"
-    : "bg-white/25 text-white hover:bg-white/35";
+  const base = "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
+  const styles =
+    active ? "bg-white text-[#5B3A70]" : variant === "ghost" ? "text-white/90 hover:bg-white/10" : "bg-white/25 text-white hover:bg-white/35";
   return (
     <button onClick={onClick} className={`${base} ${styles}`}>
       {children}
@@ -320,7 +345,7 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
         redirect: "/patient",
       });
       const settings = {
-        url: `${BASE}/auth-email?${params.toString()}`,
+        url: `${BASE}/auth-email?${params.toString()}`, // أو /auth-email-handler حسب ما عرفتيه في الراوتر
         handleCodeInApp: true,
       };
       setEmailLoading(true);
@@ -344,11 +369,7 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
             <h3 className="text-lg font-semibold" style={{ color: C.ink }}>
               My Profile
             </h3>
-            <button
-              onClick={onClose}
-              className="h-8 w-8 grid place-items-center rounded-lg hover:bg-gray-100"
-              aria-label="Close"
-            >
+            <button onClick={onClose} className="h-8 w-8 grid place-items-center rounded-lg hover:bg-gray-100" aria-label="Close">
               ✕
             </button>
           </div>
@@ -368,17 +389,11 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
               <div className="flex items-center gap-2">
                 <span className="font-medium text-gray-800">{P.email}</span>
                 {isVerified ? (
-                  <span
-                    className="text-[12px] px-2 py-0.5 rounded-full border"
-                    style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}
-                  >
+                  <span className="text-[12px] px-2 py-0.5 rounded-full border" style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}>
                     Verified
                   </span>
                 ) : (
-                  <span
-                    className="text-[12px] px-2 py-0.5 rounded-full border"
-                    style={{ background: "#FEF2F2", color: "#991B1B", borderColor: "#FECACA" }}
-                  >
+                  <span className="text-[12px] px-2 py-0.5 rounded-full border" style={{ background: "#FEF2F2", color: "#991B1B", borderColor: "#FECACA" }}>
                     Not verified
                   </span>
                 )}
@@ -394,23 +409,13 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
                     onChange={(e) => setEmailInput(e.target.value)}
                     inputMode="email"
                   />
-                  <button
-                    onClick={sendVerifyLink}
-                    disabled={emailLoading}
-                    className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
-                    style={{ background: C.primary }}
-                  >
+                  <button onClick={sendVerifyLink} disabled={emailLoading} className="px-3 py-2 rounded-lg text-white disabled:opacity-50" style={{ background: C.primary }}>
                     {emailLoading ? "Sending..." : "Send Verify"}
                   </button>
                 </div>
 
                 {!!emailMsg && (
-                  <div
-                    className="mt-2 text-sm"
-                    style={{
-                      color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534",
-                    }}
-                  >
+                  <div className="mt-2 text-sm" style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534" }}>
                     {emailMsg}
                   </div>
                 )}
@@ -418,13 +423,7 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
             )}
           </div>
 
-          {hasEmail && (
-            <PatientPasswordSection
-              patientDocId={patientDocId}
-              onSaved={() => {}}
-              color={C.primary}
-            />
-          )}
+          {hasEmail && <PatientPasswordSection patientDocId={patientDocId} onSaved={() => {}} color={C.primary} />}
 
           <div className="mt-4 flex items-center justify-end">
             <button onClick={onClose} className="px-4 py-2 rounded-lg border">
@@ -471,39 +470,66 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
 
   const doUpdate = async () => {
     try {
-      setMsg(""); setMsgType("");
+      setMsg("");
+      setMsgType("");
 
       if (!oldPass || !newPass || !confirmPass) {
-        setMsg("Please fill all fields"); setMsgType("error"); return;
+        setMsg("Please fill all fields");
+        setMsgType("error");
+        return;
       }
-      if (!passValidation.ok) { setMsg(passValidation.msg); setMsgType("error"); return; }
-      if (newPass !== confirmPass) { setMsg("New passwords do not match"); setMsgType("error"); return; }
-      if (oldPass === newPass) { setMsg("New password must be different"); setMsgType("error"); return; }
+      if (!passValidation.ok) {
+        setMsg(passValidation.msg);
+        setMsgType("error");
+        return;
+      }
+      if (newPass !== confirmPass) {
+        setMsg("New passwords do not match");
+        setMsgType("error");
+        return;
+      }
+      if (oldPass === newPass) {
+        setMsg("New password must be different");
+        setMsgType("error");
+        return;
+      }
 
       setLoading(true);
 
       const ref = doc(db, "patients", patientDocId);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
-        setMsg("Patient record not found"); setMsgType("error"); setLoading(false); return;
+        setMsg("Patient record not found");
+        setMsgType("error");
+        setLoading(false);
+        return;
       }
       const data = snap.data();
 
       const ok = await verifyPatientPassword(oldPass, data);
       if (!ok) {
-        setMsg("Current password is incorrect"); setMsgType("error"); setLoading(false); return;
+        setMsg("Current password is incorrect");
+        setMsgType("error");
+        setLoading(false);
+        return;
       }
 
-      const payload = await buildPBKDF2Update(newPass, Number(data?.passwordIter || 150_000));
+      const payload = await buildPBKDF2Update(newPass, Number(data?.passwordIter) || parseItersFromAlgo(data?.passwordAlgo) || 100_000);
+
+      // تنظيف أي حقل password قديم إن وجد
       if (data?.password) payload.password = deleteField();
 
       await updateDoc(ref, payload);
 
-      setMsg("Password updated successfully! ✓"); setMsgType("success");
-      setOldPass(""); setNewPass(""); setConfirmPass("");
+      setMsg("Password updated successfully! ✓");
+      setMsgType("success");
+      setOldPass("");
+      setNewPass("");
+      setConfirmPass("");
       onSaved?.({ passwordUpdated: true });
     } catch (e) {
-      setMsg(e?.message || "Failed to update password"); setMsgType("error");
+      setMsg(e?.message || "Failed to update password");
+      setMsgType("error");
     } finally {
       setLoading(false);
     }
@@ -532,7 +558,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
             />
             <button
               type="button"
-              onClick={() => setShowOld(v => !v)}
+              onClick={() => setShowOld((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
             >
               {showOld ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -555,7 +581,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
             />
             <button
               type="button"
-              onClick={() => setShowNew(v => !v)}
+              onClick={() => setShowNew((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
             >
               {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -584,7 +610,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
             />
             <button
               type="button"
-              onClick={() => setShowConfirm(v => !v)}
+              onClick={() => setShowConfirm((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
             >
               {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -600,11 +626,11 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
         </div>
 
         {msg && (
-          <div className={`p-3 rounded-lg text-sm ${
-            msgType === "success"
-              ? "bg-green-50 text-green-800 border border-green-200"
-              : "bg-rose-50 text-rose-800 border border-rose-200"
-          }`}>
+          <div
+            className={`p-3 rounded-lg text-sm ${
+              msgType === "success" ? "bg-green-50 text-green-800 border border-green-200" : "bg-rose-50 text-rose-800 border border-rose-200"
+            }`}
+          >
             {msg}
           </div>
         )}
