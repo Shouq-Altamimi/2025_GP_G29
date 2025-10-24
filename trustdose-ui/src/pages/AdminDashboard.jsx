@@ -12,7 +12,7 @@ import {
 } from "firebase/firestore";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 
-/* ---------- Auth: Anonymous مرة واحدة ---------- */
+/* ---------- Auth: Anonymous مرة واحدة + ضمان الجاهزية قبل Firestore ---------- */
 const auth = getAuth(app);
 if (!auth.currentUser) {
   signInAnonymously(auth).catch(() => {});
@@ -20,6 +20,22 @@ if (!auth.currentUser) {
 onAuthStateChanged(auth, (u) => {
   if (u) console.log(" anon uid:", u.uid);
 });
+
+let authReadyPromise = null;
+function ensureAuthReady() {
+  const a = getAuth(app);
+  if (a.currentUser?.uid) return Promise.resolve(a.currentUser.uid);
+  if (authReadyPromise) return authReadyPromise;
+
+  authReadyPromise = new Promise((resolve, reject) => {
+    signInAnonymously(a).catch(()=>{});
+    const unsub = onAuthStateChanged(a, (u) => {
+      if (u?.uid) { unsub(); resolve(u.uid); }
+    }, reject);
+    setTimeout(() => reject(new Error("Auth timeout")), 10000);
+  });
+  return authReadyPromise;
+}
 
 /* ---------- Contract ABI ---------- */
 const DoctorRegistry_ABI = [
@@ -90,21 +106,23 @@ function generateTempPassword() {
 function isHex40(s) {
   return /^0x[a-fA-F0-9]{40}$/.test(String(s || "").trim());
 }
-// sha256 -> hex (بدون TypeScript)
+// sha256 -> hex
 async function sha256Hex(text) {
   const enc = new TextEncoder().encode(text);
   const buf = await crypto.subtle.digest("SHA-256", enc);
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// حفظ/تحديث وثيقة الدكتور باستخدام عنوان المحفظة كـ docId (Upsert)
+/* ---------- Firestore (docId = wallet lowercase) ---------- */
 async function saveDoctor_FirestoreByWallet(walletAddress, docData) {
+  await ensureAuthReady();
   const ref = doc(db, "doctors", String(walletAddress || "").toLowerCase());
   await setDoc(ref, { ...docData, updatedAt: serverTimestamp() }, { merge: true });
 }
 
-/* ---------- Firestore: accessIds uniqueness via transaction ---------- */
+/* ---------- accessIds uniqueness via transaction ---------- */
 async function reserveAccessId_Firestore(id) {
+  await ensureAuthReady();
   const ref = doc(db, "accessIds", id);
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
@@ -123,23 +141,24 @@ async function tryReserveAccessId(id) {
   }
 }
 async function markAccessIdClaimed_Firestore(id) {
+  await ensureAuthReady();
   const ref = doc(db, "accessIds", id);
-  try {
-    await updateDoc(ref, { claimed: true, claimedAt: Date.now() });
-  } catch {}
+  await updateDoc(ref, { claimed: true, claimedAt: Date.now() });
 }
 async function saveDoctor_Firestore(docData) {
+  await ensureAuthReady();
   return addDoc(collection(db, "doctors"), { ...docData, createdAt: serverTimestamp() });
 }
 
 /* ---------- Access ID: Dr-001, Dr-002, ... ---------- */
 async function peekNextAccessId() {
+  await ensureAuthReady();
   const q = query(collection(db, "doctors"), orderBy("createdAt", "desc"), limit(100));
   const snap = await getDocs(q);
   let maxNum = 0;
   snap.forEach((d) => {
     const a = d.data()?.accessId;
-    const m = /^Dr-(\d{3})$/.exec(String(a || ""));
+    const m = /^Dr-(\d{3})$/i.exec(String(a || ""));
     if (m) {
       const n = parseInt(m[1], 10);
       if (!Number.isNaN(n)) maxNum = Math.max(maxNum, n);
@@ -212,29 +231,18 @@ export default function AdminAddDoctorOnly() {
   );
 
   // ====== Input sanitizers & guards ======
-
-// يبقي فقط حروف إنجليزية ومسافة
-const sanitizeLettersSpaces = (s) => s.replace(/[^A-Za-z\s]+/g, "");
-
-// يبقي فقط حروف إنجليزية + أرقام + شرطة
-const sanitizeLicense = (s) => s.replace(/[^A-Za-z0-9-]+/g, "");
-
-// يمنع إدخال أي حرف غير مسموح "قبل" دخوله (للضغط على لوحة المفاتيح)
-const guardBeforeInput = (allowedCharRegex) => (e) => {
-  // e.data undefined أحياناً مع بعض الأحداث؛ نخلي السانيتايز في onChange يغطي الباقي
-  if (e.data && !allowedCharRegex.test(e.data)) e.preventDefault();
-};
-
-// يسنّت النص الملصوق
-const handlePasteSanitize = (sanitizer, setter) => (e) => {
-  e.preventDefault();
-  const text = (e.clipboardData || window.clipboardData).getData("text") || "";
-  setter(sanitizer(text));
-};
-
-// قاعدات الحرف المسموح لكل حقل (حرف واحد)
-const onlyLetterOrSpace = /^[A-Za-z\s]$/;
-const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
+  const sanitizeLettersSpaces = (s) => s.replace(/[^A-Za-z\s]+/g, "");
+  const sanitizeLicense = (s) => s.replace(/[^A-Za-z0-9-]+/g, "");
+  const guardBeforeInput = (allowedCharRegex) => (e) => {
+    if (e.data && !allowedCharRegex.test(e.data)) e.preventDefault();
+  };
+  const handlePasteSanitize = (sanitizer, setter) => (e) => {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData("text") || "";
+    setter(sanitizer(text));
+  };
+  const onlyLetterOrSpace = /^[A-Za-z\s]$/;
+  const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
 
   /* ---- MetaMask ---- */
   async function connectMetaMask() {
@@ -336,7 +344,9 @@ const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
     try {
       setSaving(true);
       if (!formOk) throw new Error("Please fill all required fields correctly");
-  
+
+      await ensureAuthReady(); // مهم جداً قبل أي Firestore
+
       // A) فحوصات مسبقة على السلسلة (لا نحجز ID قبل ما نتأكد)
       setStatus("⏳ Preflight on-chain checks…");
       const E = await loadEthers();
@@ -350,7 +360,7 @@ const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
       const code = await provider.getCode(contractAddress);
       if (!code || code === "0x") throw new Error("No contract at this address (wrong network/address)");
       const contract = new E.Contract(contractAddress, DoctorRegistry_ABI, signer);
-  
+
       // المالك
       try {
         if (typeof contract.owner === "function") {
@@ -361,7 +371,7 @@ const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
           }
         }
       } catch (err) { throw new Error(err?.message || "Ownership check failed"); }
-  
+
       // الدكتور موجود؟
       try {
         if (typeof contract.getDoctor === "function") {
@@ -374,7 +384,7 @@ const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
           }
         }
       } catch (_) {}
-  
+
       // الـ Access ID المعروض قد يكون مستخدم — إن كان مستخدم نعرض التالي فقط
       try {
         if (typeof contract.isAccessIdUsed === "function") {
@@ -387,13 +397,13 @@ const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
           }
         }
       } catch (_) {}
-  
+
       // B) نحجز Access ID فعليًا الآن
       setStatus("⏳ Allocating sequential Access ID…");
       const id = await allocateSequentialAccessId();
       setAccessId(id);
       setDoctorId(id);
-  
+
       // C) On-chain
       setStatus("⏳ Adding doctor on-chain…");
       const chain = await saveOnChain({
@@ -402,40 +412,42 @@ const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
         accessId: id,
         tempPassword,
       });
-  
+
       // D) Database — نخزّن هاش الباس المؤقت + كل البيانات بوثيقة docId = عنوان المحفظة
       setStatus("⏳ Saving to database…");
       const tempPasswordHash = await sha256Hex(tempPassword);
+      const passwordHash     = tempPasswordHash; // للتوافق مع القواعد إن وُجدت
       const expiresAtMs = Date.now() + 24 * 60 * 60 * 1000; // 24h
-  
+
       await saveDoctor_FirestoreByWallet(walletAddress, {
         // تعريف
         entityType: "Doctor",
         role: "Doctor",
         isActive: true,
-  
+
         // معلومات الطبيب
         name,
         specialty,
         facility,
         licenseNumber,
-  
+
         // ربط البلوك تشين
         walletAddress,
         accessId: id,
         doctorId: id, // Doctor ID = Access ID
         chain: { contractAddress, txHash: chain.txHash, block: chain.block },
-  
-        // كلمة المرور المؤقتة — نخزّن الهاش فقط + ميتاداتا (بدون النص)
+
+        // كلمة المرور المؤقتة
         tempPasswordHash,
+        passwordHash,
         tempPassword: { expiresAtMs, valid: true },
-  
+
         createdAt: serverTimestamp(),
       });
-  
+
       // علّمنا الـ accessId بأنه مستهلك
       await markAccessIdClaimed_Firestore(id);
-  
+
       // E) Success + تجهيز التالي
       setStatus(`✅ Doctor added. Tx: ${chain.txHash.slice(0, 12)}…`);
       const previewNext = await peekNextAccessId();
@@ -448,6 +460,7 @@ const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
       setSaving(false);
     }
   }
+
   const copy = async (text, label) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -456,7 +469,7 @@ const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
       console.error(err);
       setStatus("⚠️ Copy failed, please copy manually.");
     }
-  };  
+  };
 
   return (
     <div className="min-h-screen w-full bg-[#F7F5FB] font-sans">
@@ -500,27 +513,26 @@ const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
 
           {/* Name / Specialty */}
           <div className="grid grid-cols-1 gap-3">
-        <input
-          placeholder="Doctor Name"
-          value={name}
-          onBeforeInput={guardBeforeInput(onlyLetterOrSpace)}
-          onPaste={handlePasteSanitize(sanitizeLettersSpaces, setName)}
-          onChange={(e) => setName(sanitizeLettersSpaces(e.target.value))}
-          title="English letters only"
-          className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
-          required
-        />
-          <input
-          placeholder="Specialty"
-          value={specialty}
-          onBeforeInput={guardBeforeInput(onlyLetterOrSpace)}
-          onPaste={handlePasteSanitize(sanitizeLettersSpaces, setSpecialty)}
-          onChange={(e) => setSpecialty(sanitizeLettersSpaces(e.target.value))}
-          title="English letters only"
-          className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
-          required
-        />
-
+            <input
+              placeholder="Doctor Name"
+              value={name}
+              onBeforeInput={guardBeforeInput(onlyLetterOrSpace)}
+              onPaste={handlePasteSanitize(sanitizeLettersSpaces, setName)}
+              onChange={(e) => setName(sanitizeLettersSpaces(e.target.value))}
+              title="English letters only"
+              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
+              required
+            />
+            <input
+              placeholder="Specialty"
+              value={specialty}
+              onBeforeInput={guardBeforeInput(onlyLetterOrSpace)}
+              onPaste={handlePasteSanitize(sanitizeLettersSpaces, setSpecialty)}
+              onChange={(e) => setSpecialty(sanitizeLettersSpaces(e.target.value))}
+              title="English letters only"
+              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
+              required
+            />
           </div>
 
           {/* Doctor ID / Facility / License Number */}
@@ -543,7 +555,6 @@ const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
               className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
               required
             />
-
             <input
               placeholder="License Number"
               value={licenseNumber}
@@ -554,7 +565,6 @@ const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
               className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
               required
             />
-
           </div>
 
           {/* Wallet + MetaMask */}
@@ -622,6 +632,3 @@ const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
     </div>
   );
 }
-
-
-
