@@ -1,596 +1,634 @@
 // ===================== Admin Dashboard (Full, pruned as requested) =====================
-
 "use client";
-import React, { useMemo, useState } from 'react'
+
+import React, { useEffect, useMemo, useState } from "react";
+import { Search, Bell, ChevronDown } from "lucide-react";
+
+import app, { db } from "../firebase";
 import {
-  Users, Activity, Settings, TrendingUp, Plus, Search, Bell,
-  ChevronDown, Building2, Stethoscope, Truck, Thermometer, ChevronRight
-} from 'lucide-react'
+  collection, addDoc, serverTimestamp,
+  doc, updateDoc, runTransaction,
+  query, orderBy, limit, getDocs, setDoc
+} from "firebase/firestore";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 
-// blockchain imports
-import { ethers } from "ethers";
-import AccessControl from "../contracts/AccessControl.json"; // عدّلي المسار لو مختلف
-
-// ========== small utils ==========
-function cx(...classes) { return classes.filter(Boolean).join(' ') }
-
-// Card
-export function Card({ className, children }) {
-  return <div className={cx('rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900', className)}>{children}</div>
+/* ---------- Auth: Anonymous مرة واحدة + ضمان الجاهزية قبل Firestore ---------- */
+const auth = getAuth(app);
+if (!auth.currentUser) {
+  signInAnonymously(auth).catch(() => {});
 }
-export function CardHeader({ className, children }) { return <div className={cx('p-5', className)}>{children}</div> }
-export function CardTitle({ className, children }) { return <h3 className={cx('text-base font-semibold text-[#4A2C59]', className)}>{children}</h3> }
-export function CardDescription({ className, children }) { return <p className={cx('mt-1 text-sm text-zinc-500 dark:text-zinc-400', className)}>{children}</p> }
-export function CardContent({ className, children }) { return <div className={cx('p-5 pt-0', className)}>{children}</div> }
+onAuthStateChanged(auth, (u) => {
+  if (u) console.log(" anon uid:", u.uid);
+});
 
-// Badge
-export function Badge({ variant = 'default', className, children }) {
-  const base = 'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium'
-  const styles = {
-    default: 'bg-[#B08CC1] text-white',
-    secondary: 'bg-[#52B9C4] text-white',
-    outline: 'border border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200',
-    success: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-    destructive: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-    warning: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-    info: 'bg-[#52B9C4] text-white',
+let authReadyPromise = null;
+function ensureAuthReady() {
+  const a = getAuth(app);
+  if (a.currentUser?.uid) return Promise.resolve(a.currentUser.uid);
+  if (authReadyPromise) return authReadyPromise;
+
+  authReadyPromise = new Promise((resolve, reject) => {
+    signInAnonymously(a).catch(()=>{});
+    const unsub = onAuthStateChanged(a, (u) => {
+      if (u?.uid) { unsub(); resolve(u.uid); }
+    }, reject);
+    setTimeout(() => reject(new Error("Auth timeout")), 10000);
+  });
+  return authReadyPromise;
+}
+
+/* ---------- Contract ABI ---------- */
+const DoctorRegistry_ABI = [
+  {
+    inputs: [
+      { internalType: "address", name: "_doctor", type: "address" },
+      { internalType: "string",  name: "_accessId", type: "string" },
+      { internalType: "bytes32", name: "_tempPassHash", type: "bytes32" }
+    ],
+    name: "addDoctor", outputs: [], stateMutability: "nonpayable", type: "function"
+  },
+  {
+    inputs: [
+      { internalType: "address", name: "_doctor", type: "address" },
+      { internalType: "bool",    name: "_active", type: "bool" }
+    ],
+    name: "setDoctorActive", outputs: [], stateMutability: "nonpayable", type: "function"
+  },
+  {
+    inputs: [{ internalType: "string", name: "_accessId", type: "string" }],
+    name: "isAccessIdUsed", outputs: [{ internalType: "bool", name: "", type: "bool" }],
+    stateMutability: "view", type: "function"
+  },
+  {
+    inputs: [{ internalType: "address", name: "_doctor", type: "address" }],
+    name: "getDoctor",
+    outputs: [
+      { internalType: "string",  name: "accessId",     type: "string" },
+      { internalType: "bytes32", name: "tempPassHash", type: "bytes32" },
+      { internalType: "bool",    name: "active",       type: "bool" }
+    ],
+    stateMutability: "view", type: "function"
+  },
+  { inputs: [], name: "owner", outputs: [{ internalType: "address", name: "", type: "address" }], stateMutability: "view", type: "function" }
+];
+
+/* ---------- ethers helpers ---------- */
+async function loadEthers() {
+  const mod = await import("ethers");
+  return mod.ethers ? mod.ethers : mod;
+}
+async function getProvider() {
+  const E = await loadEthers();
+  if (E.BrowserProvider) return new E.BrowserProvider(window.ethereum); // v6
+  return new E.providers.Web3Provider(window.ethereum); // v5
+}
+async function getSigner(provider) {
+  const s = provider.getSigner();
+  return typeof s.then === "function" ? await s : s;
+}
+async function isAddressCompat(addr) {
+  const E = await loadEthers();
+  return (E.utils?.isAddress || E.isAddress)(addr);
+}
+async function idCompat(text) {
+  const E = await loadEthers();
+  return (E.utils?.id || E.id)(text);
+}
+
+/* ---------- Helpers ---------- */
+function generateTempPassword() {
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const a = letters[Math.floor(Math.random() * letters.length)];
+  const b = letters[Math.floor(Math.random() * letters.length)];
+  const num = Math.floor(1000 + Math.random() * 9000);
+  return `${a}${b}-${num}`;
+}
+function isHex40(s) {
+  return /^0x[a-fA-F0-9]{40}$/.test(String(s || "").trim());
+}
+// sha256 -> hex
+async function sha256Hex(text) {
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/* ---------- Firestore (docId = wallet lowercase) ---------- */
+async function saveDoctor_FirestoreByWallet(walletAddress, docData) {
+  await ensureAuthReady();
+  const ref = doc(db, "doctors", String(walletAddress || "").toLowerCase());
+  await setDoc(ref, { ...docData, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+/* ---------- accessIds uniqueness via transaction ---------- */
+async function reserveAccessId_Firestore(id) {
+  await ensureAuthReady();
+  const ref = doc(db, "accessIds", id);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.exists()) throw new Error("ACCESS_ID_TAKEN");
+    tx.set(ref, { createdAt: Date.now(), claimed: false });
+  });
+  return true;
+}
+async function tryReserveAccessId(id) {
+  try {
+    await reserveAccessId_Firestore(id);
+    return true;
+  } catch (e) {
+    if (String(e?.message).includes("ACCESS_ID_TAKEN")) return false;
+    throw e;
   }
-  return <span className={cx(base, styles[variant], className)}>{children}</span>
+}
+async function markAccessIdClaimed_Firestore(id) {
+  await ensureAuthReady();
+  const ref = doc(db, "accessIds", id);
+  await updateDoc(ref, { claimed: true, claimedAt: Date.now() });
+}
+async function saveDoctor_Firestore(docData) {
+  await ensureAuthReady();
+  return addDoc(collection(db, "doctors"), { ...docData, createdAt: serverTimestamp() });
 }
 
-// Button
-export function Button({ variant = 'default', size = 'md', className, children, ...props }) {
-  const base = 'inline-flex items-center justify-center rounded-xl font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none dark:focus:ring-zinc-700'
-  const sizes = { sm: 'h-9 px-3 text-sm', md: 'h-10 px-4 text-sm', lg: 'h-11 px-5 text-base' }
-  const variants = {
-    default: 'bg-[#4A2C59] text-white hover:bg-[#3A2247] focus:ring-[#B08CC1]',
-    primary: 'bg-[#B08CC1] text-white hover:bg-[#9b6dad] focus:ring-[#B08CC1]/40',
-    secondary: 'bg-[#52B9C4] text-white hover:bg-[#46a5af] focus:ring-[#52B9C4]/40',
-    outline: 'border border-zinc-300 hover:bg-zinc-50 text-[#4A2C59] dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800',
-    ghost: 'text-[#4A2C59] hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800',
+/* ---------- Access ID: Dr-001, Dr-002, ... ---------- */
+async function peekNextAccessId() {
+  await ensureAuthReady();
+  const q = query(collection(db, "doctors"), orderBy("createdAt", "desc"), limit(100));
+  const snap = await getDocs(q);
+  let maxNum = 0;
+  snap.forEach((d) => {
+    const a = d.data()?.accessId;
+    const m = /^Dr-(\d{3})$/i.exec(String(a || ""));
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (!Number.isNaN(n)) maxNum = Math.max(maxNum, n);
+    }
+  });
+  const next = maxNum + 1;
+  return `Dr-${String(next).padStart(3, "0")}`;
+}
+async function allocateSequentialAccessId() {
+  let candidate = await peekNextAccessId();
+  for (let i = 0; i < 20; i++) {
+    const ok = await tryReserveAccessId(candidate);
+    if (ok) return candidate;
+    const m = /^Dr-(\d{3})$/.exec(candidate);
+    const n = m ? parseInt(m[1], 10) + 1 : 1;
+    candidate = `Dr-${String(n).padStart(3, "0")}`;
   }
-  return <button className={cx(base, sizes[size], variants[variant], className)} {...props}>{children}</button>
+  throw new Error("Failed to allocate a sequential Access ID. Please try again.");
 }
 
-// Table
-export function Table({ className, children }) {
-  return <div className={cx('overflow-x-auto', className)}><table className="min-w-full border-separate border-spacing-y-2">{children}</table></div>
-}
-export function TableHeader({ children }) { return <thead>{children}</thead> }
-export function TableBody({ children }) { return <tbody>{children}</tbody> }
-export function TableRow({ className, children, ...rest }) {
-  return <tr className={cx('bg-white dark:bg-zinc-900', className)} {...rest}>{children}</tr>
-}
-export function TableHead({ children }) { return <th className="px-4 py-2 text-left text-xs font-semibold text-zinc-500">{children}</th> }
-export function TableCell({ className, children }) { return <td className={cx('px-4 py-3 align-middle text-sm text-zinc-700 dark:text-zinc-200', className)}>{children}</td> }
+/* ---------- Component ---------- */
+export default function AdminAddDoctorOnly() {
+  const [contractAddress, setContractAddress] = useState("0xCF2573a8b093715f408f719A94e5C0482B53E1a2");
+  const [doctorId, setDoctorId] = useState(""); // = accessId
+  const [facility, setFacility] = useState("");
+  const [licenseNumber, setLicenseNumber] = useState("");
+  const [name, setName] = useState("");
+  const [specialty, setSpecialty] = useState("");
+  const [walletAddress, setWalletAddress] = useState("");
+  const [accessId, setAccessId] = useState("…");
+  const [tempPassword, setTempPassword] = useState(generateTempPassword());
 
-// Dropdown
-function Dropdown({ open, onClose, children }) {
-  if (!open) return null
+  const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [hasMM, setHasMM] = useState(false);
+  useEffect(() => { setHasMM(typeof window !== "undefined" && !!window.ethereum); }, []);
+
+  // تحديث العنوان تلقائي عند تغيير حساب MetaMask
+  useEffect(() => {
+    if (!window.ethereum) return;
+    const onAccounts = (accounts) => {
+      if (accounts && accounts[0]) {
+        setWalletAddress(accounts[0]);
+        setStatus(`🔄 MetaMask account: ${accounts[0].slice(0, 8)}…`);
+      }
+    };
+    window.ethereum.request({ method: "eth_accounts" }).then(onAccounts).catch(()=>{});
+    window.ethereum.on?.("accountsChanged", onAccounts);
+    return () => window.ethereum.removeListener?.("accountsChanged", onAccounts);
+  }, []);
+
+  // معاينة Access ID القادم (بدون حجز)
+  useEffect(() => {
+    (async () => {
+      try {
+        const preview = await peekNextAccessId();
+        setAccessId(preview);
+        setDoctorId(preview);
+      } catch {}
+    })();
+  }, []);
+
+  const formOk = useMemo(
+    () =>
+      isHex40(contractAddress) &&
+      isHex40(walletAddress) &&
+      name && specialty && facility && licenseNumber &&
+      tempPassword,
+    [contractAddress, walletAddress, name, specialty, facility, licenseNumber, tempPassword]
+  );
+
+  // ====== Input sanitizers & guards ======
+  const sanitizeLettersSpaces = (s) => s.replace(/[^A-Za-z\s]+/g, "");
+  const sanitizeLicense = (s) => s.replace(/[^A-Za-z0-9-]+/g, "");
+  const guardBeforeInput = (allowedCharRegex) => (e) => {
+    if (e.data && !allowedCharRegex.test(e.data)) e.preventDefault();
+  };
+  const handlePasteSanitize = (sanitizer, setter) => (e) => {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData("text") || "";
+    setter(sanitizer(text));
+  };
+  const onlyLetterOrSpace = /^[A-Za-z\s]$/;
+  const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
+
+  /* ---- MetaMask ---- */
+  async function connectMetaMask() {
+    try {
+      if (!window?.ethereum) { setStatus("⚠️ Please install MetaMask first."); return; }
+      try { await window.ethereum.request({ method: "eth_requestAccounts" }); }
+      catch (e) {
+        if (e && (e.code === 4001 || e?.message?.includes("rejected"))) {
+          setStatus("❌ MetaMask: request was rejected."); return;
+        }
+      }
+      const provider = await getProvider();
+      const signer = await getSigner(provider);
+      const addr = await signer.getAddress();
+      if (!(await isAddressCompat(addr))) { setStatus("❌ MetaMask: invalid address returned."); return; }
+      setWalletAddress(addr);
+      setStatus("✅ Address fetched from MetaMask.");
+    } catch (e) { setStatus(`❌ MetaMask: ${e?.message || e}`); }
+  }
+
+  /* ---- On-chain save ---- */
+  async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPassword }) {
+    const E = await loadEthers();
+
+    if (!window.ethereum) throw new Error("MetaMask not found");
+    if (!((E.utils?.isAddress || E.isAddress)(contractAddress))) throw new Error("Invalid contract address");
+    if (!((E.utils?.isAddress || E.isAddress)(doctorWallet)))   throw new Error("Invalid wallet address");
+
+    const provider = E.BrowserProvider
+      ? new E.BrowserProvider(window.ethereum)          // v6
+      : new E.providers.Web3Provider(window.ethereum);  // v5
+
+    const signer = await (async () => {
+      const s = provider.getSigner();
+      return typeof s.then === "function" ? await s : s;
+    })();
+
+    const code = await provider.getCode(contractAddress);
+    if (!code || code === "0x") throw new Error("No contract at this address (wrong network/address)");
+
+    const contract = new E.Contract(contractAddress, DoctorRegistry_ABI, signer);
+
+    // تحقق المالك
+    try {
+      if (typeof contract.owner === "function") {
+        const owner = await contract.owner();
+        const me    = await signer.getAddress();
+        if (owner?.toLowerCase?.() !== me?.toLowerCase?.()) {
+          throw new Error(`You must use the owner account.\nOwner: ${owner}\nCurrent: ${me}`);
+        }
+      }
+    } catch (err) { throw new Error(err?.message || "Contract ownership verification failed"); }
+
+    // فحص استخدام Access ID على السلسلة
+    try {
+      if (typeof contract.isAccessIdUsed === "function") {
+        const used = await contract.isAccessIdUsed(accessId);
+        if (used) throw new Error(`Access ID "${accessId}" is already used on-chain`);
+      }
+    } catch (_) {}
+
+    // فحص وجود الدكتور (struct/array)
+    try {
+      if (typeof contract.getDoctor === "function") {
+        const info = await contract.getDoctor(doctorWallet);
+        console.log("🔎 getDoctor(", doctorWallet, ") =>", info);
+        const access = (info && (info.accessId ?? info[0])) ?? "";
+        const active = (info && (info.active ?? info[2])) ?? false;
+        if ((access && String(access).length > 0) || active === true) {
+          throw new Error("Doctor exists");
+        }
+      }
+    } catch (_) {}
+
+    const tempPassHash = await idCompat(tempPassword);
+
+    // Dry-run v6/v5
+    try {
+      if (contract.addDoctor?.staticCall) {
+        await contract.addDoctor.staticCall(doctorWallet, accessId, tempPassHash); // v6
+      } else if (contract.callStatic?.addDoctor) {
+        await contract.callStatic.addDoctor(doctorWallet, accessId, tempPassHash); // v5
+      } else if (contract.estimateGas?.addDoctor) {
+        await contract.estimateGas.addDoctor(doctorWallet, accessId, tempPassHash);
+      }
+    } catch (err) {
+      const reason = err?.reason || err?.message || err?.shortMessage || (err?.error && err.error.message) || "addDoctor() would revert";
+      throw new Error(reason);
+    }
+
+    // التنفيذ الفعلي
+    const tx = await contract.addDoctor(doctorWallet, accessId, tempPassHash);
+    const rc = await tx.wait();
+    return { txHash: tx.hash, block: rc.blockNumber };
+  }
+
+  /* ---- Submit ---- */
+  async function handleSave() {
+    try {
+      setSaving(true);
+      if (!formOk) throw new Error("Please fill all required fields correctly");
+
+      await ensureAuthReady(); // مهم جداً قبل أي Firestore
+
+      // A) فحوصات مسبقة على السلسلة (لا نحجز ID قبل ما نتأكد)
+      setStatus("⏳ Preflight on-chain checks…");
+      const E = await loadEthers();
+      const provider = E.BrowserProvider
+        ? new E.BrowserProvider(window.ethereum)
+        : new E.providers.Web3Provider(window.ethereum);
+      const signer = await (async () => {
+        const s = provider.getSigner();
+        return typeof s.then === "function" ? await s : s;
+      })();
+      const code = await provider.getCode(contractAddress);
+      if (!code || code === "0x") throw new Error("No contract at this address (wrong network/address)");
+      const contract = new E.Contract(contractAddress, DoctorRegistry_ABI, signer);
+
+      // المالك
+      try {
+        if (typeof contract.owner === "function") {
+          const owner = await contract.owner();
+          const me = await signer.getAddress();
+          if (owner?.toLowerCase?.() !== me?.toLowerCase?.()) {
+            throw new Error(`You must use the owner account.\nOwner: ${owner}\nCurrent: ${me}`);
+          }
+        }
+      } catch (err) { throw new Error(err?.message || "Ownership check failed"); }
+
+      // الدكتور موجود؟
+      try {
+        if (typeof contract.getDoctor === "function") {
+          const info = await contract.getDoctor(walletAddress);
+          console.log("🔎 getDoctor preflight:", info);
+          const access = (info && (info.accessId ?? info[0])) ?? "";
+          const active = (info && (info.active ?? info[2])) ?? false;
+          if ((access && String(access).length > 0) || active === true) {
+            throw new Error("Doctor exists");
+          }
+        }
+      } catch (_) {}
+
+      // الـ Access ID المعروض قد يكون مستخدم — إن كان مستخدم نعرض التالي فقط
+      try {
+        if (typeof contract.isAccessIdUsed === "function") {
+          const used = await contract.isAccessIdUsed(accessId);
+          if (used) {
+            const preview = await peekNextAccessId();
+            setAccessId(preview);
+            setDoctorId(preview);
+            setStatus(`⚠️ "${accessId}" used on-chain. Previewed next: ${preview}`);
+          }
+        }
+      } catch (_) {}
+
+      // B) نحجز Access ID فعليًا الآن
+      setStatus("⏳ Allocating sequential Access ID…");
+      const id = await allocateSequentialAccessId();
+      setAccessId(id);
+      setDoctorId(id);
+
+      // C) On-chain
+      setStatus("⏳ Adding doctor on-chain…");
+      const chain = await saveOnChain({
+        contractAddress,
+        doctorWallet: walletAddress,
+        accessId: id,
+        tempPassword,
+      });
+
+      // D) Database — نخزّن هاش الباس المؤقت + كل البيانات بوثيقة docId = عنوان المحفظة
+      setStatus("⏳ Saving to database…");
+      const tempPasswordHash = await sha256Hex(tempPassword);
+      const passwordHash     = tempPasswordHash; // للتوافق مع القواعد إن وُجدت
+      const expiresAtMs = Date.now() + 24 * 60 * 60 * 1000; // 24h
+
+      await saveDoctor_FirestoreByWallet(walletAddress, {
+        // تعريف
+        entityType: "Doctor",
+        role: "Doctor",
+        isActive: true,
+
+        // معلومات الطبيب
+        name,
+        specialty,
+        facility,
+        licenseNumber,
+
+        // ربط البلوك تشين
+        walletAddress,
+        accessId: id,
+        doctorId: id, // Doctor ID = Access ID
+        chain: { contractAddress, txHash: chain.txHash, block: chain.block },
+
+        // كلمة المرور المؤقتة
+        tempPasswordHash,
+        passwordHash,
+        tempPassword: { expiresAtMs, valid: true },
+
+        createdAt: serverTimestamp(),
+      });
+
+      // علّمنا الـ accessId بأنه مستهلك
+      await markAccessIdClaimed_Firestore(id);
+
+      // E) Success + تجهيز التالي
+      setStatus(`✅ Doctor added. Tx: ${chain.txHash.slice(0, 12)}…`);
+      const previewNext = await peekNextAccessId();
+      setAccessId(previewNext);
+      setDoctorId(previewNext);
+      setTempPassword(generateTempPassword());
+    } catch (e) {
+      setStatus(`❌ ${e?.message || e}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const copy = async (text, label) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus(`📋 Copied ${label}`);
+    } catch (err) {
+      console.error(err);
+      setStatus("⚠️ Copy failed, please copy manually.");
+    }
+  };
+
   return (
-    <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900" onClick={onClose}>
-      {children}
-    </div>
-  )
-}
-
-// Modal
-function Modal({ open, onClose, children, title }) {
-  if (!open) return null
-  return (
-    <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="absolute inset-0 grid place-items-center p-4">
-        <div className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-[#4A2C59] dark:text-zinc-50">{title}</h3>
-            <button onClick={onClose} className="rounded-lg px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800">✕</button>
+    <div className="min-h-screen w-full bg-[#F7F5FB] font-sans">
+      {/* HEADER */}
+      <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 p-4">
+          <a href="/" className="flex items-center gap-2 text-[#4A2C59]">
+            <img
+              src="/images/TrustDose_logo.png"
+              alt="TrustDose"
+              className="h-16 w-auto object-contain -ml-3"
+              style={{ transform: "scale(1.35)", transformOrigin: "left center" }}
+            />
+            <span className="hidden sm:inline text-sm text-zinc-500"></span>
+          </a>
+          <div className="ml-auto hidden items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-600 md:flex">
+            <Search className="h-4 w-4" />
+            <input className="w-48 bg-transparent outline-none placeholder:text-zinc-400" placeholder="Search…" />
           </div>
-          {children}
+          <button className="rounded-xl p-2 text-zinc-600 hover:bg-zinc-100"><Bell className="h-5 w-5" /></button>
+          <button className="flex items-center gap-2 rounded-XL border border-zinc-300 px-3 py-2 text-sm text-[#4A2C59] hover:bg-zinc-50">
+            <div className="grid h-7 w-7 place-items-center rounded-full bg-zinc-200 text-zinc-700">AD</div>
+            <span className="hidden sm:inline">Admin</span>
+            <ChevronDown className="h-4 w-4" />
+          </button>
         </div>
-      </div>
-    </div>
-  )
-}
+      </header>
 
-// Header (theme toggle removed)
-function Header({ onOpenAdd }) {
-  const [dd, setDd] = useState(false)
-  return (
-    <div className="sticky top-0 z-40 mb-6 border-b border-zinc-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:border-zinc-800 dark:bg-zinc-950/80">
-      <div className="mx-auto flex max-w-7xl items-center gap-3 p-4">
-        <div className="flex items-center gap-2 text-[#4A2C59] dark:text-zinc-50">
-          <a href="/" className="flex items-center gap-2 text-[#4A2C59] dark:text-zinc-50">
-          <img
-         src="/Images/TrustDose_logo.png"
-         alt="TrustDose"
-        className="h-24 w-auto object-contain"
-        style={{ maxHeight: "80px" }}
+      {/* BODY */}
+      <main className="mx-auto grid max-w-5xl grid-cols-1 gap-6 p-4 md:grid-cols-1 md:p-6">
+        <aside className="mx-auto h-max w-full max-w-2xl rounded-3xl bg-white p-6 shadow-lg ring-1 ring-[#B08CC1]/20 md:sticky md:top-24">
+          <h3 className="mb-4 text-xl font-semibold text-[#4A2C59]">Add Doctor</h3>
+
+          {/* Contract */}
+          <input
+            placeholder="Contract Address — 0x…"
+            value={contractAddress}
+            onChange={(e) => setContractAddress(e.target.value)}
+            className="mb-3 w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
           />
 
-          </a>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <div className="hidden items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-600 md:flex dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
-            <Search className="h-4 w-4" />
-            <input className="w-56 bg-transparent outline-none placeholder:text-zinc-400" placeholder="Search…" />
+          {/* Name / Specialty */}
+          <div className="grid grid-cols-1 gap-3">
+            <input
+              placeholder="Doctor Name"
+              value={name}
+              onBeforeInput={guardBeforeInput(onlyLetterOrSpace)}
+              onPaste={handlePasteSanitize(sanitizeLettersSpaces, setName)}
+              onChange={(e) => setName(sanitizeLettersSpaces(e.target.value))}
+              title="English letters only"
+              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
+              required
+            />
+            <input
+              placeholder="Specialty"
+              value={specialty}
+              onBeforeInput={guardBeforeInput(onlyLetterOrSpace)}
+              onPaste={handlePasteSanitize(sanitizeLettersSpaces, setSpecialty)}
+              onChange={(e) => setSpecialty(sanitizeLettersSpaces(e.target.value))}
+              title="English letters only"
+              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
+              required
+            />
           </div>
-          <div className="relative">
-            <Button variant="primary" size="sm" onClick={() => setDd(!dd)}><Plus className="mr-2 h-4 w-4" /> Add</Button>
-            <Dropdown open={dd} onClose={() => setDd(false)}>
-              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => onOpenAdd('Pharmacy')}><Building2 className="h-4 w-4 text-[#52B9C4]"/> Pharmacy</button>
-              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => onOpenAdd('Doctor')}><Stethoscope className="h-4 w-4 text-[#52B9C4]"/> Doctor</button>
-              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800" onClick={() => onOpenAdd('Logistics')}><Truck className="h-4 w-4 text-[#52B9C4]"/> Logistics</button>
-            </Dropdown>
+
+          {/* Doctor ID / Facility / License Number */}
+          <div className="mt-3 grid grid-cols-1 gap-3">
+            <input
+              placeholder="Doctor ID"
+              value={doctorId}
+              onChange={(e) => setDoctorId(e.target.value)}
+              readOnly
+              title="Filled automatically from Access ID"
+              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
+            />
+            <input
+              placeholder="Health Facility"
+              value={facility}
+              onBeforeInput={guardBeforeInput(onlyLetterOrSpace)}
+              onPaste={handlePasteSanitize(sanitizeLettersSpaces, setFacility)}
+              onChange={(e) => setFacility(sanitizeLettersSpaces(e.target.value))}
+              title="English letters only"
+              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
+              required
+            />
+            <input
+              placeholder="License Number"
+              value={licenseNumber}
+              onBeforeInput={guardBeforeInput(onlyLicenseChar)}
+              onPaste={handlePasteSanitize(sanitizeLicense, setLicenseNumber)}
+              onChange={(e) => setLicenseNumber(sanitizeLicense(e.target.value))}
+              title="Letters, digits, and '-' only"
+              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
+              required
+            />
           </div>
-          <Button variant="ghost" size="sm" aria-label="Notifications"><Bell className="h-5 w-5" /></Button>
-          <Button variant="outline" size="sm" className="gap-2"><div className="grid h-6 w-6 place-items-center rounded-full bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-100">FT</div><span className="hidden sm:inline">Account</span><ChevronDown className="h-4 w-4" /></Button>
-        </div>
-      </div>
+
+          {/* Wallet + MetaMask */}
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              placeholder="Wallet Address 0x…"
+              value={walletAddress}
+              onChange={(e) => setWalletAddress(e.target.value)}
+              className="flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
+            />
+            <button
+              onClick={connectMetaMask}
+              type="button"
+              className="rounded-2xl border border-gray-200 bg-[#F8F6FB] px-4 py-3 text-[#4A2C59] hover:bg-[#EDE4F3]"
+            >
+              Use MetaMask
+            </button>
+          </div>
+
+          {/* Credentials */}
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-2">
+              <div className="text-sm text-gray-700"><span className="font-medium">Access ID:</span> {accessId}</div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    const next = await peekNextAccessId();
+                    setAccessId(next);
+                    setDoctorId(next);
+                    setStatus(`👀 Next Access ID preview: ${next}`);
+                  }}
+                  className="text-xs rounded-lg border border-gray-200 px-2 py-1 hover:bg-white"
+                >
+                  ↻
+                </button>
+                <button onClick={() => copy(accessId, "Access ID")} className="text-xs rounded-lg border border-gray-200 px-2 py-1 hover:bg-white">Copy</button>
+              </div>
+            </div>
+            <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-2">
+              <div className="text-sm text-gray-700"><span className="font-medium">Temp Password:</span> {tempPassword}</div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setTempPassword(generateTempPassword())} className="text-xs rounded-lg border border-gray-200 px-2 py-1 hover:bg-white">↻</button>
+                <button onClick={() => copy(tempPassword, "Temp Password")} className="text-xs rounded-lg border border-gray-200 px-2 py-1 hover:bg-white">Copy</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="mt-5 flex items-center justify-end gap-3">
+            <button onClick={() => window.history.back()} className="rounded-2xl border border-gray-200 px-5 py-3 text-[#4A2C59] hover:bg-[#F5F0FA]">Cancel</button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !formOk}
+              className={`rounded-2xl px-5 py-3 font-medium text-white shadow-md transition-all ${
+                saving || !formOk ? "bg-[#CBB4D9] cursor-not-allowed" : "bg-[#B08CC1] hover:bg-[#9A7EAF]"
+              }`}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+
+          <p className="mt-3 min-h-[20px] text-center text-xs text-gray-500">{status}</p>
+        </aside>
+      </main>
     </div>
-  )
+  );
 }
-
-// blockchain helpers
-const ROLE_DOCTOR = 2;
-function genTempPwd() {
-  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-  const A = letters[Math.floor(Math.random()*letters.length)];
-  const B = letters[Math.floor(Math.random()*letters.length)];
-  const num = Math.floor(1000 + Math.random()*9000);
-  return `${A}${B}-${num}`;
-}
-const connectMetaMask = async (setForm) => {
-  if (!window.ethereum) { alert("Install MetaMask"); return; }
-  const provider = new ethers.BrowserProvider(window.ethereum);
-  await provider.send("eth_requestAccounts", []);
-  const signer = await provider.getSigner();
-  const addr = await signer.getAddress();
-  setForm(f => ({ ...f, walletAddress: addr }));
-};
-const saveOnChain = async (contractAddress, doctorWallet, accessId) => {
-  if (!window.ethereum) throw new Error("MetaMask not found");
-  if (!ethers.isAddress(doctorWallet)) throw new Error("Invalid wallet address");
-  const provider = new ethers.BrowserProvider(window.ethereum);
-  const signer = await provider.getSigner();
-  const contract = new ethers.Contract(contractAddress, AccessControl.abi, signer);
-  const tx = await contract.addUser(doctorWallet, ROLE_DOCTOR, accessId);
-  const rc = await tx.wait();
-  return { txHash: tx.hash, block: rc.blockNumber };
-};
-
-// ===================== Admin Dashboard =====================
-export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState('overview')
-
-  // Removed Security Alerts card
-  const stats = useMemo(() => ([
-    { title: 'Total Users', value: '1,284', change: '+12.5%', icon: Users, trend: 'up' },
-    { title: 'Active Sessions', value: '342', change: '+5.2%', icon: Activity, trend: 'up' },
-    { title: 'System Health', value: '98.5%', change: '+0.3%', icon: TrendingUp, trend: 'up' },
-  ]), [])
-
-  const [users] = useState([
-    { id: 1, name: 'Sarah Johnson', email: 'sarah.j@example.com', role: 'Admin', status: 'Active', joined: '2024-03-15' },
-    { id: 2, name: 'Mike Chen', email: 'mike.c@example.com', role: 'User', status: 'Active', joined: '2024-03-14' },
-    { id: 3, name: 'Emma Wilson', email: 'emma.w@example.com', role: 'Moderator', status: 'Active', joined: '2024-03-13' },
-  ])
-
-  const [pharmacies, setPharmacies] = useState([
-    { id: 101, name: 'Riyadh Central Pharmacy', license: 'PH-0192', city: 'Riyadh', status: 'Active' },
-    { id: 102, name: 'North Gate Pharmacy', license: 'PH-0220', city: 'Jeddah', status: 'Pending' },
-  ])
-  const [doctors, setDoctors] = useState([
-    { id: 201, name: 'Dr. Aisha Al-Qahtani', specialty: 'Cardiology', regId: 'MOH-8812', status: 'Active' },
-    { id: 202, name: 'Dr. Omar Al-Harbi', specialty: 'Endocrinology', regId: 'MOH-7721', status: 'Suspended' },
-  ])
-  const [logistics, setLogistics] = useState([
-    { id: 301, company: 'MedExpress', contact: 'ops@medexpress.com', sla: '2h @ 2–8°C', active: true },
-    { id: 302, company: 'HealthGo', contact: 'fleet@healthgo.com', sla: '3h @ 2–8°C', active: true },
-  ])
-
-  const [shipments] = useState([
-    { id: 'SHP-88412', rxId: 'RX-983112', drug: 'Insulin Glargine', from: 'Riyadh Central Pharmacy', to: 'Patient #10212', carrier: 'MedExpress', tempMin: 2, tempMax: 8, lastTemp: 5.2, status: 'In Transit', progress: 62, updated: '2m ago' },
-    { id: 'SHP-88433', rxId: 'RX-983224', drug: 'Vacc. MMR', from: 'North Gate Pharmacy', to: 'Patient #10388', carrier: 'HealthGo', tempMin: 2, tempMax: 8, lastTemp: 12.9, status: 'Breach', progress: 41, updated: '8m ago' },
-    { id: 'SHP-88457', rxId: 'RX-983311', drug: 'Erythropoietin', from: 'Riyadh Central Pharmacy', to: 'Patient #10401', carrier: 'MedExpress', tempMin: 2, tempMax: 8, lastTemp: 4.1, status: 'Delivered', progress: 100, updated: '10m ago' },
-  ])
-
-  const shipmentEvents = {
-    'SHP-88412': [
-      { time: '2025-09-30 14:10', location: 'Warehouse Riyadh', temp: 5.0, status: 'Packed' },
-      { time: '2025-09-30 15:40', location: 'Truck #22', temp: 6.1, status: 'Departed' },
-      { time: '2025-09-30 18:15', location: 'Checkpoint North', temp: 6.8, status: 'In Transit' },
-      { time: '2025-09-30 20:10', location: 'Ring Road Exit', temp: 5.9, status: 'In Transit' },
-    ],
-    'SHP-88433': [
-      { time: '2025-09-30 14:20', location: 'Warehouse Jeddah', temp: 7.5, status: 'Packed' },
-      { time: '2025-09-30 16:00', location: 'Truck #5', temp: 9.2, status: 'Departed' },
-      { time: '2025-09-30 18:30', location: 'Highway Checkpoint', temp: 12.9, status: 'Breach detected' },
-    ],
-    'SHP-88457': [
-      { time: '2025-09-30 09:10', location: 'Warehouse Riyadh', temp: 4.8, status: 'Packed' },
-      { time: '2025-09-30 10:30', location: 'Truck #19', temp: 5.2, status: 'Departed' },
-      { time: '2025-09-30 12:10', location: 'City Center', temp: 4.9, status: 'Delivered' },
-    ],
-  }
-  const [selectedShipment, setSelectedShipment] = useState(null)
-
-  const [isAddOpen, setIsAddOpen] = useState(false)
-  function genAccessId(){ return 'AC-' + Math.random().toString(36).slice(2,8).toUpperCase() }
-  const [entityType, setEntityType] = useState('Doctor')
-
-  const [form, setForm] = useState({
-    name: '', email: '', role: 'User', status: 'Active',
-    license: '', city: '', specialty: '', regId: '',
-    company: '', contact: '', sla: '2h @ 2–8°C',
-    accessId: genAccessId(),
-    walletAddress: '',
-    tempPassword: genTempPwd(),
-    contractAddress: ''
-  })
-  const resetForm = () => setForm({
-    name: '', email: '', role: 'User', status: 'Active',
-    license: '', city: '', specialty: '', regId: '',
-    company: '', contact: '', sla: '2h @ 2–8°C',
-    accessId: genAccessId(),
-    walletAddress: '',
-    tempPassword: genTempPwd(),
-    contractAddress: ''
-  })
-
-  const onSubmitAdd = async (e) => {
-    e.preventDefault()
-    if (entityType === 'Pharmacy') {
-      const id = pharmacies.length ? Math.max(...pharmacies.map(p => p.id)) + 1 : 100
-      setPharmacies([{ id, name: form.name, license: form.license, city: form.city, status: 'Pending', accessId: form.accessId }, ...pharmacies])
-      setActiveTab('pharmacies')
-    } else if (entityType === 'Doctor') {
-      if (!form.contractAddress) { alert("أدخلي Contract Address"); return; }
-      if (!ethers.isAddress(form.walletAddress)) { alert("Wallet Address غير صالح"); return; }
-      if (!form.tempPassword) { alert("Temp Password مطلوب"); return; }
-
-      try {
-        const chain = await saveOnChain(form.contractAddress, form.walletAddress, form.accessId);
-        console.log("On-chain OK:", chain.txHash);
-      } catch (e2) {
-        alert("فشل الحفظ على السلسلة: " + (e2?.shortMessage || e2?.message));
-        return;
-      }
-
-      const id = doctors.length ? Math.max(...doctors.map(d => d.id)) + 1 : 200
-      setDoctors([{ id, name: form.name, specialty: form.specialty, regId: form.regId, status: 'Active', accessId: form.accessId, walletAddress: form.walletAddress }, ...doctors])
-      setActiveTab('doctors')
-    } else if (entityType === 'Logistics') {
-      const id = logistics.length ? Math.max(...logistics.map(l => l.id)) + 1 : 300
-      setLogistics([{ id, company: form.company, contact: form.contact, sla: form.sla, active: true, accessId: form.accessId }, ...logistics])
-      setActiveTab('logistics')
-    }
-    resetForm(); setIsAddOpen(false)
-  }
-
-  return (
-    <div className="min-h-screen bg-white">
-      <Header onOpenAdd={(type) => { setEntityType(type); setIsAddOpen(true); }} />
-
-      <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-[#4A2C59] md:text-3xl">Admin Console</h1>
-            <p className="mt-1 text-sm text-zinc-500 md:text-base">Manage identities & compliance, and monitor medicine transfers</p>
-          </div>
-          <div className="flex gap-2">
-            {/* Export removed */}
-            <Button variant="primary" size="sm"><Settings className="mr-2 h-4 w-4" />Settings</Button>
-          </div>
-        </div>
-
-        {/* stats (without Security Alerts) */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 lg:grid-cols-4">
-          {stats.map((stat, i) => (
-            <Card key={i} className="border">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm">{stat.title}</CardTitle>
-                <stat.icon className="h-4 w-4 text-[#52B9C4]" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-[#4A2C59]">{stat.value}</div>
-                <div className="mt-1 flex items-center gap-2">
-                  <Badge variant={stat.trend==='up'?'success':'warning'}>{stat.change}</Badge>
-                  <p className="text-xs text-zinc-500">from last month</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* tabs (logs & reports removed) */}
-        <div className="flex flex-wrap gap-2 border-b border-zinc-200">
-          {[
-            ['overview','Overview'],['users','Users'],['pharmacies','Pharmacies'],['doctors','Doctors'],['logistics','Logistics'],['shipments','Shipments'],['alerts','Alerts']
-          ].map(([key,label]) => (
-            <Button key={key} variant={activeTab===key?'primary':'ghost'} onClick={()=>setActiveTab(key)} className="rounded-b-none">{label}</Button>
-          ))}
-        </div>
-
-        {activeTab==='users' && (
-          <Card>
-            <CardHeader><CardTitle>Users</CardTitle><CardDescription>Accounts & roles</CardDescription></CardHeader>
-            <CardContent>
-              <div className="mb-4 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-600"><Search className="h-4 w-4" /><input className="w-56 bg-transparent outline-none placeholder:text-zinc-400" placeholder="Search users…" /></div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="primary" onClick={()=>{setEntityType('Doctor'); setIsAddOpen(true)}}><Plus className="mr-2 h-4 w-4"/>Add Doctor</Button>
-                  <Button size="sm" variant="outline" onClick={()=>{setEntityType('Pharmacy'); setIsAddOpen(true)}}><Plus className="mr-2 h-4 w-4"/>Add Pharmacy</Button>
-                  <Button size="sm" variant="outline" onClick={()=>{setEntityType('Logistics'); setIsAddOpen(true)}}><Plus className="mr-2 h-4 w-4"/>Add Logistics</Button>
-                </div>
-              </div>
-              <Table>
-                <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead>Joined</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {users.map(u => (
-                    <TableRow key={u.id}><TableCell className="font-medium">{u.name}</TableCell><TableCell>{u.email}</TableCell><TableCell><Badge variant="secondary">{u.role}</Badge></TableCell><TableCell><Badge variant={u.status==='Active'?'success':'outline'}>{u.status}</Badge></TableCell><TableCell className="text-zinc-500">{u.joined}</TableCell><TableCell><div className="flex gap-2"><Button size="sm" variant="ghost">Edit</Button><Button size="sm" variant="ghost">Delete</Button></div></TableCell></TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab==='pharmacies' && (
-          <Card>
-            <CardHeader><div className="flex items-center gap-2"><Building2 className="h-5 w-5 text-[#52B9C4]"/><CardTitle>Pharmacies</CardTitle></div><CardDescription>Licensing & status</CardDescription></CardHeader>
-            <CardContent>
-              <div className="mb-4 flex justify-end"><Button size="sm" variant="primary" onClick={()=>{setEntityType('Pharmacy'); setIsAddOpen(true)}}><Plus className="mr-2 h-4 w-4"/>Add Pharmacy</Button></div>
-              <Table>
-                <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>License</TableHead><TableHead>City</TableHead><TableHead>Access ID</TableHead><TableHead>Status</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {pharmacies.map(p => (
-                    <TableRow key={p.id}><TableCell className="font-medium">{p.name}</TableCell><TableCell>{p.license}</TableCell><TableCell>{p.city}</TableCell><TableCell className="font-mono text-xs">{p.accessId}</TableCell><TableCell><Badge variant={p.status==='Active'?'success':p.status==='Pending'?'warning':'outline'}>{p.status}</Badge></TableCell><TableCell><div className="flex gap-2"><Button size="sm" variant="ghost">View</Button><Button size="sm" variant="ghost">Suspend</Button></div></TableCell></TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab==='doctors' && (
-          <Card>
-            <CardHeader><div className="flex items-center gap-2"><Stethoscope className="h-5 w-5 text-[#52B9C4]"/><CardTitle>Doctors</CardTitle></div><CardDescription>Registration & practice</CardDescription></CardHeader>
-            <CardContent>
-              <div className="mb-4 flex justify-end"><Button size="sm" variant="primary" onClick={()=>{setEntityType('Doctor'); setIsAddOpen(true)}}><Plus className="mr-2 h-4 w-4"/>Add Doctor</Button></div>
-              <Table>
-                <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Specialty</TableHead><TableHead>MOH Reg</TableHead><TableHead>Access ID</TableHead><TableHead>Status</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {doctors.map(d => (
-                    <TableRow key={d.id}><TableCell className="font-medium">{d.name}</TableCell><TableCell>{d.specialty}</TableCell><TableCell>{d.regId}</TableCell><TableCell className="font-mono text-xs">{d.accessId}</TableCell><TableCell><Badge variant={d.status==='Active'?'success':d.status==='Suspended'?'destructive':'outline'}>{d.status}</Badge></TableCell><TableCell><div className="flex gap-2"><Button size="sm" variant="ghost">View</Button><Button size="sm" variant="ghost">Suspend</Button></div></TableCell></TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab==='logistics' && (
-          <Card>
-            <CardHeader><div className="flex items-center gap-2"><Truck className="h-5 w-5 text-[#52B9C4]"/><CardTitle>Logistics Partners</CardTitle></div><CardDescription>Fleet & SLA</CardDescription></CardHeader>
-            <CardContent>
-              <div className="mb-4 flex justify-end"><Button size="sm" variant="primary" onClick={()=>{setEntityType('Logistics'); setIsAddOpen(true)}}><Plus className="mr-2 h-4 w-4"/>Add Partner</Button></div>
-              <Table>
-                <TableHeader><TableRow><TableHead>Company</TableHead><TableHead>Contact</TableHead><TableHead>SLA</TableHead><TableHead>Access ID</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {logistics.map(l => (
-                    <TableRow key={l.id}><TableCell className="font-medium">{l.company}</TableCell><TableCell>{l.contact}</TableCell><TableCell>{l.sla}</TableCell><TableCell className="font-mono text-xs">{l.accessId}</TableCell><TableCell><Badge variant={l.active?'success':'outline'}>{l.active?'Active':'Inactive'}</Badge></TableCell></TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab==='shipments' && (
-          <Card>
-            <CardHeader><div className="flex items-center gap-2"><Thermometer className="h-5 w-5 text-[#52B9C4]"/><CardTitle>Medicine Shipments</CardTitle></div><CardDescription>Track per-prescription transfers and temperature</CardDescription></CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader><TableRow><TableHead>Shipment</TableHead><TableHead>RX / Drug</TableHead><TableHead>Route</TableHead><TableHead>Carrier</TableHead><TableHead>Temp (°C)</TableHead><TableHead>Status</TableHead><TableHead>Progress</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {shipments.map(s => (
-                    <TableRow key={s.id} onClick={() => setSelectedShipment(s)} className="cursor-pointer hover:bg-zinc-50">
-                      <TableCell className="font-medium">{s.id}</TableCell>
-                      <TableCell><span className="font-medium">{s.rxId}</span> — {s.drug}</TableCell>
-                      <TableCell>{s.from} <ChevronRight className="mx-1 inline h-4 w-4 align-middle text-[#52B9C4]"/> {s.to}</TableCell>
-                      <TableCell>{s.carrier}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2"><Badge variant={s.lastTemp> s.tempMax || s.lastTemp < s.tempMin ? 'destructive':'success'}>{s.lastTemp.toFixed(1)}°</Badge><span className="text-xs text-zinc-500">range {s.tempMin}–{s.tempMax}°</span></div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={s.status==='Breach'?'destructive':s.status==='Delivered'?'success':s.status==='In Transit'?'info':'outline'}>{s.status}</Badge>
-                        <div className="text-xs text-zinc-500">{s.updated}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="h-2 w-40 overflow-hidden rounded-full bg-zinc-200">
-                          <div
-                            className={cx('h-full',
-                              s.status==='Breach' ? 'bg-rose-500' :
-                              s.status==='Delivered' ? 'bg-emerald-500' :
-                              'bg-[#B08CC1]'
-                            )}
-                            style={{width: `${s.progress}%`}}
-                          />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab==='alerts' && (
-          <Card>
-            <CardHeader><div className="flex items-center gap-2"><CardTitle>Alerts</CardTitle></div><CardDescription>Security & cold-chain alerts</CardDescription></CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {[{id:1, level:'High', type:'Temperature', msg:'Cold-chain breach on RX-983224'}, {id:2, level:'Medium', type:'Auth', msg:'5 failed login attempts (pharmacy-ops)'}].map(a => (
-                  <div key={a.id} className="flex items-center justify-between rounded-xl border border-zinc-200 p-4">
-                    <div className="flex items-center gap-3"><Badge variant={a.level==='High'?'destructive':'warning'}>{a.level}</Badge><div><p className="font-medium text-[#4A2C59]">{a.type}</p><p className="text-sm text-zinc-500">{a.msg}</p></div></div>
-                    <Button size="sm" variant="ghost">Acknowledge</Button>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* Add-Entity Modal */}
-      <Modal open={isAddOpen} onClose={()=>setIsAddOpen(false)} title={`Add ${entityType}`}>
-        <form onSubmit={onSubmitAdd} className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Entity type</label>
-              <select value={entityType} onChange={e=>setEntityType(e.target.value)} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40">
-                <option>Doctor</option>
-                <option>Pharmacy</option>
-                <option>Logistics</option>
-              </select>
-            </div>
-            <div/>
-          </div>
-
-          {/* Pharmacy */}
-          {entityType==='Pharmacy' && (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div><label className="mb-1 block text-sm font-medium text-[#4A2C59]">Name</label><input required value={form.name} onChange={e=>setForm({...form, name:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" /></div>
-              <div><label className="mb-1 block text-sm font-medium text-[#4A2C59]">License</label><input required value={form.license} onChange={e=>setForm({...form, license:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" /></div>
-              <div><label className="mb-1 block text-sm font-medium text-[#4A2C59]">City</label><input required value={form.city} onChange={e=>setForm({...form, city:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" /></div>
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Access ID</label>
-                <div className="flex gap-2">
-                  <input readOnly value={form.accessId} className="w-full rounded-xl border border-zinc-300 bg-zinc-100 px-3 py-2 text-[#4A2C59]" />
-                  <Button type="button" variant="outline" onClick={() => setForm(f=>({...f, accessId: genAccessId()}))}>Regenerate</Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Doctor */}
-          {entityType==='Doctor' && (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">AccessControl Contract Address</label>
-                <input required placeholder="0x... (Ganache)" value={form.contractAddress} onChange={e=>setForm({...form, contractAddress: e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Name</label>
-                <input required value={form.name} onChange={e=>setForm({...form, name:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Specialty</label>
-                <input required value={form.specialty} onChange={e=>setForm({...form, specialty:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
-              </div>
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">MOH Reg</label>
-                <input required value={form.regId} onChange={e=>setForm({...form, regId:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Wallet Address</label>
-                <div className="flex gap-2">
-                  <input required placeholder="0x... (MetaMask)" value={form.walletAddress} onChange={e=>setForm({...form, walletAddress: e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
-                  <Button type="button" variant="outline" onClick={()=>connectMetaMask(setForm)}>Use MetaMask</Button>
-                </div>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Temp Password</label>
-                <div className="flex gap-2">
-                  <input required placeholder="e.g. PX-4821" value={form.tempPassword} onChange={e=>setForm({...form, tempPassword: e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" />
-                  <Button type="button" variant="outline" onClick={()=>setForm(f=>({...f, tempPassword: genTempPwd()}))}>Regenerate</Button>
-                </div>
-              </div>
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Access ID</label>
-                <div className="flex gap-2">
-                  <input readOnly value={form.accessId} className="w-full rounded-xl border border-zinc-300 bg-zinc-100 px-3 py-2 text-[#4A2C59]" />
-                  <Button type="button" variant="outline" onClick={()=>setForm(f=>({...f, accessId: genAccessId()}))}>Regenerate</Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Logistics */}
-          {entityType==='Logistics' && (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div><label className="mb-1 block text-sm font-medium text-[#4A2C59]">Company</label><input required value={form.company} onChange={e=>setForm({...form, company:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" /></div>
-              <div><label className="mb-1 block text-sm font-medium text-[#4A2C59]">Contact</label><input required value={form.contact} onChange={e=>setForm({...form, contact:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" /></div>
-              <div className="md:col-span-2"><label className="mb-1 block text-sm font-medium text-[#4A2C59]">SLA</label><input required value={form.sla} onChange={e=>setForm({...form, sla:e.target.value})} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-[#4A2C59] outline-none focus:ring-2 focus:ring-[#B08CC1]/40" /></div>
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-[#4A2C59]">Access ID</label>
-                <div className="flex gap-2">
-                  <input readOnly value={form.accessId} className="w-full rounded-xl border border-zinc-300 bg-zinc-100 px-3 py-2 text-[#4A2C59]" />
-                  <Button type="button" variant="outline" onClick={() => setForm(f=>({...f, accessId: genAccessId()}))}>Regenerate</Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={()=>setIsAddOpen(false)}>Cancel</Button>
-            <Button type="submit" variant="primary">Save</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Shipment Details Modal */}
-      <Modal open={!!selectedShipment} onClose={()=>setSelectedShipment(null)} title={`Shipment ${selectedShipment?.id ?? ''} — ${selectedShipment?.rxId ?? ''}`}>
-        {selectedShipment && (
-          <div className="space-y-5">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="text-sm text-zinc-600">
-                <div><span className="font-medium text-[#4A2C59]">Drug:</span> {selectedShipment.drug}</div>
-                <div><span className="font-medium text-[#4A2C59]">Carrier:</span> {selectedShipment.carrier}</div>
-                <div><span className="font-medium text-[#4A2C59]">Route:</span> {selectedShipment.from} → {selectedShipment.to}</div>
-              </div>
-              <div className="text-sm text-zinc-600">
-                <div className="mb-1">Temperature</div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={selectedShipment.lastTemp> selectedShipment.tempMax || selectedShipment.lastTemp < selectedShipment.tempMin ? 'destructive' : 'success'}>
-                    {selectedShipment.lastTemp.toFixed(1)}°C
-                  </Badge>
-                  <span className="text-xs text-zinc-500">Range {selectedShipment.tempMin}–{selectedShipment.tempMax}°C</span>
-                </div>
-                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-zinc-200">
-                  <div className={cx('h-full', selectedShipment.status==='Breach'?'bg-rose-500':selectedShipment.status==='Delivered'?'bg-emerald-500':'bg-[#B08CC1]')} style={{width: `${selectedShipment.progress}%`}}></div>
-                </div>
-                <div className="mt-1 text-xs text-zinc-500">Status: {selectedShipment.status} • {selectedShipment.updated}</div>
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-2 text-sm font-medium text-[#4A2C59]">Timeline</div>
-              <div className="border-l-2 border-[#B08CC1] pl-4">
-                {(shipmentEvents[selectedShipment.id] || []).map((e, idx) => {
-                  const outOfRange = e.temp > selectedShipment.tempMax || e.temp < selectedShipment.tempMin
-                  return (
-                    <div key={idx} className="mb-4">
-                      <p className="text-xs text-zinc-500">{e.time} — {e.location}</p>
-                      <p className="text-sm font-medium text-[#4A2C59]">
-                        {e.status}
-                        <span className={cx('ml-2', outOfRange ? 'text-rose-600' : 'text-[#B08CC1]')}>{e.temp.toFixed(1)}°C</span>
-                      </p>
-                    </div>
-                  )
-                })}
-                {(!shipmentEvents[selectedShipment.id] || shipmentEvents[selectedShipment.id].length===0) && (
-                  <p className="text-sm text-zinc-500">No events yet.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
-    </div>
-  )
-}
-
-
