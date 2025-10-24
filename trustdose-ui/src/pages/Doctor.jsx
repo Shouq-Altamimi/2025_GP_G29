@@ -24,7 +24,7 @@ const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#
 const CONTRACT_ADDRESS = "0x34Ae4732678f7a12273a9639552Eb051Fdc7c5bd";
 
 const LIMITS = Object.freeze({
-  medicalCondition: { min: 3, max: 120 },
+  medicalCondition: { min: 5, max: 120 },
   notes: { min: 0, max: 300 },
 });
 
@@ -367,16 +367,20 @@ export default function Doctor() {
                 pattern="[0-9]*"
                 maxLength={10}
                 onChange={(e) => {
-                  let v = e.target.value.replace(/[^0-9]/g, "");
-                  if (v.length > 0 && !/^[12]/.test(v)) v = "";
-                  v = v.slice(0, 10);
+                  let v = e.target.value.replace(/[^0-9]/g, ""); 
+                  if (v.length > 0 && !/^[12]/.test(v)) v = ""; 
+                  v = v.slice(0, 10); 
                   setQ(v);
                 }}
-                onKeyDown={(e) => e.key === "Enter" && runSearch()}
+                onKeyDown={(e) => e.key === "Enter" && q.length === 10 && runSearch()}
               />
               {q && (
                 <button
-                  onClick={() => { setQ(""); setSearched(false); setSelectedPatient(null); }}
+                  onClick={() => {
+                    setQ("");
+                    setSearched(false);
+                    setSelectedPatient(null);
+                  }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 hover:opacity-80"
                   style={{ color: C.ink }}
                 >
@@ -384,19 +388,20 @@ export default function Doctor() {
                 </button>
               )}
             </div>
-            <button
-              onClick={runSearch}
-              disabled={isLoading}
-              className="px-6 py-3 text-white rounded-xl disabled:opacity-50 transition-colors flex items-center gap-2 font-medium"
-              style={{ backgroundColor: C.primary }}
-            >
-              {isLoading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Searching...
-                </>
-              ) : (<><Search size={18} /> Search</>)}
-            </button>
+
+        <button
+        onClick={runSearch}
+        disabled={q.length === 0} 
+        className="px-6 py-3 text-white rounded-xl font-medium transition-all flex items-center gap-2"
+        style={{
+          backgroundColor: q.length > 0 ? C.primary : "rgba(176, 140, 193, 0.4)",
+          cursor: q.length > 0 ? "pointer" : "not-allowed",
+          opacity: q.length > 0 ? 1 : 0.6,
+        }}
+      >
+        <Search size={18} /> Search
+      </button>
+
           </div>
 
           {(q || selectedPatient) && (
@@ -466,6 +471,31 @@ export default function Doctor() {
                   {rxMsg}
                 </div>
               )}
+
+                    <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Medical Condition <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  ref={mcRef}
+                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
+                    mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min
+                      ? "border-rose-400 focus:ring-rose-200"
+                      : "border-gray-300"
+                  }`}
+                  style={{ outlineColor: mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min ? "#f87171" : C.primary }}
+                  placeholder="e.g., Hypertension"
+                  value={medicalCondition}
+                  onChange={(e) => setMedicalCondition(e.target.value.slice(0, LIMITS.medicalCondition.max))}
+                  onBlur={() => setMcTouched(true)}
+                />
+                <div className="mt-1 flex items-center justify-between text-xs">
+                  <span className="text-gray-500">{`${medicalCondition.length}/${LIMITS.medicalCondition.max}`}</span>
+                  {mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min && (
+                    <span className="text-rose-600">Please enter at least {LIMITS.medicalCondition.min} characters.</span>
+                  )}
+                </div>
+              </div>
 
               <div className="mb-4">
                 <MedicineSearch
@@ -539,32 +569,7 @@ export default function Doctor() {
                 </div>
               )}
 
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Medical Condition <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  ref={mcRef}
-                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
-                    mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min
-                      ? "border-rose-400 focus:ring-rose-200"
-                      : "border-gray-300"
-                  }`}
-                  style={{ outlineColor: mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min ? "#f87171" : C.primary }}
-                  placeholder="e.g., Hypertension"
-                  value={medicalCondition}
-                  onChange={(e) => setMedicalCondition(e.target.value.slice(0, LIMITS.medicalCondition.max))}
-                  onBlur={() => setMcTouched(true)}
-                />
-                <div className="mt-1 flex items-center justify-between text-xs">
-                  <span className="text-gray-500">{`${medicalCondition.length}/${LIMITS.medicalCondition.max}`}</span>
-                  {mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min && (
-                    <span className="text-rose-600">Please enter at least {LIMITS.medicalCondition.min} characters.</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-4">
+                 <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
                 <textarea
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all h-28 resize-none"
@@ -579,7 +584,7 @@ export default function Doctor() {
               <div className="flex items-center justify-between pt-4">
                 <button
                   onClick={confirmAndSave}
-                  disabled={isLoading || !selectedMed || !dose || !timesPerDay || !durationDays}
+                  disabled={isLoading || !selectedMed || !dose || !timesPerDay || !durationDays || !medicalCondition.trim()}
                   className="px-6 py-3 text-white rounded-xl disabled:opacity-50 transition-colors flex items-center gap-2 font-medium shadow-sm"
                   style={{ backgroundColor: C.primary }}
                 >
