@@ -147,7 +147,7 @@ try {
                 </div>
                 {pharmacy?.BranchID && (
                   <div className="text-sm text-gray-500">
-                    Branch: {pharmacy.BranchID}
+                 
                   </div>
                 )}
               </div>

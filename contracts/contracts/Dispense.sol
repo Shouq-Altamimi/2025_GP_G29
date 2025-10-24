@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-/* واجهة مبسطة من عقد الوصفة: نحتاج فقط isValid(id) */
+
 interface IPrescription {
     function isValid(uint256 id) external view returns (bool);
 }
@@ -10,7 +10,6 @@ contract Dispense {
     IPrescription public prescription;
     address public admin;
 
-    // إدارة صيدليين بسيط داخل عقد الصرف (ممكن تربطيه لاحقًا بعقد الوصفة لو تحبين)
     mapping(address => bool) public isPharmacist;
 
     struct DispenseRecord {
@@ -19,7 +18,6 @@ contract Dispense {
         uint256 timestamp;
     }
 
-    // سجلات الصرف وحالة الصرف
     mapping(uint256 => DispenseRecord) public dispenses;
     mapping(uint256 => bool) public isDispensed;
 
@@ -43,21 +41,18 @@ contract Dispense {
         prescription = IPrescription(_prescriptionAddress);
     }
 
-    // تحديث عنوان عقد الوصفة
     function setPrescriptionContract(address _newAddress) external onlyAdmin {
         require(_newAddress != address(0), "Bad address");
         prescription = IPrescription(_newAddress);
         emit PrescriptionAddressUpdated(_newAddress);
     }
 
-    // إضافة/إزالة صيدلي
     function setPharmacist(address account, bool enabled) external onlyAdmin {
         require(account != address(0), "Bad pharmacist");
         isPharmacist[account] = enabled;
         emit PharmacistUpdated(account, enabled);
     }
 
-    // صرف وصفة
     function dispense(uint256 _prescriptionId) external onlyPharmacist {
         require(!isDispensed[_prescriptionId], "Already dispensed");
         require(prescription.isValid(_prescriptionId), "Invalid/expired");
@@ -72,7 +67,6 @@ contract Dispense {
         emit Dispensed(_prescriptionId, msg.sender, block.timestamp);
     }
 
-    // قراءة سجل الصرف + حالة الصرف
     function getDispenseInfo(uint256 _prescriptionId)
         external
         view
