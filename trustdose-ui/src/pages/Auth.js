@@ -1,7 +1,7 @@
 // src/pages/Auth.js
 "use client";
 import React, { useMemo, useState, useEffect } from "react";
-import { Eye, EyeOff, CheckCircle, Circle } from "lucide-react";
+import { Eye, EyeOff, CheckCircle, Circle, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import {
@@ -15,10 +15,9 @@ import {
   Timestamp,
   getDoc,
 } from "firebase/firestore";
+import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
-/* =========================
-   TrustDose Theme
-   ========================= */
+
 const TD = {
   primary: "#B08CC1",
   teal: "#52B9C4",
@@ -30,9 +29,7 @@ const TD = {
   err: "#DC2626",
 };
 
-/* =========================
-   SHA-256 Hashing (for doctors & pharmacies)
-   ========================= */
+
 async function hashPasswordSHA256(password) {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
@@ -46,9 +43,7 @@ async function verifyPasswordSHA256(inputPassword, storedHash) {
   return inputHash === storedHash;
 }
 
-/* =========================
-   PBKDF2-SHA256 (for patients)
-   ========================= */
+
 async function pbkdf2Hash(password, saltBase64, iterations = 100_000) {
   const enc = new TextEncoder();
   const pwKey = await crypto.subtle.importKey(
@@ -75,9 +70,7 @@ function genSaltBase64(len = 16) {
   return btoa(String.fromCharCode(...buf));
 }
 
-/* =========================
-   Cities & Districts (Riyadh only)
-   ========================= */
+
 const SA_CITIES = ["Riyadh"];
 const DISTRICTS_BY_CITY = {
   Riyadh: [
@@ -91,9 +84,7 @@ const DISTRICTS_BY_CITY = {
   ],
 };
 
-/* =========================
-   Validators (Phone / Password / NID)
-   ========================= */
+
 function toEnglishDigits(s) {
   if (!s) return "";
   let out = "";
@@ -109,7 +100,6 @@ function isDigitsLike(s) {
   return /^\+?\d+$/.test(s || "");
 }
 
-/** Reject spaces; do not auto-fix them */
 function validateAndNormalizePhone(raw) {
   const original = String(raw || "");
   if (/\s/.test(original)) {
@@ -133,14 +123,12 @@ function validateAndNormalizePhone(raw) {
   };
 }
 
-/** Strict at submit: 10 ASCII digits, starts with 1 or 2, no spaces */
 function isValidNationalIdStrict(raw) {
   const s = String(raw || "");
   if (/\s/.test(s)) return false;
   return /^[12][0-9]{9}$/.test(s);
 }
 
-/** Live validation: allow partial typing up to 11, enforce ASCII digits & start rule, show error if >10 */
 function isValidNationalIdLive(raw) {
   const s = String(raw || "");
   if (s === "") return { ok: true, reason: "" };
@@ -174,9 +162,7 @@ function passwordStrength(pw) {
   return { score, label, color, width, hasLower, hasUpper, hasDigit, hasSymbol, len8 };
 }
 
-/* =========================
-   Small UI helpers
-   ========================= */
+
 const inputBase = {
   width: "100%",
   padding: "12px 14px",
@@ -218,7 +204,6 @@ function Label({ children }) {
   return <label style={{ fontSize: 13, color: TD.ink, fontWeight: 600 }}>{children}</label>;
 }
 
-/** Select with placeholder/name + arrow */
 function Select({ name, value, onChange, disabled, required, placeholder, children }) {
   return (
     <div style={{ position: "relative" }}>
@@ -237,7 +222,6 @@ function Select({ name, value, onChange, disabled, required, placeholder, childr
           })
         }
       >
-        {/* placeholder option */}
         <option value="" disabled hidden>
           {placeholder || "Select…"}
         </option>
@@ -268,30 +252,33 @@ export default function TrustDoseAuth() {
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(true);
 
-  // Sign in
+ 
   const [accountId, setAccountId] = useState("");
   const [password, setPassword] = useState("");
 
-  // 👁️
+  
+  const [showForgotPw, setShowForgotPw] = useState(false);
+  const [forgotId, setForgotId] = useState("");
+  const [forgotMsg, setForgotMsg] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+
   const [showPw, setShowPw] = useState(false);
   const [showPwConfirm, setShowPwConfirm] = useState(false);
 
-  // Sign up (Patient)
+ 
   const [nationalId, setNationalId] = useState("");
   const [nationalIdErr, setNationalIdErr] = useState("");
   const [phone, setPhone] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
-  const [gender, setGender] = useState(""); // "Male" | "Female"
+  const [gender, setGender] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [birthDateErr, setBirthDateErr] = useState("");
 
-  // الموقع
   const [city, setCity] = useState("");
   const [district, setDistrict] = useState("");
   const [districtOther, setDistrictOther] = useState("");
 
-  // UI helpers
   const [pwInfo, setPwInfo] = useState(passwordStrength(""));
   const [phoneInfo, setPhoneInfo] = useState({ ok: false, reason: "", normalized: "" });
   const [phoneChecking, setPhoneChecking] = useState(false);
@@ -304,6 +291,7 @@ export default function TrustDoseAuth() {
     const saved = localStorage.getItem("td_auth_id");
     if (saved) setAccountId(saved);
   }, []);
+  
   useEffect(() => {
     if (remember && accountId) localStorage.setItem("td_auth_id", accountId);
     if (!remember) localStorage.removeItem("td_auth_id");
@@ -352,7 +340,6 @@ export default function TrustDoseAuth() {
   function detectSource(id) {
     const clean = String(id || "").trim();
 
-    // Pharmacy branch like "B-1"
     if (/^B-\d+$/i.test(clean)) {
       return { coll: "pharmacies", idFields: ["BranchID"], role: "pharmacy" };
     }
@@ -372,7 +359,117 @@ export default function TrustDoseAuth() {
     return { coll: "logistics", idFields: ["companyName"], role: "logistics" };
   }
 
-  // ===== Sign in with SHA-256 support =====
+  
+  async function handleForgotPassword(e) {
+    e.preventDefault();
+    setForgotMsg("");
+    setForgotLoading(true);
+
+    try {
+      const id = forgotId.trim();
+      if (!id) throw new Error("Please enter your ID");
+
+      const { coll, idFields, role } = detectSource(id);
+      let user = null;
+      let userDocId = null;
+
+      
+      if (role === "patient") {
+        try {
+          const p = await getDoc(doc(db, "patients", `Ph_${id}`));
+          if (p.exists()) { user = p.data(); userDocId = p.id; }
+        } catch {}
+      }
+
+    
+      if (!user && /^B-\d+$/i.test(id)) {
+        try {
+          let snap = await getDocs(query(collection(db, "Phar_Nahdi"), where("BranchID", "==", id)));
+          if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
+
+          if (!user) {
+            snap = await getDocs(query(collection(db, "pharmacies"), where("BranchID", "==", id)));
+            if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
+          }
+        } catch {}
+      }
+
+      if (!user) {
+        for (const f of idFields) {
+          try {
+            const q = query(collection(db, coll), where(f, "==", id));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+              user = snap.docs[0].data();
+              userDocId = snap.docs[0].id;
+              break;
+            }
+          } catch {}
+        }
+      }
+
+      if (!user) {
+        setForgotMsg("❌ No account found with this ID.");
+        return;
+      }
+
+      const email = user.email;
+      if (!email) {
+        setForgotMsg("❌ No email registered for this account. Please contact support.");
+        return;
+      }
+
+      // ✅ إرسال رابط إعادة تعيين كلمة المرور مع البيانات
+      const auth = getAuth();
+      const BASE = window.location.origin;
+      
+      // بناء URL مع جميع المعلومات المطلوبة
+      const params = new URLSearchParams({
+        col: coll,
+        doc: String(userDocId || ""),
+        id: id,
+        reset: "true",
+        e: email,
+        redirect: "/auth"
+      });
+
+      const actionCodeSettings = {
+        url: `${BASE}/password-reset?${params.toString()}`,
+        handleCodeInApp: true,
+      };
+
+      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+
+      setForgotMsg(`✅ Password reset link sent to ${email}. Check your inbox and spam folder!`);
+      
+      // إخفاء البوب اب بعد 3 ثواني
+      setTimeout(() => {
+        setShowForgotPw(false);
+        setForgotId("");
+        setForgotMsg("");
+      }, 3000);
+      
+    } catch (err) {
+      console.error("Forgot password error:", err);
+      
+      // رسائل خطأ واضحة
+      let errorMessage = "Failed to send reset link";
+      
+      if (err.code === "auth/invalid-email") {
+        errorMessage = "Invalid email address";
+      } else if (err.code === "auth/too-many-requests") {
+        errorMessage = "Too many requests. Please try again later";
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setForgotMsg(`❌ ${errorMessage}`);
+    } finally {
+      setForgotLoading(false);
+    }
+  }
+
+  // ===== Sign in =====
   async function handleSignIn(e) {
     e.preventDefault();
     setMsg("");
@@ -387,7 +484,6 @@ export default function TrustDoseAuth() {
       let user = null;
       let userDocId = null;
 
-      // Patient lookup
       if (role === "patient") {
         try {
           const p = await getDoc(doc(db, "patients", `Ph_${id}`));
@@ -395,7 +491,6 @@ export default function TrustDoseAuth() {
         } catch {}
       }
 
-      // Pharmacy lookup (B-1 pattern)
       if (!user && /^B-\d+$/i.test(id)) {
         try {
           let snap = await getDocs(query(collection(db, "Phar_Nahdi"), where("BranchID", "==", id)));
@@ -408,7 +503,6 @@ export default function TrustDoseAuth() {
         } catch {}
       }
 
-      // General lookup
       if (!user) {
         for (const f of idFields) {
           try {
@@ -428,25 +522,19 @@ export default function TrustDoseAuth() {
         return;
       }
 
-      // ===== Password verification =====
       console.log('🔐 Verifying password for role:', role);
-      console.log('User has passwordHash?', 'passwordHash' in user);
-      console.log('User has password?', 'password' in user);
 
-      // For patients: PBKDF2
       if ("passwordHash" in user && "passwordSalt" in user) {
         if (!pass) {
           setMsg("Please enter your password.");
           return;
         }
-        console.log('Using PBKDF2 verification (patient)');
         const derived = await pbkdf2Hash(pass, user.passwordSalt, 100_000);
         if (derived !== user.passwordHash) {
           setMsg("❌ ID or password incorrect.");
           return;
         }
       } 
-      // For doctors & pharmacies: SHA-256 or plain text
       else if ("password" in user) {
         if (!pass) {
           setMsg("Please enter your password.");
@@ -456,14 +544,11 @@ export default function TrustDoseAuth() {
         const storedPassword = String(user.password);
         let isCorrect = false;
 
-        // Check if it's SHA-256 hashed (64 hex characters)
         const isHashed = storedPassword.length === 64 && /^[a-f0-9]+$/.test(storedPassword);
         
         if (isHashed) {
-          console.log('Using SHA-256 verification');
           isCorrect = await verifyPasswordSHA256(pass, storedPassword);
         } else {
-          console.log('Using plain text verification');
           isCorrect = pass === storedPassword;
         }
 
@@ -473,12 +558,11 @@ export default function TrustDoseAuth() {
         }
       } 
       else {
-        console.warn(`[Auth] user has no password fields (allowed in dev).`);
+        console.warn(`[Auth] user has no password fields.`);
       }
 
       const displayName = user.name || user.companyName || id;
 
-      // Store credentials
       if (role === "pharmacy") {
         localStorage.setItem("userRole", "pharmacy");
         localStorage.setItem("userId", userDocId || id);
@@ -500,10 +584,6 @@ export default function TrustDoseAuth() {
         };
 
         localStorage.setItem("welcome_doctor", JSON.stringify(welcomeDoctor));
-        localStorage.setItem("userRole", "doctor");
-        localStorage.setItem("userId", user.DoctorID || id);
-
-        setMsg(`✅ Logged in as doctor. Welcome ${user.name || id}!`);
         navigate("/doctor", { replace: true });
         setLoading(false);
         return; 
@@ -529,7 +609,7 @@ export default function TrustDoseAuth() {
     try {
       const nidAscii = toEnglishDigits(String(nationalId ?? "")).trim();
       if (!isValidNationalIdStrict(nidAscii)) {
-        throw new Error("National ID must be 10 digits starting with 1 or 2 (ASCII digits only, no spaces).");
+        throw new Error("National ID must be 10 digits starting with 1 or 2.");
       }
 
       const phoneRaw = String(phone ?? "");
@@ -580,8 +660,6 @@ export default function TrustDoseAuth() {
       const saltB64 = genSaltBase64(16);
       const hashB64 = await pbkdf2Hash(pass, saltB64, 100_000);
 
-      console.log("[signup] hashLen:", hashB64.length, "saltLen:", saltB64.length);
-
       const payload = {
         locationCity: c,
         locationDistrict: d,
@@ -617,8 +695,8 @@ export default function TrustDoseAuth() {
       setNationalIdErr("");
       setBirthDateErr("");
     } catch (err) {
-      console.error("signup error:", err?.code, err?.message, err);
-      setMsg(`❌ ${err?.code || ""} ${err?.message || err}`);
+      console.error("signup error:", err);
+      setMsg(`❌ ${err?.message || err}`);
     } finally {
       setLoading(false);
     }
@@ -656,17 +734,8 @@ export default function TrustDoseAuth() {
           scrollbarWidth: "thin",
         }}
       >
-        {/* Logo */}
         <div style={{ display: "grid", placeItems: "center", marginBottom: 16 }}>
-          <div
-            style={{
-              width: 220,
-              height: 100,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
+          <div style={{ width: 220, height: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <img
               src="/Images/TrustDose_logo.png"
               alt="TrustDose logo"
@@ -799,7 +868,7 @@ export default function TrustDoseAuth() {
                 href="#forgot"
                 onClick={(e) => {
                   e.preventDefault();
-                  alert("Password reset coming soon 🔒");
+                  setShowForgotPw(true);
                 }}
                 style={linkStyle}
               >
@@ -960,7 +1029,6 @@ export default function TrustDoseAuth() {
               </div>
             </div>
 
-            {/* City + District */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div>
                 <Label>City</Label>
@@ -1059,7 +1127,6 @@ export default function TrustDoseAuth() {
               </button>
             </div>
 
-            {/* Password live checklist (Sign up only) */}
             {password.length > 0 && (
               <div style={{ marginTop: 8, marginBottom: 8 }}>
                 <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
@@ -1072,7 +1139,6 @@ export default function TrustDoseAuth() {
               </div>
             )}
 
-            {/* Strength bar & hint */}
             {password.length > 0 && (
               <div style={{ marginTop: -6, marginBottom: 8 }}>
                 <div style={{ height: 6, background: "#eee", borderRadius: 6, overflow: "hidden" }}>
@@ -1184,11 +1250,148 @@ export default function TrustDoseAuth() {
           </div>
         )}
       </div>
+
+      {/* Forgot Password Popup */}
+      {showForgotPw && (
+        <>
+          <div 
+            style={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(0,0,0,0.4)",
+              zIndex: 50,
+            }}
+            onClick={() => setShowForgotPw(false)} 
+          />
+          <div style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 50,
+            display: "grid",
+            placeItems: "center",
+            padding: "0 16px",
+          }}>
+            <div 
+              style={{
+                width: "min(92vw, 420px)",
+                background: "#fff",
+                padding: 24,
+                borderRadius: 18,
+                boxShadow: "0 18px 42px rgba(0,0,0,0.18)",
+                border: "1px solid rgba(0,0,0,.04)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <h3 style={{ margin: 0, color: TD.ink, fontSize: 20, fontWeight: 700 }}>
+                  Reset Password
+                </h3>
+                <button
+                  onClick={() => setShowForgotPw(false)}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    display: "grid",
+                    placeItems: "center",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    color: TD.gray,
+                  }}
+                  aria-label="Close"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <p style={{ marginTop: 0, marginBottom: 16, color: TD.gray, fontSize: 14 }}>
+                Enter your ID and we'll send a password reset link to your registered email.
+              </p>
+
+              <form onSubmit={handleForgotPassword}>
+                <Label>Your ID</Label>
+                <input
+                  value={forgotId}
+                  onChange={(e) => setForgotId(e.target.value)}
+                  placeholder="DoctorID / PharmacyID / NationalID"
+                  style={inputBase}
+                  onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
+                  onBlur={(e) =>
+                    Object.assign(e.currentTarget.style, {
+                      borderColor: "#DFE3E8",
+                      boxShadow: "0 3px 14px rgba(0,0,0,.04)",
+                    })
+                  }
+                  required
+                  autoFocus
+                />
+
+                {forgotMsg && (
+                  <div
+                    style={{
+                      marginTop: -6,
+                      marginBottom: 12,
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      background:
+                        forgotMsg.startsWith("✅")
+                          ? "rgba(16,185,129,.08)"
+                          : "rgba(239,68,68,.08)",
+                      color: forgotMsg.startsWith("✅") ? "#065f46" : "#7f1d1d",
+                      border: `1px solid ${
+                        forgotMsg.startsWith("✅")
+                          ? "rgba(16,185,129,.25)"
+                          : "rgba(239,68,68,.25)"
+                      }`,
+                      fontSize: 13,
+                    }}
+                  >
+                    {forgotMsg}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotPw(false)}
+                    style={{
+                      flex: 1,
+                      padding: 12,
+                      borderRadius: 12,
+                      border: "1px solid #DFE3E8",
+                      background: "#fff",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      fontSize: 14,
+                      color: TD.gray,
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    style={{
+                      flex: 1,
+                      ...buttonStyle,
+                      margin: 0,
+                      filter: forgotLoading ? "grayscale(30%) brightness(.9)" : undefined,
+                    }}
+                    onMouseDown={(e) => (e.currentTarget.style.transform = "scale(.99)")}
+                    onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                  >
+                    {forgotLoading ? "Sending..." : "Send Reset Link"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-/** Password Rule item */
 function PwRule({ ok, label }) {
   return (
     <li style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: ok ? TD.ok : TD.gray }}>

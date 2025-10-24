@@ -1,5 +1,6 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
+import PasswordReset from "./pages/PasswordReset";
 
 import AdminDashboard from "./pages/AdminDashboard";
 import DoctorHome from "./DoctorHome";
@@ -58,7 +59,13 @@ export default function App() {
         </Route>
 
         <Route path="*" element={<div style={{ padding: 24 }}>Page not found</div>} />
+
+              <Route path="/password-reset" element={<PasswordReset />} />
+              <Route path="/auth" element={<TrustDoseAuth />} />
+
       </Routes>
+
+
     </BrowserRouter>
   );
 }
