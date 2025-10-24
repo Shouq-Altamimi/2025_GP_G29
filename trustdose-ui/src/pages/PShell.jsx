@@ -17,7 +17,17 @@ import {
   deleteField,
 } from "firebase/firestore";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
-import { User, LogOut, X, Eye, EyeOff, Lock, CheckCircle, XCircle } from "lucide-react";
+import {
+  User,
+  LogOut,
+  X,
+  Eye,
+  EyeOff,
+  Lock,
+  CheckCircle,
+  XCircle,
+  Circle,
+} from "lucide-react";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
@@ -25,7 +35,6 @@ const C = { primary: "#B08CC1", ink: "#4A2C59" };
    Crypto helpers
    ========================= */
 const enc = new TextEncoder();
-
 function bytesToHex(arr) {
   return [...new Uint8Array(arr)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -57,19 +66,15 @@ async function pbkdf2HashBase64(password, saltBytes, iterations = 100_000, lengt
   for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
   return btoa(bin);
 }
-
-// Extract iterations like "PBKDF2-SHA256-100k"
 function parseItersFromAlgo(algo) {
   const m = String(algo || "").toLowerCase().match(/(\d+)\s*k/);
   if (m) return parseInt(m[1], 10) * 1000;
   return 100_000;
 }
-
-// Verify patient/doctor password across supported formats
 async function verifyPatientPassword(inputPw, docData) {
   const algo = String(docData?.passwordAlgo || "").toUpperCase();
 
-  // PBKDF2 (patients)
+  // PBKDF2
   if (algo.startsWith("PBKDF2") && docData?.passwordHash && docData?.passwordSalt) {
     const iters = Number(docData?.passwordIter) || parseItersFromAlgo(algo) || 100_000;
     const saltBytes = base64ToBytes(docData.passwordSalt);
@@ -77,21 +82,17 @@ async function verifyPatientPassword(inputPw, docData) {
     return derived === docData.passwordHash;
   }
 
-  // SHA-256 hex (legacy)
+  // SHA-256 hex
   if (docData?.password && /^[a-f0-9]{64}$/i.test(docData.password)) {
     const hex = await sha256Hex(inputPw);
     return hex.toLowerCase() === String(docData.password).toLowerCase();
   }
 
-  // Plain text (legacy)
-  if (typeof docData?.password === "string") {
-    return inputPw === docData.password;
-  }
+  // Legacy plain
+  if (typeof docData?.password === "string") return inputPw === docData.password;
 
   return false;
 }
-
-// Build PBKDF2 payload for password updates (default 100k)
 async function buildPBKDF2Update(newPassword, iterations = 100_000) {
   const salt = new Uint8Array(16);
   crypto.getRandomValues(salt);
@@ -115,7 +116,6 @@ function pickStr(obj, keys) {
   }
   return "";
 }
-
 function normalizePatient(raw) {
   if (!raw) return null;
 
@@ -135,7 +135,6 @@ function normalizePatient(raw) {
 
   return { fullName, nationalId, phone, email, emailVerifiedAt, gender, location };
 }
-
 function resolvePatientId() {
   try {
     const sp = new URLSearchParams(window.location.search);
@@ -153,7 +152,7 @@ function resolvePatientId() {
 }
 
 /* =========================
-   PShell (Patient shell)
+   PShell (Patient)
    ========================= */
 export default function PShell() {
   const location = useLocation();
@@ -168,11 +167,7 @@ export default function PShell() {
   useEffect(() => {
     (async () => {
       const pid = resolvePatientId();
-      if (!pid) {
-        setPatient(null);
-        setPatientDocId(null);
-        return;
-      }
+      if (!pid) return;
 
       try {
         const s = await getDoc(doc(db, "patients", String(pid)));
@@ -206,10 +201,14 @@ export default function PShell() {
           return;
         }
       } catch {}
-
-      setPatient(null);
-      setPatientDocId(null);
     })();
+  }, []);
+
+  // open My Profile from Patient.jsx alert button
+  useEffect(() => {
+    const openProfile = () => setShowProfile(true);
+    window.addEventListener("openPatientProfile", openProfile);
+    return () => window.removeEventListener("openPatientProfile", openProfile);
   }, []);
 
   function signOut() {
@@ -228,14 +227,14 @@ export default function PShell() {
         }}
       />
 
-      {/* Child routes */}
+      {/* child routes */}
       <div className="flex-1">
         <Outlet />
       </div>
 
       <Footer />
 
-      {/* ====== Sidebar ====== */}
+      {/* Sidebar */}
       {isPatientPage && patientDocId && (
         <>
           <div
@@ -284,7 +283,7 @@ export default function PShell() {
         </>
       )}
 
-      {/* ====== Modal: My Profile ====== */}
+      {/* My Profile modal */}
       {showProfile && (
         <PatientProfileModal patient={patient} patientDocId={patientDocId} onClose={() => setShowProfile(false)} />
       )}
@@ -293,7 +292,7 @@ export default function PShell() {
 }
 
 /* =========================
-   Components
+   Shared UI
    ========================= */
 function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
   const base = "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
@@ -315,6 +314,9 @@ function Row({ label, value }) {
   );
 }
 
+/* =========================
+   My Profile modal
+   ========================= */
 function PatientProfileModal({ patient, patientDocId, onClose }) {
   const [emailInput, setEmailInput] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
@@ -331,7 +333,6 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
   };
 
   const hasEmail = !!P.email;
-  const isVerified = !!P.emailVerifiedAt;
 
   async function sendVerifyLink() {
     try {
@@ -358,7 +359,6 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
       localStorage.setItem("td_email_pending", JSON.stringify({ email: raw, ts: Date.now() }));
       setEmailMsg("A verification link has been sent to your email. Open it, then return to the app.");
     } catch (e) {
-      console.error("Firebase:", e.code, e.message);
       setEmailMsg(`Firebase: ${e?.code || e?.message || "Unable to send verification link."}`);
     } finally {
       setEmailLoading(false);
@@ -393,15 +393,12 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
             {hasEmail ? (
               <div className="flex items-center gap-2">
                 <span className="font-medium text-gray-800">{P.email}</span>
-                {isVerified ? (
-                  <span className="text-[12px] px-2 py-0.5 rounded-full border" style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}>
-                    Verified
-                  </span>
-                ) : (
-                  <span className="text-[12px] px-2 py-0.5 rounded-full border" style={{ background: "#FEF2F2", color: "#991B1B", borderColor: "#FECACA" }}>
-                    Not verified
-                  </span>
-                )}
+                <span
+                  className="text-[12px] px-2 py-0.5 rounded-full border"
+                  style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}
+                >
+                  Verified / On File
+                </span>
               </div>
             ) : (
               <>
@@ -414,13 +411,18 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
                     onChange={(e) => setEmailInput(e.target.value)}
                     inputMode="email"
                   />
-                  <button onClick={sendVerifyLink} disabled={emailLoading} className="px-3 py-2 rounded-lg text-white disabled:opacity-50" style={{ background: C.primary }}>
+                  <button
+                    onClick={sendVerifyLink}
+                    disabled={emailLoading}
+                    className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
+                    style={{ background: C.primary }}
+                  >
                     {emailLoading ? "Sending..." : "Send Verify"}
                   </button>
                 </div>
 
                 {!!emailMsg && (
-                  <div className="mt-2 text-sm" style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534" }}>
+                  <div className="mt-2 text-sm text-gray-700">
                     {emailMsg}
                   </div>
                 )}
@@ -428,7 +430,13 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
             )}
           </div>
 
-          {hasEmail && <PatientPasswordSection patientDocId={patientDocId} onSaved={() => {}} color={C.primary} />}
+          {hasEmail && (
+            <PatientPasswordSection
+              patientDocId={patientDocId}
+              onSaved={() => {}}
+              color={C.primary}
+            />
+          )}
 
           <div className="mt-4 flex items-center justify-end">
             <button onClick={onClose} className="px-4 py-2 rounded-lg border">
@@ -441,6 +449,9 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
   );
 }
 
+/* =========================
+   Password Section (checklist + strength on typing)
+   ========================= */
 function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
@@ -454,28 +465,60 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState("");
 
-  const passValidation = (() => {
-    const p = String(newPass || "");
-    if (!p) return { ok: false, msg: "Password is required" };
-    if (p.length < 8) return { ok: false, msg: "At least 8 characters required" };
-    if (!/[a-z]/.test(p)) return { ok: false, msg: "Must include lowercase letter" };
-    if (!/[A-Z]/.test(p)) return { ok: false, msg: "Must include uppercase letter" };
-    if (!/\d/.test(p)) return { ok: false, msg: "Must include number" };
-    return { ok: true, msg: "Password meets requirements" };
-  })();
+  // ✅ show checklist + bar only when the user starts typing
+  const showReqs = (newPass || "").length > 0;
+
+  // ===== inline passwordStrength (no extra file) =====
+  function passwordStrength(pw) {
+    const p = String(pw || "");
+    let score = 0;
+    const hasLower = /[a-z]/.test(p);
+    const hasUpper = /[A-Z]/.test(p);
+    const hasDigit = /\d/.test(p);
+    const hasSymbol = /[^A-Za-z0-9]/.test(p);
+    const len8 = p.length >= 8;
+    const len12 = p.length >= 12;
+
+    if (len8) score++;
+    if (hasLower) score++;
+    if (hasUpper) score++;
+    if (hasDigit) score++;
+    if (hasSymbol) score++;
+    if (len12) score++;
+
+    let label = "Weak";
+    let color = "#ef4444";
+    if (score >= 4) { label = "Medium"; color = "#f59e0b"; }
+    if (score >= 5) { label = "Strong"; color = "#10b981"; }
+
+    const width = Math.min(100, Math.round((score / 6) * 100));
+    return { score, label, color, width, hasLower, hasUpper, hasDigit, hasSymbol, len8 };
+  }
+
+  const st = passwordStrength(newPass);
+  // Enable submit if (Upper + Lower + Digit + Length ≥ 8). Symbol optional.
+  const passOk = st.hasLower && st.hasUpper && st.hasDigit && st.len8;
+
+  function Req({ ok, label }) {
+    return (
+      <div className="flex items-center gap-2 text-sm leading-6">
+        {ok ? <CheckCircle size={18} className="text-green-600" /> : <Circle size={18} className="text-gray-400" />}
+        <span className={ok ? "text-green-700" : "text-gray-700"}>{label}</span>
+      </div>
+    );
+  }
 
   const doUpdate = async () => {
     try {
-      setMsg("");
-      setMsgType("");
+      setMsg(""); setMsgType("");
 
       if (!oldPass || !newPass || !confirmPass) {
         setMsg("Please fill all fields");
         setMsgType("error");
         return;
       }
-      if (!passValidation.ok) {
-        setMsg(passValidation.msg);
+      if (!passOk) {
+        setMsg("Please meet all password requirements");
         setMsgType("error");
         return;
       }
@@ -510,11 +553,11 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
         return;
       }
 
-      const payload = await buildPBKDF2Update(newPass, Number(data?.passwordIter) || parseItersFromAlgo(data?.passwordAlgo) || 100_000);
-
-      // Clean legacy field if exists
+      const payload = await buildPBKDF2Update(
+        newPass,
+        Number(data?.passwordIter) || parseItersFromAlgo(data?.passwordAlgo) || 100_000
+      );
       if (data?.password) payload.password = deleteField();
-
       await updateDoc(ref, payload);
 
       setMsg("Password updated successfully! ✓");
@@ -539,6 +582,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
       </div>
 
       <div className="space-y-3">
+        {/* Current */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             Current Password <span className="text-rose-600">*</span>
@@ -549,8 +593,9 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
               value={oldPass}
               onChange={(e) => setOldPass(e.target.value)}
               className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:border-transparent"
-              style={{ outlineColor: color }}
+              style={{ outlineColor: C.primary }}
               placeholder="Enter current password"
+              autoComplete="current-password"
             />
             <button
               type="button"
@@ -562,6 +607,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           </div>
         </div>
 
+        {/* New */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             New Password <span className="text-rose-600">*</span>
@@ -570,10 +616,11 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
             <input
               type={showNew ? "text" : "password"}
               value={newPass}
-              onChange={(e) => setNewPass(e.target.value)}
+              onChange={(e) => setNewPass(e.target.value)} // show requirements on typing
               className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:border-transparent"
-              style={{ outlineColor: color }}
+              style={{ outlineColor: C.primary }}
               placeholder="Enter new password"
+              autoComplete="new-password"
             />
             <button
               type="button"
@@ -583,14 +630,36 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
               {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
-          {newPass && (
-            <div className={`text-xs mt-1 ${passValidation.ok ? "text-green-600" : "text-rose-600"} flex items-center gap-1`}>
-              {passValidation.ok ? <CheckCircle size={14} /> : <XCircle size={14} />}
-              {passValidation.msg}
-            </div>
+
+          {/* ✅ Requirements in a single column */}
+          {showReqs && (
+            <>
+              <div className="mt-3 flex flex-col gap-2">
+                <Req ok={st.hasUpper}  label="Uppercase (A–Z)" />
+                <Req ok={st.hasLower}  label="Lowercase (a–z)" />
+                <Req ok={st.hasDigit}  label="Digit (0–9)" />
+                <Req ok={st.hasSymbol} label="Symbol (!@#$…)" />
+                <Req ok={st.len8}      label="Length ≥ 8" />
+              </div>
+
+              {/* Strength bar */}
+              <div className="mt-3">
+                <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+                  <div
+                    className="h-2 rounded-full transition-all"
+                    style={{ width: `${st.width}%`, background: st.color }}
+                  />
+                </div>
+                <div className="mt-2 text-sm">
+                  Strength: <span style={{ color: st.color, fontWeight: 700 }}>{st.label}</span>
+                  <span className="text-gray-600"> &nbsp; (min 8 chars, include a–z, A–Z, 0–9)</span>
+                </div>
+              </div>
+            </>
           )}
         </div>
 
+        {/* Confirm */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             Confirm New Password <span className="text-rose-600">*</span>
@@ -601,8 +670,9 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
               value={confirmPass}
               onChange={(e) => setConfirmPass(e.target.value)}
               className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:border-transparent"
-              style={{ outlineColor: color }}
+              style={{ outlineColor: C.primary }}
               placeholder="Confirm new password"
+              autoComplete="new-password"
             />
             <button
               type="button"
@@ -621,19 +691,30 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           )}
         </div>
 
+        {/* Status */}
         {msg && (
           <div
             className={`p-3 rounded-lg text-sm ${
-              msgType === "success" ? "bg-green-50 text-green-800 border border-green-200" : "bg-rose-50 text-rose-800 border border-rose-200"
+              msgType === "success"
+                ? "bg-green-50 text-green-800 border border-green-200"
+                : "bg-rose-50 text-rose-800 border border-rose-200"
             }`}
           >
             {msg}
           </div>
         )}
 
+        {/* Submit */}
         <button
           onClick={doUpdate}
-          disabled={loading || !oldPass || !newPass || !confirmPass || newPass !== confirmPass || !passValidation.ok}
+          disabled={
+            loading ||
+            !oldPass ||
+            !newPass ||
+            !confirmPass ||
+            newPass !== confirmPass ||
+            !passOk
+          }
           className="w-full py-2.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-[1.02]"
           style={{ background: color }}
         >
