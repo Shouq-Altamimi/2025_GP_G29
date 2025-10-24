@@ -30,7 +30,7 @@
   "sourceMap": "",
   "deployedSourceMap": "",
   "source": "// SPDX-License-Identifier: MIT\r\npragma solidity ^0.8.19;\r\n\r\n/* واجهة مبسطة من عقد الوصفة: نحتاج فقط isValid(id) */\r\ninterface IPrescription {\r\n    function isValid(uint256 id) external view returns (bool);\r\n}\r\n\r\ncontract Dispense {\r\n    IPrescription public prescription;\r\n    address public admin;\r\n\r\n    // إدارة صيدليين بسيط داخل عقد الصرف (ممكن تربطيه لاحقًا بعقد الوصفة لو تحبين)\r\n    mapping(address => bool) public isPharmacist;\r\n\r\n    struct DispenseRecord {\r\n        uint256 prescriptionId;\r\n        address pharmacist;\r\n        uint256 timestamp;\r\n    }\r\n\r\n    // سجلات الصرف وحالة الصرف\r\n    mapping(uint256 => DispenseRecord) public dispenses;\r\n    mapping(uint256 => bool) public isDispensed;\r\n\r\n    event PharmacistUpdated(address indexed account, bool enabled);\r\n    event PrescriptionAddressUpdated(address indexed newAddress);\r\n    event Dispensed(uint256 indexed prescriptionId, address indexed pharmacist, uint256 timestamp);\r\n\r\n    modifier onlyAdmin() {\r\n        require(msg.sender == admin, \"Not admin\");\r\n        _;\r\n    }\r\n\r\n    modifier onlyPharmacist() {\r\n        require(isPharmacist[msg.sender], \"Not pharmacist\");\r\n        _;\r\n    }\r\n\r\n    constructor(address _prescriptionAddress) {\r\n        require(_prescriptionAddress != address(0), \"Bad address\");\r\n        admin = msg.sender;\r\n        prescription = IPrescription(_prescriptionAddress);\r\n    }\r\n\r\n    // تحديث عنوان عقد الوصفة\r\n    function setPrescriptionContract(address _newAddress) external onlyAdmin {\r\n        require(_newAddress != address(0), \"Bad address\");\r\n        prescription = IPrescription(_newAddress);\r\n        emit PrescriptionAddressUpdated(_newAddress);\r\n    }\r\n\r\n    // إضافة/إزالة صيدلي\r\n    function setPharmacist(address account, bool enabled) external onlyAdmin {\r\n        require(account != address(0), \"Bad pharmacist\");\r\n        isPharmacist[account] = enabled;\r\n        emit PharmacistUpdated(account, enabled);\r\n    }\r\n\r\n    // صرف وصفة\r\n    function dispense(uint256 _prescriptionId) external onlyPharmacist {\r\n        require(!isDispensed[_prescriptionId], \"Already dispensed\");\r\n        require(prescription.isValid(_prescriptionId), \"Invalid/expired\");\r\n\r\n        dispenses[_prescriptionId] = DispenseRecord({\r\n            prescriptionId: _prescriptionId,\r\n            pharmacist: msg.sender,\r\n            timestamp: block.timestamp\r\n        });\r\n\r\n        isDispensed[_prescriptionId] = true;\r\n        emit Dispensed(_prescriptionId, msg.sender, block.timestamp);\r\n    }\r\n\r\n    // قراءة سجل الصرف + حالة الصرف\r\n    function getDispenseInfo(uint256 _prescriptionId)\r\n        external\r\n        view\r\n        returns (DispenseRecord memory rec, bool dispensed)\r\n    {\r\n        return (dispenses[_prescriptionId], isDispensed[_prescriptionId]);\r\n    }\r\n}\r\n",
-  "sourcePath": "C:\\Users\\aljaw\\2025_GP_G29-5\\contracts\\contracts\\Dispense.sol",
+  "sourcePath": "C:\\Users\\96655\\Desktop\\GP1\\2025_GP_G29\\contracts\\contracts\\Dispense.sol",
   "ast": {
     "absolutePath": "project:/contracts/contracts/Dispense.sol",
     "exportedSymbols": {
@@ -3063,7 +3063,7 @@
   },
   "networks": {},
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-10-20T15:31:07.290Z",
+  "updatedAt": "2025-10-23T17:51:18.708Z",
   "devdoc": {
     "kind": "dev",
     "methods": {},

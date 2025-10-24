@@ -1,7 +1,7 @@
 // src/pages/Auth.js
 "use client";
 import React, { useMemo, useState, useEffect } from "react";
-import { Eye, EyeOff, CheckCircle, Circle } from "lucide-react";
+import { Eye, EyeOff, CheckCircle, Circle, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import {
@@ -15,10 +15,9 @@ import {
   Timestamp,
   getDoc,
 } from "firebase/firestore";
+import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
-/* =========================
-   TrustDose Theme
-   ========================= */
+
 const TD = {
   primary: "#B08CC1",
   teal: "#52B9C4",
@@ -30,9 +29,21 @@ const TD = {
   err: "#DC2626",
 };
 
-/* =========================
-   PBKDF2-SHA256 (WebCrypto)
-   ========================= */
+
+async function hashPasswordSHA256(password) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function verifyPasswordSHA256(inputPassword, storedHash) {
+  const inputHash = await hashPasswordSHA256(inputPassword);
+  return inputHash === storedHash;
+}
+
+
 async function pbkdf2Hash(password, saltBase64, iterations = 100_000) {
   const enc = new TextEncoder();
   const pwKey = await crypto.subtle.importKey(
@@ -59,9 +70,7 @@ function genSaltBase64(len = 16) {
   return btoa(String.fromCharCode(...buf));
 }
 
-/* =========================
-   Cities & Districts (Riyadh only)
-   ========================= */
+
 const SA_CITIES = ["Riyadh"];
 const DISTRICTS_BY_CITY = {
   Riyadh: [
@@ -75,9 +84,7 @@ const DISTRICTS_BY_CITY = {
   ],
 };
 
-/* =========================
-   Validators (Phone / Password / NID)
-   ========================= */
+
 function toEnglishDigits(s) {
   if (!s) return "";
   let out = "";
@@ -93,7 +100,6 @@ function isDigitsLike(s) {
   return /^\+?\d+$/.test(s || "");
 }
 
-/** Reject spaces; do not auto-fix them */
 function validateAndNormalizePhone(raw) {
   const original = String(raw || "");
   if (/\s/.test(original)) {
@@ -117,14 +123,12 @@ function validateAndNormalizePhone(raw) {
   };
 }
 
-/** Strict at submit: 10 ASCII digits, starts with 1 or 2, no spaces */
 function isValidNationalIdStrict(raw) {
   const s = String(raw || "");
   if (/\s/.test(s)) return false;
   return /^[12][0-9]{9}$/.test(s);
 }
 
-/** Live validation: allow partial typing up to 11, enforce ASCII digits & start rule, show error if >10 */
 function isValidNationalIdLive(raw) {
   const s = String(raw || "");
   if (s === "") return { ok: true, reason: "" };
@@ -158,9 +162,7 @@ function passwordStrength(pw) {
   return { score, label, color, width, hasLower, hasUpper, hasDigit, hasSymbol, len8 };
 }
 
-/* =========================
-   Small UI helpers
-   ========================= */
+
 const inputBase = {
   width: "100%",
   padding: "12px 14px",
@@ -202,7 +204,6 @@ function Label({ children }) {
   return <label style={{ fontSize: 13, color: TD.ink, fontWeight: 600 }}>{children}</label>;
 }
 
-/** Select with placeholder/name + arrow */
 function Select({ name, value, onChange, disabled, required, placeholder, children }) {
   return (
     <div style={{ position: "relative" }}>
@@ -221,7 +222,6 @@ function Select({ name, value, onChange, disabled, required, placeholder, childr
           })
         }
       >
-        {/* placeholder option */}
         <option value="" disabled hidden>
           {placeholder || "Select…"}
         </option>
@@ -252,30 +252,33 @@ export default function TrustDoseAuth() {
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(true);
 
-  // Sign in
+ 
   const [accountId, setAccountId] = useState("");
   const [password, setPassword] = useState("");
 
-  // 👁️
+  
+  const [showForgotPw, setShowForgotPw] = useState(false);
+  const [forgotId, setForgotId] = useState("");
+  const [forgotMsg, setForgotMsg] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+
   const [showPw, setShowPw] = useState(false);
   const [showPwConfirm, setShowPwConfirm] = useState(false);
 
-  // Sign up (Patient)
+ 
   const [nationalId, setNationalId] = useState("");
   const [nationalIdErr, setNationalIdErr] = useState("");
   const [phone, setPhone] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
-  const [gender, setGender] = useState(""); // "Male" | "Female"
+  const [gender, setGender] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [birthDateErr, setBirthDateErr] = useState("");
 
-  // الموقع
   const [city, setCity] = useState("");
   const [district, setDistrict] = useState("");
   const [districtOther, setDistrictOther] = useState("");
 
-  // UI helpers
   const [pwInfo, setPwInfo] = useState(passwordStrength(""));
   const [phoneInfo, setPhoneInfo] = useState({ ok: false, reason: "", normalized: "" });
   const [phoneChecking, setPhoneChecking] = useState(false);
@@ -288,6 +291,7 @@ export default function TrustDoseAuth() {
     const saved = localStorage.getItem("td_auth_id");
     if (saved) setAccountId(saved);
   }, []);
+  
   useEffect(() => {
     if (remember && accountId) localStorage.setItem("td_auth_id", accountId);
     if (!remember) localStorage.removeItem("td_auth_id");
@@ -333,11 +337,9 @@ export default function TrustDoseAuth() {
     [mode]
   );
 
-  // ===== فقط هذا تغيّر: دعم B-1 للصيدلية =====
   function detectSource(id) {
     const clean = String(id || "").trim();
 
-    // ✅ Pharmacy branch like "B-1" is stored in collection("pharmacies") with field BranchID
     if (/^B-\d+$/i.test(clean)) {
       return { coll: "pharmacies", idFields: ["BranchID"], role: "pharmacy" };
     }
@@ -347,7 +349,6 @@ export default function TrustDoseAuth() {
     }
 
     if (/^(ph|phar|pharmacy)[-_]?\w+/i.test(clean)) {
-      // generic pharmacy IDs if you have other formats
       return { coll: "pharmacies", idFields: ["BranchID", "PharmacyID"], role: "pharmacy" };
     }
 
@@ -356,6 +357,116 @@ export default function TrustDoseAuth() {
     }
 
     return { coll: "logistics", idFields: ["companyName"], role: "logistics" };
+  }
+
+  
+  async function handleForgotPassword(e) {
+    e.preventDefault();
+    setForgotMsg("");
+    setForgotLoading(true);
+
+    try {
+      const id = forgotId.trim();
+      if (!id) throw new Error("Please enter your ID");
+
+      const { coll, idFields, role } = detectSource(id);
+      let user = null;
+      let userDocId = null;
+
+      
+      if (role === "patient") {
+        try {
+          const p = await getDoc(doc(db, "patients", `Ph_${id}`));
+          if (p.exists()) { user = p.data(); userDocId = p.id; }
+        } catch {}
+      }
+
+    
+      if (!user && /^B-\d+$/i.test(id)) {
+        try {
+          let snap = await getDocs(query(collection(db, "Phar_Nahdi"), where("BranchID", "==", id)));
+          if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
+
+          if (!user) {
+            snap = await getDocs(query(collection(db, "pharmacies"), where("BranchID", "==", id)));
+            if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
+          }
+        } catch {}
+      }
+
+      if (!user) {
+        for (const f of idFields) {
+          try {
+            const q = query(collection(db, coll), where(f, "==", id));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+              user = snap.docs[0].data();
+              userDocId = snap.docs[0].id;
+              break;
+            }
+          } catch {}
+        }
+      }
+
+      if (!user) {
+        setForgotMsg("❌ No account found with this ID.");
+        return;
+      }
+
+      const email = user.email;
+      if (!email) {
+        setForgotMsg("❌ No email registered for this account. Please contact support.");
+        return;
+      }
+
+      // ✅ إرسال رابط إعادة تعيين كلمة المرور مع البيانات
+      const auth = getAuth();
+      const BASE = window.location.origin;
+      
+      // بناء URL مع جميع المعلومات المطلوبة
+      const params = new URLSearchParams({
+        col: coll,
+        doc: String(userDocId || ""),
+        id: id,
+        reset: "true",
+        e: email,
+        redirect: "/auth"
+      });
+
+      const actionCodeSettings = {
+        url: `${BASE}/password-reset?${params.toString()}`,
+        handleCodeInApp: true,
+      };
+
+      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+
+      setForgotMsg(`✅ Password reset link sent to ${email}. Check your inbox and spam folder!`);
+      
+      // إخفاء البوب اب بعد 3 ثواني
+      setTimeout(() => {
+        setShowForgotPw(false);
+        setForgotId("");
+        setForgotMsg("");
+      }, 3000);
+      
+    } catch (err) {
+      console.error("Forgot password error:", err);
+      
+      // رسائل خطأ واضحة
+      let errorMessage = "Failed to send reset link";
+      
+      if (err.code === "auth/invalid-email") {
+        errorMessage = "Invalid email address";
+      } else if (err.code === "auth/too-many-requests") {
+        errorMessage = "Too many requests. Please try again later";
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setForgotMsg(`❌ ${errorMessage}`);
+    } finally {
+      setForgotLoading(false);
+    }
   }
 
   // ===== Sign in =====
@@ -371,7 +482,7 @@ export default function TrustDoseAuth() {
 
       const { coll, idFields, role } = detectSource(id);
       let user = null;
-      let userDocId = null; // ⬅️ نحتفظ بـ docId
+      let userDocId = null;
 
       if (role === "patient") {
         try {
@@ -380,14 +491,11 @@ export default function TrustDoseAuth() {
         } catch {}
       }
 
-      // ✅ Fallback خاص بالصيدلية: جرّب Phar_Nahdi ثم pharmacies إذا كان النمط B-<num>
       if (!user && /^B-\d+$/i.test(id)) {
         try {
-          // Phar_Nahdi
           let snap = await getDocs(query(collection(db, "Phar_Nahdi"), where("BranchID", "==", id)));
           if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
 
-          // pharmacies (لو فيه نسخة ثانية)
           if (!user) {
             snap = await getDocs(query(collection(db, "pharmacies"), where("BranchID", "==", id)));
             if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
@@ -395,7 +503,6 @@ export default function TrustDoseAuth() {
         } catch {}
       }
 
-      // منطقك الأصلي كما هو
       if (!user) {
         for (const f of idFields) {
           try {
@@ -403,7 +510,7 @@ export default function TrustDoseAuth() {
             const snap = await getDocs(q);
             if (!snap.empty) {
               user = snap.docs[0].data();
-              userDocId = snap.docs[0].id; // ⬅️
+              userDocId = snap.docs[0].id;
               break;
             }
           } catch {}
@@ -415,6 +522,8 @@ export default function TrustDoseAuth() {
         return;
       }
 
+      console.log('🔐 Verifying password for role:', role);
+
       if ("passwordHash" in user && "passwordSalt" in user) {
         if (!pass) {
           setMsg("Please enter your password.");
@@ -425,22 +534,39 @@ export default function TrustDoseAuth() {
           setMsg("❌ ID or password incorrect.");
           return;
         }
-      } else if ("password" in user) {
-        if (!pass || String(user.password) !== pass) {
+      } 
+      else if ("password" in user) {
+        if (!pass) {
+          setMsg("Please enter your password.");
+          return;
+        }
+
+        const storedPassword = String(user.password);
+        let isCorrect = false;
+
+        const isHashed = storedPassword.length === 64 && /^[a-f0-9]+$/.test(storedPassword);
+        
+        if (isHashed) {
+          isCorrect = await verifyPasswordSHA256(pass, storedPassword);
+        } else {
+          isCorrect = pass === storedPassword;
+        }
+
+        if (!isCorrect) {
           setMsg("❌ ID or password incorrect.");
           return;
         }
-      } else {
-        console.warn(`[Auth] user has no password fields (allowed in dev).`);
+      } 
+      else {
+        console.warn(`[Auth] user has no password fields.`);
       }
 
       const displayName = user.name || user.companyName || id;
 
-      // ⬇️ تخزين role و المعرّفات بالصورة الصحيحة
       if (role === "pharmacy") {
         localStorage.setItem("userRole", "pharmacy");
-        localStorage.setItem("userId", userDocId || id);            // الأفضل docId (مثل Phar_Nahdi)
-        if (user.BranchID) localStorage.setItem("pharmacyBranchId", user.BranchID); // مثال B-1
+        localStorage.setItem("userId", userDocId || id);
+        if (user.BranchID) localStorage.setItem("pharmacyBranchId", user.BranchID);
       } else {
         localStorage.setItem("userId", id);
         localStorage.setItem("userRole", role);
@@ -448,7 +574,21 @@ export default function TrustDoseAuth() {
 
       setMsg(`✅ Logged in as ${role}. Welcome ${displayName}!`);
 
-      if (role === "doctor") navigate("/doctor", { replace: true });
+      if (role === "doctor") {
+        const welcomeDoctor = {
+          DoctorID: user.DoctorID || id,
+          name: user.name || "",
+          healthFacility: user.healthFacility || user.healthFacilityName || "",
+          speciality: user.speciality || user.specialization || "",
+          phone: user.phone || "",
+        };
+
+        localStorage.setItem("welcome_doctor", JSON.stringify(welcomeDoctor));
+        navigate("/doctor", { replace: true });
+        setLoading(false);
+        return; 
+      }
+      
       else if (role === "pharmacy") navigate("/pharmacy", { replace: true });
       else if (role === "patient") navigate("/patient", { replace: true });
       else navigate("/", { replace: true });
@@ -462,112 +602,105 @@ export default function TrustDoseAuth() {
 
   // ===== Patient Sign up =====
   async function handleSignUp(e) {
-  e.preventDefault();
-  setMsg("");
-  setLoading(true);
+    e.preventDefault();
+    setMsg("");
+    setLoading(true);
 
-  try {
-    // ‼️ حوّل كل شيء لأرقام/نصوص ASCII قبل أي فحص
-    const nidAscii = toEnglishDigits(String(nationalId ?? "")).trim();
-    if (!isValidNationalIdStrict(nidAscii)) {
-      throw new Error("National ID must be 10 digits starting with 1 or 2 (ASCII digits only, no spaces).");
+    try {
+      const nidAscii = toEnglishDigits(String(nationalId ?? "")).trim();
+      if (!isValidNationalIdStrict(nidAscii)) {
+        throw new Error("National ID must be 10 digits starting with 1 or 2.");
+      }
+
+      const phoneRaw = String(phone ?? "");
+      const phoneCheck = validateAndNormalizePhone(phoneRaw);
+
+      const pass  = String(password ?? "").trim();
+      const pass2 = String(confirmPassword ?? "").trim();
+      const nm    = String(name ?? "").trim();
+      const g     = String(gender ?? "").trim();
+      const c     = String(city ?? "").trim();
+      const d     = String(district === "__OTHER__" ? (districtOther ?? "") : (district ?? "")).trim();
+
+      const bdateStr = String(birthDate ?? "").trim();
+      let bdObj;
+      {
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(bdateStr);
+        if (!m) throw new Error("Invalid birth date.");
+        const y = Number(m[1]), mo = Number(m[2]), dy = Number(m[3]);
+        bdObj = new Date(Date.UTC(y, mo - 1, dy, 0, 0, 0));
+      }
+      if (Number.isNaN(bdObj.getTime())) throw new Error("Invalid birth date.");
+
+      const maxBirth = new Date(Date.UTC(2007, 11, 31, 23, 59, 59));
+      if (bdObj > maxBirth) throw new Error("Birth date must be 2007 or earlier.");
+
+      if (!phoneCheck.ok) throw new Error(phoneCheck.reason || "Invalid phone.");
+      const phoneNorm = phoneCheck.normalized;
+
+      if (!nidAscii || !phoneRaw || !pass || !pass2 || !nm || !g || !bdateStr || !c || !d) {
+        throw new Error("Please fill all fields.");
+      }
+      if (!["Male", "Female"].includes(g)) throw new Error("Gender must be Male or Female.");
+
+      const pw = passwordStrength(pass);
+      const meetsPolicy = pw.len8 && pw.hasLower && pw.hasUpper && pw.hasDigit;
+      if (!meetsPolicy) throw new Error("Password must be at least 8 chars and include lowercase, uppercase, and a digit.");
+      if (pass !== pass2) throw new Error("Passwords do not match.");
+
+      const docId = `Ph_${nidAscii}`;
+
+      const existsSnap = await getDoc(doc(db, "patients", docId));
+      if (existsSnap.exists()) throw new Error("An account with this National ID already exists.");
+
+      const phoneQ = query(collection(db, "patients"), where("contact", "==", phoneNorm));
+      const phoneSnap = await getDocs(phoneQ);
+      if (!phoneSnap.empty) throw new Error("This phone number is already registered.");
+
+      const saltB64 = genSaltBase64(16);
+      const hashB64 = await pbkdf2Hash(pass, saltB64, 100_000);
+
+      const payload = {
+        locationCity: c,
+        locationDistrict: d,
+        locationLabel: `${c}, ${d}`,
+        birthDate: Timestamp.fromDate(bdObj),
+        contact: phoneNorm,
+        gender: g,
+        name: nm,
+        nationalID: nidAscii,
+        nationalId: nidAscii,
+        passwordHash: hashB64,
+        passwordSalt: saltB64,
+        passwordAlgo: "PBKDF2-SHA256-100k",
+        createdAt: serverTimestamp(),
+      };
+
+      await setDoc(doc(db, "patients", docId), payload);
+
+      setMsg("🎉 Patient account created successfully. You can sign in now.");
+      setMode("signin");
+      setAccountId(nidAscii);
+      setPassword("");
+      setConfirmPassword("");
+      setName("");
+      setGender("");
+      setBirthDate("");
+      setPhone("");
+      setCity("");
+      setDistrict("");
+      setDistrictOther("");
+      setPhoneInfo({ ok: false, reason: "", normalized: "" });
+      setPhoneTaken(false);
+      setNationalIdErr("");
+      setBirthDateErr("");
+    } catch (err) {
+      console.error("signup error:", err);
+      setMsg(`❌ ${err?.message || err}`);
+    } finally {
+      setLoading(false);
     }
-
-    const phoneRaw = String(phone ?? "");
-    const phoneCheck = validateAndNormalizePhone(phoneRaw);
-
-    const pass  = String(password ?? "").trim();
-    const pass2 = String(confirmPassword ?? "").trim();
-    const nm    = String(name ?? "").trim();
-    const g     = String(gender ?? "").trim(); // "Male" | "Female"
-    const c     = String(city ?? "").trim();
-    const d     = String(district === "__OTHER__" ? (districtOther ?? "") : (district ?? "")).trim();
-
-    // تاريخ الميلاد: فسّره بشكل صارم من input type=date (YYYY-MM-DD)
-    const bdateStr = String(birthDate ?? "").trim();
-    let bdObj;
-    {
-      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(bdateStr);
-      if (!m) throw new Error("Invalid birth date.");
-      const y = Number(m[1]), mo = Number(m[2]), dy = Number(m[3]);
-      bdObj = new Date(Date.UTC(y, mo - 1, dy, 0, 0, 0));
-    }
-    if (Number.isNaN(bdObj.getTime())) throw new Error("Invalid birth date.");
-
-    const maxBirth = new Date(Date.UTC(2007, 11, 31, 23, 59, 59));
-    if (bdObj > maxBirth) throw new Error("Birth date must be 2007 or earlier.");
-
-    if (!phoneCheck.ok) throw new Error(phoneCheck.reason || "Invalid phone.");
-    const phoneNorm = phoneCheck.normalized;
-
-    if (!nidAscii || !phoneRaw || !pass || !pass2 || !nm || !g || !bdateStr || !c || !d) {
-      throw new Error("Please fill all fields.");
-    }
-    if (!["Male", "Female"].includes(g)) throw new Error("Gender must be Male or Female.");
-
-    const pw = passwordStrength(pass);
-    const meetsPolicy = pw.len8 && pw.hasLower && pw.hasUpper && pw.hasDigit;
-    if (!meetsPolicy) throw new Error("Password must be at least 8 chars and include lowercase, uppercase, and a digit.");
-    if (pass !== pass2) throw new Error("Passwords do not match.");
-
-    const docId = `Ph_${nidAscii}`;
-
-    const existsSnap = await getDoc(doc(db, "patients", docId));
-    if (existsSnap.exists()) throw new Error("An account with this National ID already exists.");
-
-    const phoneQ = query(collection(db, "patients"), where("contact", "==", phoneNorm));
-    const phoneSnap = await getDocs(phoneQ);
-    if (!phoneSnap.empty) throw new Error("This phone number is already registered.");
-
-    // كلمة المرور: PBKDF2-SHA256 32 بايت -> Base64 طوله 44
-    const saltB64 = genSaltBase64(16); // 16 بايت -> Base64 طوله 24
-    const hashB64 = await pbkdf2Hash(pass, saltB64, 100_000);
-
-    // لوج للتأكد من الأطوال المطلوبة في الrules
-    console.log("[signup] hashLen:", hashB64.length, "saltLen:", saltB64.length);
-
-    const payload = {
-      locationCity: c,
-      locationDistrict: d,
-      locationLabel: `${c}, ${d}`,
-      birthDate: Timestamp.fromDate(bdObj),
-      contact: phoneNorm,
-      gender: g,
-      name: nm,
-      nationalID: nidAscii,
-      nationalId: nidAscii,
-      passwordHash: hashB64,
-      passwordSalt: saltB64,
-      passwordAlgo: "PBKDF2-SHA256-100k",
-      createdAt: serverTimestamp(),
-    };
-
-    await setDoc(doc(db, "patients", docId), payload);
-
-    setMsg("🎉 Patient account created successfully. You can sign in now.");
-    setMode("signin");
-    setAccountId(nidAscii);
-    setPassword("");
-    setConfirmPassword("");
-    setName("");
-    setGender("");
-    setBirthDate("");
-    setPhone("");
-    setCity("");
-    setDistrict("");
-    setDistrictOther("");
-    setPhoneInfo({ ok: false, reason: "", normalized: "" });
-    setPhoneTaken(false);
-    setNationalIdErr("");
-    setBirthDateErr("");
-  } catch (err) {
-    console.error("signup error:", err?.code, err?.message, err);
-    setMsg(`❌ ${err?.code || ""} ${err?.message || err}`);
-  } finally {
-    setLoading(false);
   }
-}
-
 
   const currentDistricts = useMemo(
     () => (city ? DISTRICTS_BY_CITY[city] || ["Other…"] : []),
@@ -601,17 +734,8 @@ export default function TrustDoseAuth() {
           scrollbarWidth: "thin",
         }}
       >
-        {/* Logo */}
         <div style={{ display: "grid", placeItems: "center", marginBottom: 16 }}>
-          <div
-            style={{
-              width: 220,
-              height: 100,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
+          <div style={{ width: 220, height: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <img
               src="/Images/TrustDose_logo.png"
               alt="TrustDose logo"
@@ -744,7 +868,7 @@ export default function TrustDoseAuth() {
                 href="#forgot"
                 onClick={(e) => {
                   e.preventDefault();
-                  alert("Password reset coming soon 🔒");
+                  setShowForgotPw(true);
                 }}
                 style={linkStyle}
               >
@@ -905,7 +1029,6 @@ export default function TrustDoseAuth() {
               </div>
             </div>
 
-            {/* City + District */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div>
                 <Label>City</Label>
@@ -1004,7 +1127,6 @@ export default function TrustDoseAuth() {
               </button>
             </div>
 
-            {/* Password live checklist (Sign up only) */}
             {password.length > 0 && (
               <div style={{ marginTop: 8, marginBottom: 8 }}>
                 <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
@@ -1017,7 +1139,6 @@ export default function TrustDoseAuth() {
               </div>
             )}
 
-            {/* Strength bar & hint */}
             {password.length > 0 && (
               <div style={{ marginTop: -6, marginBottom: 8 }}>
                 <div style={{ height: 6, background: "#eee", borderRadius: 6, overflow: "hidden" }}>
@@ -1129,11 +1250,148 @@ export default function TrustDoseAuth() {
           </div>
         )}
       </div>
+
+      {/* Forgot Password Popup */}
+      {showForgotPw && (
+        <>
+          <div 
+            style={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(0,0,0,0.4)",
+              zIndex: 50,
+            }}
+            onClick={() => setShowForgotPw(false)} 
+          />
+          <div style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 50,
+            display: "grid",
+            placeItems: "center",
+            padding: "0 16px",
+          }}>
+            <div 
+              style={{
+                width: "min(92vw, 420px)",
+                background: "#fff",
+                padding: 24,
+                borderRadius: 18,
+                boxShadow: "0 18px 42px rgba(0,0,0,0.18)",
+                border: "1px solid rgba(0,0,0,.04)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <h3 style={{ margin: 0, color: TD.ink, fontSize: 20, fontWeight: 700 }}>
+                  Reset Password
+                </h3>
+                <button
+                  onClick={() => setShowForgotPw(false)}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    display: "grid",
+                    placeItems: "center",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    color: TD.gray,
+                  }}
+                  aria-label="Close"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <p style={{ marginTop: 0, marginBottom: 16, color: TD.gray, fontSize: 14 }}>
+                Enter your ID and we'll send a password reset link to your registered email.
+              </p>
+
+              <form onSubmit={handleForgotPassword}>
+                <Label>Your ID</Label>
+                <input
+                  value={forgotId}
+                  onChange={(e) => setForgotId(e.target.value)}
+                  placeholder="DoctorID / PharmacyID / NationalID"
+                  style={inputBase}
+                  onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
+                  onBlur={(e) =>
+                    Object.assign(e.currentTarget.style, {
+                      borderColor: "#DFE3E8",
+                      boxShadow: "0 3px 14px rgba(0,0,0,.04)",
+                    })
+                  }
+                  required
+                  autoFocus
+                />
+
+                {forgotMsg && (
+                  <div
+                    style={{
+                      marginTop: -6,
+                      marginBottom: 12,
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      background:
+                        forgotMsg.startsWith("✅")
+                          ? "rgba(16,185,129,.08)"
+                          : "rgba(239,68,68,.08)",
+                      color: forgotMsg.startsWith("✅") ? "#065f46" : "#7f1d1d",
+                      border: `1px solid ${
+                        forgotMsg.startsWith("✅")
+                          ? "rgba(16,185,129,.25)"
+                          : "rgba(239,68,68,.25)"
+                      }`,
+                      fontSize: 13,
+                    }}
+                  >
+                    {forgotMsg}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotPw(false)}
+                    style={{
+                      flex: 1,
+                      padding: 12,
+                      borderRadius: 12,
+                      border: "1px solid #DFE3E8",
+                      background: "#fff",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      fontSize: 14,
+                      color: TD.gray,
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    style={{
+                      flex: 1,
+                      ...buttonStyle,
+                      margin: 0,
+                      filter: forgotLoading ? "grayscale(30%) brightness(.9)" : undefined,
+                    }}
+                    onMouseDown={(e) => (e.currentTarget.style.transform = "scale(.99)")}
+                    onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                  >
+                    {forgotLoading ? "Sending..." : "Send Reset Link"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-/** Password Rule item */
 function PwRule({ ok, label }) {
   return (
     <li style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: ok ? TD.ok : TD.gray }}>

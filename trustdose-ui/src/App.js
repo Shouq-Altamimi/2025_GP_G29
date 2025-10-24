@@ -1,5 +1,6 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
+import PasswordReset from "./pages/PasswordReset";
 
 import AdminDashboard from "./pages/AdminDashboard";
 import DoctorHome from "./DoctorHome";
@@ -18,6 +19,9 @@ import PrescriptionsPage from "./pages/PrescriptionsPage";
 import PharmacyShell from "./pages/PharmacyShell";
 import Pharmacy from "./pages/pharmacy.jsx";
 
+// ✅ أضيفي هذا السطر
+import AuthEmailHandler from "./pages/AuthEmailHandler";
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -33,6 +37,10 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/auth" replace />} />
         <Route path="/auth" element={<TrustDoseAuth />} />
+        
+        {/* ✅ أضيفي هذا الـ route للتحقق من الإيميل */}
+        <Route path="/auth-email" element={<AuthEmailHandler />} />
+        
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/doctor-home" element={<DoctorHome />} />
 
@@ -51,7 +59,13 @@ export default function App() {
         </Route>
 
         <Route path="*" element={<div style={{ padding: 24 }}>Page not found</div>} />
+
+              <Route path="/password-reset" element={<PasswordReset />} />
+              <Route path="/auth" element={<TrustDoseAuth />} />
+
       </Routes>
+
+
     </BrowserRouter>
   );
 }

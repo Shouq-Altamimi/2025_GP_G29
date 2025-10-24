@@ -18,19 +18,16 @@ import { ethers } from "ethers";
 import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "lucide-react";
 import PRESCRIPTION from "../contracts/Prescription.json";
 
-// ===== عقد البرسكربشن =====
-const CONTRACT_ADDRESS = "0x4Da9370dd1289eeF0776D68963f3E1752632Ccab";
-
-/* UI */
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
 
-/* حدود الإدخال */
+//contract
+const CONTRACT_ADDRESS = "0x10Bf60cCC275E9955c251980E85D3815cbd6a926";
+
 const LIMITS = Object.freeze({
-  medicalCondition: { min: 3, max: 120 },
+  medicalCondition: { min: 5, max: 120 },
   notes: { min: 0, max: 300 },
 });
 
-/* خيارات الجرعات حسب الشكل الصيدلاني */
 const DOSAGE_BY_FORM = {
   tablet: ["1 tablet", "2 tablets", "½ tablet", "¼ tablet"],
   capsule: ["1 capsule", "2 capsules"],
@@ -44,7 +41,7 @@ const DOSAGE_BY_FORM = {
 const OTHER_VALUE = "__OTHER__";
 function getDoseOptions(form) { return form ? DOSAGE_BY_FORM[form] || [] : []; }
 
-/* أسماء الحقول في Firestore */
+//data base
 const F = Object.freeze({
   createdAt: "createdAt",
   doctorId: "doctorId",
@@ -65,37 +62,73 @@ const F = Object.freeze({
   medicalCondition: "medicalCondition",
 });
 
-/* أدوات مساعدة */
+//welcomw
+function readWelcomeSync() {
+  try {
+    const raw = localStorage.getItem("welcome_doctor");
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
 async function sha256Hex(input) {
   const enc = new TextEncoder();
   const hash = await crypto.subtle.digest("SHA-256", enc.encode(input));
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// نطلب MetaMask فقط وقت التأكيد
+//metamask
 async function getSignerEnsured() {
+  //install
   if (!window.ethereum) throw new Error("MetaMask not detected. Please install/enable it.");
-  await window.ethereum.request({ method: "eth_requestAccounts" }); // connect only here
+  //request access
+  await window.ethereum.request({ method: "eth_requestAccounts" });
+
   const provider = new ethers.BrowserProvider(window.ethereum);
   return provider.getSigner();
 }
 
+//prescription ID
 function generatePrescriptionId(prefix = "RX-", len = 8) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let id = prefix;
-  for (let i = 0; i < len; i++) id += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < len; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return id;
+}
+//to ensure uniqueness
+async function generateUniquePrescriptionId() {
+  let id;
+  let exists = true;
+
+  while (exists) {
+    id = generatePrescriptionId();
+    const qSnap = await getDocs(
+      query(collection(db, "prescriptions"), where("prescriptionID", "==", id))
+    );
+    exists = !qSnap.empty; 
+  }
+
   return id;
 }
 
-/* ======================= الصفحة ======================= */
+
+
 export default function Doctor() {
   const navigate = useNavigate();
 
-  // Doctor (من DoctorID فقط)
-  const [doctor, setDoctor] = useState(null);
-  const [doctorLoadErr, setDoctorLoadErr] = useState("");
+  useEffect(() => {
+    const role = localStorage.getItem("userRole");
+    const wd = localStorage.getItem("welcome_doctor");
+    if (role !== "doctor" || !wd) {
+      navigate("/auth", { replace: true });
+    }
+  }, [navigate]);
 
-  // Patient search
+  const [welcome] = useState(() => readWelcomeSync());
+
+  // patient search
   const [q, setQ] = useState("");
   const [searchMsg, setSearchMsg] = useState("");
   const [searched, setSearched] = useState(false);
@@ -113,65 +146,14 @@ export default function Doctor() {
   const [medicalCondition, setMedicalCondition] = useState("");
   const [notes, setNotes] = useState("");
 
-  // ui messages
+  //created prescription message
   const [rxMsg, setRxMsg] = useState("");
 
-  // UX
+  
   const mcRef = useRef(null);
   const [mcTouched, setMcTouched] = useState(false);
 
-  /* 1) جلب بيانات الدكتور بـ DoctorID فقط من السيشن */
-  useEffect(() => {
-    (async () => {
-      try {
-        let session = null;
-        try {
-          const cached = sessionStorage.getItem("td_doctor"); // يُحفظ بعد تسجيل الدخول
-          if (cached) session = JSON.parse(cached);
-        } catch {}
-
-        const doctorIdFromSession = session?.DoctorID || session?.doctorId;
-        if (!doctorIdFromSession) {
-          setDoctorLoadErr("No DoctorID in session.");
-          return;
-        }
-
-        // ابحث حيث الحقل DoctorID == القيمة
-        const col = collection(db, "doctors");
-        const q1 = query(col, where("DoctorID", "==", doctorIdFromSession));
-        const s1 = await getDocs(q1);
-        if (!s1.empty) {
-          setDoctor({ id: s1.docs[0].id, ...s1.docs[0].data() });
-          return;
-        }
-
-        // احتياط: لو اسم الوثيقة هو DoctorID
-        const snapByDocId = await getDoc(doc(db, "doctors", doctorIdFromSession));
-        if (snapByDocId.exists()) {
-          setDoctor({ id: snapByDocId.id, ...snapByDocId.data() });
-          return;
-        }
-
-        setDoctorLoadErr("Doctor record not found.");
-      } catch (e) {
-        console.error("Load doctor failed:", e);
-        setDoctorLoadErr("Failed to load doctor.");
-      }
-    })();
-  }, []);
-
-  /* 2) استعادة المريض من السيشن إن وجد */
-  useEffect(() => {
-    const cached = sessionStorage.getItem("td_patient");
-    if (cached) {
-      const p = JSON.parse(cached);
-      setSelectedPatient(p);
-      setSearched(true);
-      setQ(p.id || "");
-    }
-  }, []);
-
-  /* 3) تحميل الأدوية */
+//medicines load
   useEffect(() => {
     (async () => {
       const snap = await getDocs(collection(db, "medicines"));
@@ -184,10 +166,8 @@ export default function Doctor() {
     setSelectedPatient(null);
     setSearched(false);
     setSearchMsg("");
-    sessionStorage.removeItem("td_patient");
   }
 
-  /* 4) البحث عن المريض */
   async function runSearch() {
     const id = q.trim();
     if (!/^[12]\d{9}$/.test(id)) {
@@ -204,30 +184,26 @@ export default function Doctor() {
         const patient = mapPatient(rec, id);
         setSelectedPatient(patient);
         setSearched(true);
-        sessionStorage.setItem("td_patient", JSON.stringify(patient));
       } else {
         setSelectedPatient(null);
         setSearched(true);
         setSearchMsg("The national ID you entered isn’t registered in our system.");
-        sessionStorage.removeItem("td_patient");
       }
     } catch (e) {
       console.error(e);
       setSelectedPatient(null);
       setSearched(false);
       setSearchMsg("Error fetching from database. Please try again.");
-      sessionStorage.removeItem("td_patient");
     } finally {
       setIsLoading(false);
     }
   }
 
-  /* 5) تأكيد وإنشاء الوصفة — البلوك تشين أولاً، ثم Firestore */
+//blockchain then saving 
   async function confirmAndSave() {
     if (!selectedPatient) return setRxMsg("Please search for a patient first.");
     if (!selectedMed) return setRxMsg("Please choose a medicine from the list.");
 
-    // حلّ "Other..." (إدخال يدوي)
     const finalDose = dose === OTHER_VALUE ? "" : dose;
     const finalFreq = timesPerDay === OTHER_VALUE ? "" : timesPerDay;
     const finalDuration = durationDays === OTHER_VALUE ? "" : durationDays;
@@ -235,6 +211,7 @@ export default function Doctor() {
     if (!finalDose) return setRxMsg("Please enter/select a dosage.");
     if (!finalFreq) return setRxMsg("Please enter/select a frequency.");
     if (!finalDuration) return setRxMsg("Please enter/select a duration.");
+
 
     const mc = medicalCondition.trim();
     if (mc.length < LIMITS.medicalCondition.min) {
@@ -258,16 +235,13 @@ export default function Doctor() {
       setIsLoading(true);
       setRxMsg("");
 
-      // 5.1 — تجهيز patient hash
       const natId = selectedPatient.id?.toString() || "";
       const natIdHashHex = natId ? await sha256Hex(natId) : "";
       const patientHashBytes32 = natIdHashHex ? "0x" + natIdHashHex : "0x" + "0".repeat(64);
 
-      // 5.2 — إرسال المعاملة (MetaMask هنا فقط)
       const signer = await getSignerEnsured();
       const doctorAddress = await signer.getAddress();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, PRESCRIPTION.abi, signer);
-
       const medForChain = (selectedMed.label || "").trim();
 
       const tx = await contract.createPrescription(
@@ -278,14 +252,15 @@ export default function Doctor() {
         finalDuration
       );
 
+      // wait for confirmation
       const receipt = await tx.wait();
-      if (receipt?.status !== 1) {
-        throw new Error("Transaction reverted or failed.");
-      }
+      console.log("Transaction Receipt:", receipt);
+      console.log(" Status:", receipt.status);
+      console.log(" Hash:", receipt.transactionHash || tx.hash);
 
+      if (receipt?.status !== 1) throw new Error("Transaction reverted or failed.");
       const txHash = receipt?.hash || receipt?.transactionHash || tx.hash;
 
-      // 5.3 — استخراج onchainId من الحدث
       let onchainId = null;
       try {
         const iface = new ethers.Interface(PRESCRIPTION.abi);
@@ -300,31 +275,23 @@ export default function Doctor() {
         }
       } catch {}
 
-      // 5.4 — حفظ في Firestore (بعد النجاح فقط)
       const payload = {
         [F.createdAt]: serverTimestamp(),
-
-        // معلومات الطبيب — نحفظ الاسم والمنشأة
         [F.doctorId]: doctorAddress,
-        [F.doctorName]: doctor?.name || "",
-        [F.doctorPhone]: doctor?.phone || "",
-        [F.doctorFacility]: doctor?.healthFacility || "",
-
-        // معلومات الدواء
+        [F.doctorName]: welcome?.name || "",
+        [F.doctorPhone]: welcome?.phone || "",
+        [F.doctorFacility]: welcome?.healthFacility || "",
         [F.medicineLabel]: selectedMed.label,
         [F.medicineName]: selectedMed.name,
         [F.dosageForm]: selectedMed.dosageForm || "",
         [F.dosage]: finalDose,
         [F.frequency]: finalFreq,
-        [F.durationDays]: finalDuration, // لا نحفظ expiration منفصل
+        [F.durationDays]: finalDuration,
         [F.medicalCondition]: mc,
         [F.notes]: notes || "",
-
         [F.onchainTx]: txHash,
         [F.patientDisplayId]: natId ? natId.slice(-4) : "",
         [F.patientNationalIdHash]: "0x" + natIdHashHex,
-
-        // إضافات للعرض
         nationalID: natId,
         patientName: selectedPatient.name,
         onchainId: onchainId ?? null,
@@ -336,7 +303,6 @@ export default function Doctor() {
 
       await addDoc(collection(db, "prescriptions"), payload);
 
-      // reset + توجيه
       setSelectedMed(null);
       setDose("");
       setTimesPerDay("");
@@ -347,6 +313,7 @@ export default function Doctor() {
       setTimeout(() => setRxMsg(""), 3000);
 
       navigate("/prescriptions", {
+        replace: true,
         state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
       });
     } catch (e) {
@@ -358,23 +325,31 @@ export default function Doctor() {
     }
   }
 
+  if (!welcome) return null;
+
   return (
     <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-6 py-6 md:py-8">
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 56, height: "auto" }} />
-          <div>
-            <div className="font-extrabold text-lg" style={{ color: "#334155" }}>
-              {doctor?.name ? `Welcome, Dr. ${doctor.name}` : "Welcome, Doctor"}
+      {(welcome.name || welcome.healthFacility || welcome.speciality) && (
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 56, height: "auto" }} />
+            <div>
+              <div className="font-extrabold text-lg" style={{ color: "#334155" }}>
+                {welcome?.name ? `Welcome, Dr. ${welcome.name}` : "Welcome, Doctor"}
+              </div>
+              {(welcome?.healthFacility || welcome?.speciality) && (
+                <div className="text-sm text-gray-600">
+                  {(welcome?.healthFacility || "")}
+                  {welcome?.healthFacility && welcome?.speciality ? " • " : ""}
+                  {(welcome?.speciality || "")}
+                </div>
+              )}
             </div>
           </div>
         </div>
-        {doctorLoadErr && <div className="text-sm text-rose-700">{doctorLoadErr}</div>}
-      </div>
+      )}
 
       <section className="space-y-6">
-        {/* Search patient */}
         <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <Search size={20} style={{ color: C.primary }} />
@@ -392,16 +367,20 @@ export default function Doctor() {
                 pattern="[0-9]*"
                 maxLength={10}
                 onChange={(e) => {
-                  let v = e.target.value.replace(/[^0-9]/g, "");
-                  if (v.length > 0 && !/^[12]/.test(v)) v = "";
-                  v = v.slice(0, 10);
+                  let v = e.target.value.replace(/[^0-9]/g, ""); 
+                  if (v.length > 0 && !/^[12]/.test(v)) v = ""; 
+                  v = v.slice(0, 10); 
                   setQ(v);
                 }}
-                onKeyDown={(e) => e.key === "Enter" && runSearch()}
+                onKeyDown={(e) => e.key === "Enter" && q.length === 10 && runSearch()}
               />
               {q && (
                 <button
-                  onClick={() => { setQ(""); setSearched(false); setSelectedPatient(null); }}
+                  onClick={() => {
+                    setQ("");
+                    setSearched(false);
+                    setSelectedPatient(null);
+                  }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 hover:opacity-80"
                   style={{ color: C.ink }}
                 >
@@ -409,19 +388,20 @@ export default function Doctor() {
                 </button>
               )}
             </div>
-            <button
-              onClick={runSearch}
-              disabled={isLoading}
-              className="px-6 py-3 text-white rounded-xl disabled:opacity-50 transition-colors flex items-center gap-2 font-medium"
-              style={{ backgroundColor: C.primary }}
-            >
-              {isLoading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Searching...
-                </>
-              ) : (<><Search size={18} /> Search</>)}
-            </button>
+
+        <button
+        onClick={runSearch}
+        disabled={q.length === 0} 
+        className="px-6 py-3 text-white rounded-xl font-medium transition-all flex items-center gap-2"
+        style={{
+          backgroundColor: q.length > 0 ? C.primary : "rgba(176, 140, 193, 0.4)",
+          cursor: q.length > 0 ? "pointer" : "not-allowed",
+          opacity: q.length > 0 ? 1 : 0.6,
+        }}
+      >
+        <Search size={18} /> Search
+      </button>
+
           </div>
 
           {(q || selectedPatient) && (
@@ -443,10 +423,8 @@ export default function Doctor() {
           )}
         </section>
 
-        {/* Patient + form */}
         {searched && selectedPatient && (
           <>
-            {/* Patient info */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 relative">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
                 <ClipboardList size={20} style={{ color: C.primary }} />
@@ -462,6 +440,7 @@ export default function Doctor() {
               <div className="flex justify-end">
                 <button
                   onClick={() => navigate("/prescriptions", {
+                    replace: true,
                     state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
                   })}
                   className="px-6 py-3 text-white rounded-xl transition-colors flex items-center gap-2 font-medium shadow-sm"
@@ -473,7 +452,6 @@ export default function Doctor() {
               </div>
             </section>
 
-            {/* Create Rx */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
                 <FileText size={20} style={{ color: C.primary }} />
@@ -494,7 +472,31 @@ export default function Doctor() {
                 </div>
               )}
 
-              {/* medicine search */}
+                    <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Medical Condition <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  ref={mcRef}
+                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
+                    mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min
+                      ? "border-rose-400 focus:ring-rose-200"
+                      : "border-gray-300"
+                  }`}
+                  style={{ outlineColor: mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min ? "#f87171" : C.primary }}
+                  placeholder="e.g., Hypertension"
+                  value={medicalCondition}
+                  onChange={(e) => setMedicalCondition(e.target.value.slice(0, LIMITS.medicalCondition.max))}
+                  onBlur={() => setMcTouched(true)}
+                />
+                <div className="mt-1 flex items-center justify-between text-xs">
+                  <span className="text-gray-500">{`${medicalCondition.length}/${LIMITS.medicalCondition.max}`}</span>
+                  {mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min && (
+                    <span className="text-rose-600">Please enter at least {LIMITS.medicalCondition.min} characters.</span>
+                  )}
+                </div>
+              </div>
+
               <div className="mb-4">
                 <MedicineSearch
                   value={selectedMed?.label || ""}
@@ -567,49 +569,40 @@ export default function Doctor() {
                 </div>
               )}
 
-              {/* Medical condition */}
               <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Medical Condition <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  ref={mcRef}
-                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
-                    mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min
-                      ? "border-rose-400 focus:ring-rose-200"
-                      : "border-gray-300"
-                  }`}
-                  style={{ outlineColor: mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min ? "#f87171" : C.primary }}
-                  placeholder="e.g., Hypertension"
-                  value={medicalCondition}
-                  onChange={(e) => setMedicalCondition(e.target.value.slice(0, LIMITS.medicalCondition.max))}
-                  onBlur={() => setMcTouched(true)}
-                />
-                <div className="mt-1 flex items-center justify-between text-xs">
-                  <span className="text-gray-500">{`${medicalCondition.length}/${LIMITS.medicalCondition.max}`}</span>
-                  {mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min && (
-                    <span className="text-rose-600">Please enter at least {LIMITS.medicalCondition.min} characters.</span>
-                  )}
-                </div>
-              </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Notes (optional)
+                  </label>
 
-              {/* notes */}
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
-                <textarea
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all h-28 resize-none"
-                  style={{ outlineColor: C.primary }}
-                  placeholder="Special instructions"
-                  value={notes}
-                  onChange={(e) => e.target.value.length <= LIMITS.notes.max && setNotes(e.target.value)}
-                />
-                <div className="mt-1 text-xs text-gray-500">{notes.length}/{LIMITS.notes.max}</div>
-              </div>
+                  <textarea
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all resize-none"
+                    style={{
+                      outlineColor: C.primary,
+                      minHeight: "48px",
+                      maxHeight: "200px",
+                    }}
+                    rows={1} 
+                    placeholder="Special instructions"
+                    value={notes}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value.length <= LIMITS.notes.max) {
+                        setNotes(value);
+                        e.target.style.height = "auto"; 
+                        e.target.style.height = e.target.scrollHeight + "px";
+                      }
+                    }}
+                  />
+
+                  <div className="mt-1 text-xs text-gray-500">
+                    {notes.length}/{LIMITS.notes.max}
+                  </div>
+                </div>
 
               <div className="flex items-center justify-between pt-4">
                 <button
                   onClick={confirmAndSave}
-                  disabled={isLoading || !selectedMed || !dose || !timesPerDay || !durationDays}
+                  disabled={isLoading || !selectedMed || !dose || !timesPerDay || !durationDays || !medicalCondition.trim()}
                   className="px-6 py-3 text-white rounded-xl disabled:opacity-50 transition-colors flex items-center gap-2 font-medium shadow-sm"
                   style={{ backgroundColor: C.primary }}
                 >
@@ -657,7 +650,6 @@ function InfoCard({ label, value, bold = false, highlight = false }) {
   );
 }
 
-/** Select يدعم Other */
 function SelectField({ label, value, onChange, placeholder, options, required = false, allowOther = false }) {
   const isCustom = allowOther && !!value && !options.includes(value) && value !== OTHER_VALUE;
   const selectValue = isCustom ? OTHER_VALUE : (value || "");
@@ -707,7 +699,6 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
   );
 }
 
-/** Dosage select يدعم Other */
 function DosageSelect({ value, onChange, options = [], required = true, placeholder = "Select dosage", allowOther = true }) {
   const isCustom = allowOther && !!value && !options.includes(value) && value !== OTHER_VALUE;
   const selectValue = isCustom ? OTHER_VALUE : (value || "");
@@ -757,7 +748,6 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
   );
 }
 
-/* ========= MedicineSearch ========= */
 function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine name" }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState(value || "");
@@ -873,7 +863,6 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
   );
 }
 
-/* ================= helpers ================= */
 function toAgeAny(birthValue) {
   try {
     if (!birthValue) return "—";

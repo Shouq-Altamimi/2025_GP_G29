@@ -14,9 +14,8 @@ import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
-
-const PRESCRIPTION_ADDRESS = "0xfe268A19A781335fc1E8d13E7F1aB71056ab226d"; // Prescription
-const DISPENSE_ADDRESS     = "0xdC8D1e42B692A3a96d195d539C3391eb5b6b8D21"; // Dispense
+const PRESCRIPTION_ADDRESS = "0x10Bf60cCC275E9955c251980E85D3815cbd6a926"; // Prescription
+const DISPENSE_ADDRESS     = "0x8a75087b6a45D8a346Df0433259E9b9e5dFC3Ee8"; // Dispense
 
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected.");
@@ -30,6 +29,7 @@ async function getSignerEnsured() {
   return provider.getSigner();
 }
 
+/** utils */
 function nowISO() { return new Date().toISOString(); }
 function fmt(dateISO) {
   if (!dateISO) return "-";
@@ -88,6 +88,7 @@ const btnStyle = {
 };
 
 export default function PharmacyApp() {
+  // داتا تجريبية لأقسام التسليم/البيندنج فقط
   const [rxs, setRxs] = useState([
     { ref: "RX-001", patientId: "1001", patientName: "Salem",  medicine: "Insulin",   dose: "10u",   timesPerDay: 2, durationDays: 30, createdAt: nowISO(), dispensed: false, accepted: false },
     { ref: "RX-002", patientId: "1002", patientName: "Maha",   medicine: "Panadol",   dose: "500mg", timesPerDay: 3, durationDays: 5,  createdAt: nowISO(), dispensed: false, accepted: false },
@@ -123,6 +124,7 @@ export default function PharmacyApp() {
     </div>
   );
 }
+// عرض وقت Firestore مثل لوحة فايربيز: "20 October 2025 at 12:00:13 UTC+3"
 function formatFsCreatedAt(v) {
   if (!v) return "-";
   if (typeof v === "string") return v;
@@ -136,6 +138,7 @@ function formatFsCreatedAt(v) {
 
   if (!(d instanceof Date) || isNaN(d)) return String(v);
 
+  // ننسق حسب توقيت الرياض (UTC+3) تمامًا مثل ما تشوفينه في الكونسول
   const base = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Riyadh",
     day: "2-digit",
@@ -145,11 +148,12 @@ function formatFsCreatedAt(v) {
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-  }).format(d);
+  }).format(d); // ex: "20 October 2025, 12:00:13"
 
   return base.replace(",", "") + " UTC+3";
 }
 
+// يعرض الوقت كما هو مخزّن في Firestore (UTC) مع الثواني
 function fmtUTC(ts) {
   if (!ts) return "-";
   const d = ts?.toDate ? ts.toDate() : new Date(ts);
@@ -162,21 +166,25 @@ function fmtUTC(ts) {
   }).format(d) + " UTC";
 }
 
+/** ========================= PickUp (البحث والتسليم في الصيدلية) ========================= */
 function PickUpSection({ setRxs, q, setQ, addNotification }) {
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [results, setResults] = useState([]); 
+  // ✅ النتائج كمصفوفة — لدعم أكثر من وصفة للمريض
+  const [results, setResults] = useState([]); // [{...normalized}, ...]
   const [infoMsg, setInfoMsg] = useState("");
   const [validationMsg, setValidationMsg] = useState("");
 
+  // ====== منطق الإدخال ======
   const raw = String(q || "").trim();
-  const isPatientIdMode = /^\d/.test(raw); 
+  const isPatientIdMode = /^\d/.test(raw); // إذا بدأ برقم → Patient ID
   const natDigitsAll = toEnglishDigits(raw).replace(/\D/g, "");
-  const natDigits = isPatientIdMode ? natDigitsAll.slice(0, 10) : ""; 
-  const rxUpper = !isPatientIdMode ? raw.toUpperCase() : "";
+  const natDigits = isPatientIdMode ? natDigitsAll.slice(0, 10) : ""; // حد أقصى 10 أرقام
+  const rxUpper = !isPatientIdMode ? raw.toUpperCase() : ""; // Prescription ID
 
+  // ====== تنسيق آمن (يمنع 0 غير مفيد) ======
   const safeInt = (v) => {
     const n = Number(v);
     return Number.isFinite(n) ? n : undefined;
@@ -195,8 +203,10 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       : "-";
 
     const onchain = safeInt(data.onchainId);
+    // ----- Doctor + Frequency (ADD-ONLY) -----
 const docName  = data.doctorName ?? data.doctor?.name ?? "-";
 const docPhone = data.doctorPhone || data.doctor_phone || data.phone || "-";
+// اتركي الهاتف كسلسلة حتى لا نفقد +966
 const freq     = data.frequency ?? data.freq ?? (data.timesPerDay ? `${data.timesPerDay} times/day` : "-");
 
 
@@ -225,6 +235,7 @@ const freq     = data.frequency ?? data.freq ?? (data.timesPerDay ? `${data.time
     };
   }
 
+  // ====== منع العربية + تحضير القيمة ======
   function handleChange(v) {
     const s = String(v).replace(ARABIC_LETTERS_RE, "");
     if (/^\d/.test(s)) {
@@ -264,21 +275,23 @@ async function runSearch() {
   try {
     const col = collection(db, "prescriptions");
 
+    // === Prescription ID: نتيجة واحدة (حتى لو غير مؤهلة، للشفافية) ===
     if (rxUpper) {
       const snap = await getDocs(query(col, where("prescriptionID", "==", rxUpper)));
       if (!snap.empty) {
         const d = snap.docs[0];
         const n = normalizeFromDB(d.data(), d.id);
 
+        // 👇 التعديل الوحيد: لو Sensitive لا نعرض الكارد ونطلع رسالة إنجليزية
         const isNonSensitive = String(n.sensitivity || "").toLowerCase() === "nonsensitive";
         if (!isNonSensitive) {
           setError("This prescription is for a sensitive medication and cannot be dispensed .");
-          setResults([]); 
+          setResults([]); // لا تظهر الكارد
           setLoading(false);
           return;
         }
 
-        setResults([n]); 
+        setResults([n]); // NonSensitive: نعرضها كالمعتاد
       } else {
         setResults([]);
       }
@@ -286,6 +299,7 @@ async function runSearch() {
       return;
     }
 
+    // === Patient ID: كل غير الحساسة + غير المصروفة + onchainId صالح ===
     const tasks = [
       getDocs(query(
         col,
@@ -306,6 +320,7 @@ async function runSearch() {
 
     const snaps = await Promise.all(tasks);
 
+    // دمج بلا تكرار + فلترة onchainId
     const seen = new Set();
     const list = [];
     for (const s of snaps) {
@@ -321,12 +336,13 @@ async function runSearch() {
     }
 
     if (list.length === 0) {
+      // فallback: هل فيه وصفات موجودة بس غير مؤهلة (حساسة/مصروفة/بدون onchainId)؟
       const fbTasks = [ getDocs(query(col, where("nationalID", "==", natDigits))) ];
       if (!Number.isNaN(nNum)) fbTasks.push(getDocs(query(col, where("nationalID", "==", nNum))));
       const fbSnaps = await Promise.all(fbTasks);
       const haveAny = fbSnaps.some(s => s && !s.empty);
       if (haveAny) {
-        setInfoMsg("No eligible pickup prescriptions. They may be sensitive, already dispensed.");
+        setInfoMsg("No eligible pickup prescriptions. They may be sensitive, already dispensed, or missing on-chain id.");
       }
     }
 
@@ -349,6 +365,7 @@ async function runSearch() {
     setValidationMsg("");
   }
 
+  // ✅ Confirm → فحوصات مسبقة → Dispense.dispense(id) → Firestore → UI (لكل عنصر)
   async function markDispensed(item) {
     if (!item || !item._docId) return;
 
@@ -412,6 +429,7 @@ async function runSearch() {
         dispenseTx: txHash,
       });
 
+      // تحديث القائمة في الواجهة
       setResults(prev => prev.map(r =>
         r._docId === item._docId
           ? { ...r, dispensed: true, dispensedAt: new Date().toISOString(), dispensedBy: pharmacistAddr, dispenseTx: txHash }
@@ -510,7 +528,7 @@ async function runSearch() {
                 <div><b>Prescription:</b> {r.ref}</div>
                 <div><b>National ID:</b> {r.patientId}</div>
                 <div><b>Patient:</b> {r.patientName}</div>
-                {}
+                {/* ADD-ONLY: Doctor info & frequency */}
 <div><b>Doctor:</b> {r.doctorName || "-"}</div>
 <div><b>Phone:</b> {r.doctorPhone || "-"}</div>
 <div><b>Frequency:</b> {r.frequency || "-"}</div>
@@ -549,6 +567,7 @@ async function runSearch() {
   );
 }
 
+/** ========================= Delivery ========================= */
 function DeliverySection({ rows = [], setRxs, addNotification }) {
   function acceptOrder(ref) {
     setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, accepted: true, acceptedAt: nowISO() } : rx));
@@ -578,6 +597,7 @@ function DeliverySection({ rows = [], setRxs, addNotification }) {
   );
 }
 
+/** ========================= Pending ========================= */
 function PendingSection({ rows = [], setRxs, addNotification }) {
   function cancel(ref) {
     setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, accepted: false, acceptedAt: undefined } : rx));

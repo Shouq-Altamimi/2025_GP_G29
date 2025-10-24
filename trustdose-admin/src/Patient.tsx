@@ -2,15 +2,7 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 
-/**
- * Patient Portal — English only, working preview (no backend)
- * - Auto-starts with a demo patient (no Login)
- * - Optional Sign Up creates a new patient and auto-logs in
- * - My Prescriptions (Delivery only): timeline (Received → Nearby → Delivered) + pharmacy + 3-day doses
- * - Pharmacies tab with City dropdown
- * - Notifications tab with sample alerts (no re-dispense, no dispensed)
- * - Profile tab
- */
+
 export default function PatientPortalPreview() {
   const DEMO_USER = {
     id: "1000000001",
@@ -23,7 +15,7 @@ export default function PatientPortalPreview() {
 
   const [users, setUsers] = useState({});
   const [currentId, setCurrentId] = useState("");
-  const [view, setView] = useState("portal"); // "portal" | "signup"
+  const [view, setView] = useState("portal"); 
 
   // Seed & load users
   useEffect(() => {
@@ -33,7 +25,7 @@ export default function PatientPortalPreview() {
         u[DEMO_USER.id] = DEMO_USER;
       }
       setUsers(u);
-      setCurrentId(DEMO_USER.id); // auto-login
+      setCurrentId(DEMO_USER.id); 
     } catch {}
   }, []);
 
@@ -55,7 +47,7 @@ export default function PatientPortalPreview() {
       notes: "Before breakfast & dinner",
       type: "Delivery",
       city: "Riyadh",
-      status: "Pending Delivery", // New | Pending Delivery | Delivered | Cancelled
+      status: "Pending Delivery", 
       createdAt: "2025-09-25 09:15",
       pharmacy: { name: "Nahdi - Olaya", address: "Olaya St.", phone: "+96611-111-1111" },
       history: [
@@ -103,7 +95,7 @@ export default function PatientPortalPreview() {
     setView("portal");
   };
 
-  const activeUser = users[currentId] || users[DEMO_USER.id] || DEMO_USER; // safe user
+  const activeUser = users[currentId] || users[DEMO_USER.id] || DEMO_USER; 
 
   return (
     <div lang="en" dir="ltr" className="min-h-screen bg-slate-50 text-[color:#212938]">
@@ -377,7 +369,7 @@ function Field({ label, value }) {
 
 /* ===================== DELIVERY STEPPER ===================== */
 function DeliveryStepper({ status }) {
-  const idx = mapStatusToIndex(status); // 0: Received, 1: Nearby, 2: Delivered
+  const idx = mapStatusToIndex(status); 
   const steps = [
     { key: 0, label: "Received" },
     { key: 1, label: "Nearby" },
@@ -403,7 +395,7 @@ function mapStatusToIndex(status) {
   const s = (status || "").toLowerCase();
   if (s.includes("delivered")) return 2;
   if (s.includes("pending delivery") || s.includes("out")) return 1;
-  return 0; // New / Cancelled → Received (for preview)
+  return 0; 
 }
 
 /* ===================== HELPERS ===================== */

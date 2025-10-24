@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 
 /* =========================
-   0) Local mapping (no DB changes)
+   Local mapping
    ========================= */
 const DOCTOR_MAP = {
   "0x4F5b09D9940a1fF83463De89BD25C216fBd86E5C": {
@@ -45,10 +45,15 @@ async function sha256HexPrefixed(input) {
   const enc = new TextEncoder();
   const bytes = enc.encode(String(input ?? ""));
   const hash = await crypto.subtle.digest("SHA-256", bytes);
-  const hex = [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const hex = [...new Uint8Array(hash)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
   return "0x" + hex;
 }
 
+/* =========================
+   Fetch patient by ID
+   ========================= */
 async function fetchPatientByFlexibleId(nid) {
   try {
     const ref1 = doc(db, "patients", String(nid));
@@ -63,8 +68,8 @@ async function fetchPatientByFlexibleId(nid) {
   try {
     const col = collection(db, "patients");
     const variants = [
-      fsQuery(col, where("nationalID", "==", String(nid)), fsLimit(1)),
       fsQuery(col, where("nationalId", "==", String(nid)), fsLimit(1)),
+      fsQuery(col, where("nationalID", "==", String(nid)), fsLimit(1)),
     ];
     for (const q of variants) {
       const qs = await getDocs(q);
@@ -78,7 +83,7 @@ async function fetchPatientByFlexibleId(nid) {
 }
 
 /* =========================
-   Prescriptions fetch (robust)
+   Fetch prescriptions
    ========================= */
 async function fetchPrescriptionsSmart(foundDocId, nid) {
   const out = new Map();
@@ -121,7 +126,31 @@ async function fetchPrescriptionsSmart(foundDocId, nid) {
   return { items, blocked: false, error: lastError };
 }
 
-/* ============ Name hydration (uses local map first) ============ */
+/* =========================
+   Doctor info helpers
+   ========================= */
+const __doctorCacheById = new Map();
+
+async function fetchDoctorByDocId(docId) {
+  if (!docId) return null;
+  if (__doctorCacheById.has(docId)) return __doctorCacheById.get(docId);
+  try {
+    const ref = doc(db, "doctors", String(docId));
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const d = snap.data();
+      const meta = {
+        name: d.name || d.fullName || d.doctorName || "",
+        facility:
+          d.healthFacility || d.facility || d.hospitalName || (d.hospital && d.hospital.name) || "",
+      };
+      __doctorCacheById.set(docId, meta);
+      return meta;
+    }
+  } catch {}
+  return null;
+}
+
 async function hydrateNames(items) {
   const out = [];
   for (const p of items) {
@@ -137,11 +166,14 @@ async function hydrateNames(items) {
     let facilityName =
       p.facilityName ||
       p.facility ||
+      p.healthFacility ||
+      p.healthcareFacility ||
       p.clinicName ||
       p.hospitalName ||
       p.locationName ||
       p.pharmacyName ||
       (p.facility && p.facility.name) ||
+      (p.hospital && p.hospital.name) ||
       "";
 
     if ((!doctorName || !facilityName) && p.doctorId) {
@@ -149,6 +181,18 @@ async function hydrateNames(items) {
       if (m) {
         if (!doctorName) doctorName = m.name || "";
         if (!facilityName) facilityName = m.facility || "";
+      }
+    }
+
+    if (!doctorName || !facilityName) {
+      const idCandidates = [p.doctorId, p.doctorRef, p.createdBy].filter(Boolean);
+      for (const idc of idCandidates) {
+        const meta = await fetchDoctorByDocId(idc);
+        if (meta) {
+          if (!doctorName) doctorName = meta.name || "";
+          if (!facilityName) facilityName = meta.facility || "";
+          if (doctorName && facilityName) break;
+        }
       }
     }
 
@@ -189,7 +233,11 @@ const fmtDate = (ts) => {
   try {
     const d = ts?.toDate ? ts.toDate() : new Date(ts);
     if (!isNaN(d))
-      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+      return d.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
   } catch {}
   return "—";
 };
@@ -221,37 +269,25 @@ function Row({ label, value }) {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "170px 1fr",
+        gridTemplateColumns: "220px 1fr",
         alignItems: "center",
         gap: 12,
       }}
     >
-      <div style={{ color: "#6b7280" }}>{label}</div>
+      <div style={{ color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {label}
+      </div>
       <div style={{ fontWeight: 600, wordBreak: "break-word" }}>{value ?? "-"}</div>
     </div>
   );
 }
 
-/* ============ Welcome Header ============ */
 function WelcomeHeader({ name }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        marginBottom: 16,
-      }}
-    >
-      <img
-        src="/Images/TrustDose-pill.png"
-        alt="TrustDose pill"
-        style={{ width: 28, height: 28, objectFit: "contain" }}
-      />
+    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+      <img src="/Images/TrustDose-pill.png" alt="TrustDose pill" style={{ width: 60, height: 60, objectFit: "contain" }} />
       <div>
-        <div style={{ fontSize: 22, fontWeight: 800, color: TD.brand.ink }}>
-          Welcome, {name || "there"}
-        </div>
+        <div style={{ fontSize: 22, fontWeight: 800, color: TD.brand.ink }}>Welcome, {name || "there"}</div>
         <div style={{ color: TD.brand.sub, marginTop: 2 }}>Wishing you good health.</div>
       </div>
     </div>
@@ -259,7 +295,7 @@ function WelcomeHeader({ name }) {
 }
 
 /* =========================
-   Page
+   Patient Page
    ========================= */
 export default function PatientPage() {
   const [nid, setNid] = useState(null);
@@ -268,6 +304,7 @@ export default function PatientPage() {
   const [patient, setPatient] = useState(null);
   const [rx, setRx] = useState({ items: [], blocked: false, error: "" });
   const [openIds, setOpenIds] = useState({});
+  const [showEmailAlert, setShowEmailAlert] = useState(false);
 
   useEffect(() => {
     const id = resolveNidFromAnywhere();
@@ -290,6 +327,10 @@ export default function PatientPage() {
         const pres = await fetchPrescriptionsSmart(found.id, nid);
         pres.items = await hydrateNames(pres.items);
         setPatient(found.data);
+
+        // Show alert if the patient has no email saved
+        setShowEmailAlert(!found.data.email);
+
         setRx(pres);
       } catch (e) {
         setErr(e?.message || String(e));
@@ -312,6 +353,26 @@ export default function PatientPage() {
           <>
             <WelcomeHeader name={fullName} />
 
+            {/* Email alert */}
+            {showEmailAlert && (
+              <div
+                style={{
+                  background: "#fff5cc",
+                  color: "#8a6d3b",
+                  padding: "12px",
+                  borderRadius: "10px",
+                  marginBottom: "16px",
+                  textAlign: "center",
+                  border: "1px solid #ffe8a1",
+                  fontWeight: 500,
+                }}
+              >
+                ⚠️ You haven’t added an email address yet. <br />
+                Please add your email from <span style={{ fontWeight: 700, color: TD.brand.primary }}>My Profile</span> to
+                activate your account and receive notifications.
+              </div>
+            )}
+
             <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Prescriptions</h2>
 
             {!rx.items.length && (
@@ -330,7 +391,7 @@ export default function PatientPage() {
               const facility = p._facilityName || "—";
               const doctor = p._doctorName || "—";
 
-              const medTitle = p.medicineLabel || p.medicineName || "Prescription";
+              const medTitle = p.medicineLabel || p.micineName || p.medicineName || "Prescription";
               const rxNumber =
                 p.prescriptionID ||
                 p.prescriptionId ||
@@ -354,6 +415,7 @@ export default function PatientPage() {
                     marginBottom: 18,
                   }}
                 >
+                  {/* Header */}
                   <div
                     style={{
                       display: "flex",
@@ -374,35 +436,22 @@ export default function PatientPage() {
                       />
                       <div
                         style={{
-                          background: "#ffffff",
-                          color: "#000000",
+                          color: "#000",
                           borderRadius: 999,
                           padding: "10px 16px",
                           fontWeight: 700,
-                          border: "none",
-                          boxShadow: "none",
                         }}
                       >
                         Medical Prescription
                       </div>
                     </div>
 
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 700,
-                        background: "#ffffff",
-                        color: "#000000",
-                        padding: "8px 14px",
-                        borderRadius: 8,
-                        border: "none",
-                        boxShadow: "none",
-                      }}
-                    >
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#000" }}>
                       Date issued: <span>{createdDate}</span>
                     </div>
                   </div>
 
+                  {/* Summary */}
                   <div
                     style={{
                       display: "grid",
@@ -450,6 +499,7 @@ export default function PatientPage() {
                     </button>
                   </div>
 
+                  {/* Details */}
                   {isOpen && (
                     <div style={{ display: "grid", gap: 12, padding: 16, background: "#fff" }}>
                       <div style={{ fontWeight: 700, color: "#374151", marginBottom: 4 }}>
@@ -457,10 +507,10 @@ export default function PatientPage() {
                       </div>
 
                       <Row label="Patient Name" value={fullName} />
-                      <Row label="National ID" value={maskNid(p.patientNationalID || p.nationalID)} />
-                      <Row label="Facility" value={facility} />
+                      <Row label="National ID" value={maskNid(p.patientNationalID || p.nationalID || p.nid)} />
+                      <Row label="Healthcare Facility" value={facility} />
                       <Row label="Doctor Name" value={doctor} />
-                      <Row label="Date & Time" value={createdFull} />
+                      <Row label="Date & Time Consultation" value={createdFull} />
 
                       <div
                         style={{
@@ -478,10 +528,9 @@ export default function PatientPage() {
                         <Row label="Frequency" value={p.frequency || p.timesPerDay || "—"} />
                         <Row label="Duration" value={p.durationDays ?? "—"} />
 
-                        {/* ✅ تعديل عرض الحساسية مع شرطة */}
                         {p.sensitivity && (
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <div style={{ color: "#6b7280", width: 170 }}>Sensitivity</div>
+                            <div style={{ color: "#6b7280", width: 220 }}>Sensitivity</div>
                             <div
                               style={{
                                 fontSize: 13,
@@ -490,22 +539,16 @@ export default function PatientPage() {
                                 fontWeight: 700,
                                 border: "1px solid",
                                 borderColor:
-                                  p.sensitivity === "Sensitive"
-                                    ? TD.brand.dangerBorder
-                                    : TD.brand.successBorder,
+                                  p.sensitivity === "Sensitive" ? TD.brand.dangerBorder : TD.brand.successBorder,
                                 background:
-                                  p.sensitivity === "Sensitive"
-                                    ? TD.brand.dangerBg
-                                    : TD.brand.successBg,
+                                  p.sensitivity === "Sensitive" ? TD.brand.dangerBg : TD.brand.successBg,
                                 color:
-                                  p.sensitivity === "Sensitive"
-                                    ? TD.brand.dangerText
-                                    : TD.brand.successText,
+                                  p.sensitivity === "Sensitive" ? TD.brand.dangerText : TD.brand.successText,
                               }}
                             >
                               {p.sensitivity === "Sensitive"
-                                ? "Sensitive - (Delivery)"
-                                : "Non-Sensitive - (Pickup)"}
+                                ? "Sensitive — (Delivery)"
+                                : "Non-Sensitive — (Pickup)"}
                             </div>
                           </div>
                         )}
