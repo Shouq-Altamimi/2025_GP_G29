@@ -569,17 +569,35 @@ export default function Doctor() {
                 </div>
               )}
 
-                 <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
-                <textarea
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all h-28 resize-none"
-                  style={{ outlineColor: C.primary }}
-                  placeholder="Special instructions"
-                  value={notes}
-                  onChange={(e) => e.target.value.length <= LIMITS.notes.max && setNotes(e.target.value)}
-                />
-                <div className="mt-1 text-xs text-gray-500">{notes.length}/{LIMITS.notes.max}</div>
-              </div>
+              <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Notes (optional)
+                  </label>
+
+                  <textarea
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all resize-none"
+                    style={{
+                      outlineColor: C.primary,
+                      minHeight: "48px",
+                      maxHeight: "200px",
+                    }}
+                    rows={1} 
+                    placeholder="Special instructions"
+                    value={notes}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value.length <= LIMITS.notes.max) {
+                        setNotes(value);
+                        e.target.style.height = "auto"; 
+                        e.target.style.height = e.target.scrollHeight + "px";
+                      }
+                    }}
+                  />
+
+                  <div className="mt-1 text-xs text-gray-500">
+                    {notes.length}/{LIMITS.notes.max}
+                  </div>
+                </div>
 
               <div className="flex items-center justify-between pt-4">
                 <button
