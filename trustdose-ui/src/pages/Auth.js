@@ -16,7 +16,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
-
+import { ethers } from "ethers"; // [ADMIN: MetaMask] - import
 
 const TD = {
   primary: "#B08CC1",
@@ -28,7 +28,6 @@ const TD = {
   warn: "#f59e0b",
   err: "#DC2626",
 };
-
 
 async function hashPasswordSHA256(password) {
   const encoder = new TextEncoder();
@@ -42,7 +41,6 @@ async function verifyPasswordSHA256(inputPassword, storedHash) {
   const inputHash = await hashPasswordSHA256(inputPassword);
   return inputHash === storedHash;
 }
-
 
 async function pbkdf2Hash(password, saltBase64, iterations = 100_000) {
   const enc = new TextEncoder();
@@ -70,7 +68,6 @@ function genSaltBase64(len = 16) {
   return btoa(String.fromCharCode(...buf));
 }
 
-
 const SA_CITIES = ["Riyadh"];
 const DISTRICTS_BY_CITY = {
   Riyadh: [
@@ -83,7 +80,6 @@ const DISTRICTS_BY_CITY = {
     "Other…",
   ],
 };
-
 
 function toEnglishDigits(s) {
   if (!s) return "";
@@ -161,7 +157,6 @@ function passwordStrength(pw) {
   const width = Math.min(100, Math.round((score / 6) * 100));
   return { score, label, color, width, hasLower, hasUpper, hasDigit, hasSymbol, len8 };
 }
-
 
 const inputBase = {
   width: "100%",
@@ -252,11 +247,9 @@ export default function TrustDoseAuth() {
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(true);
 
- 
   const [accountId, setAccountId] = useState("");
   const [password, setPassword] = useState("");
 
-  
   const [showForgotPw, setShowForgotPw] = useState(false);
   const [forgotId, setForgotId] = useState("");
   const [forgotMsg, setForgotMsg] = useState("");
@@ -265,7 +258,6 @@ export default function TrustDoseAuth() {
   const [showPw, setShowPw] = useState(false);
   const [showPwConfirm, setShowPwConfirm] = useState(false);
 
- 
   const [nationalId, setNationalId] = useState("");
   const [nationalIdErr, setNationalIdErr] = useState("");
   const [phone, setPhone] = useState("");
@@ -283,6 +275,10 @@ export default function TrustDoseAuth() {
   const [phoneInfo, setPhoneInfo] = useState({ ok: false, reason: "", normalized: "" });
   const [phoneChecking, setPhoneChecking] = useState(false);
   const [phoneTaken, setPhoneTaken] = useState(false);
+
+  // [ADMIN: MetaMask] - state for admin wallet login
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminMsg, setAdminMsg] = useState("");
 
   const isSignup = mode === "signup";
   const inputCompact = isSignup ? { padding: "10px 12px", borderRadius: 10, fontSize: 13.5 } : {};
@@ -359,7 +355,62 @@ export default function TrustDoseAuth() {
     return { coll: "logistics", idFields: ["companyName"], role: "logistics" };
   }
 
-  
+  // [ADMIN: MetaMask] — login without password (wallet only)
+  async function handleAdminMetaMaskLogin() {
+    try {
+      setAdminMsg("");
+      setAdminLoading(true);
+
+      if (!window.ethereum) {
+        setAdminMsg("Please install MetaMask first.");
+        return;
+      }
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const accounts = await provider.send("eth_requestAccounts", []);
+      if (!accounts?.length) {
+        setAdminMsg("No wallet has been selected.");
+        return;
+      }
+      const address = String(accounts[0]).toLowerCase();
+
+      setAdminMsg("Checking administrator privileges...");
+
+      // التحقق من Firestore: admins/{walletLower}
+      const ref = doc(db, "admins", address);
+      const snap = await getDoc(ref);
+
+      if (!snap.exists()) {
+        setAdminMsg("⚠️This address is not registered as an administrator.");
+        return;
+      }
+
+      // (اختياري) توقيع رسالة بسيطة
+      try {
+        const signer = await provider.getSigner();
+        const msg = `TrustDose Admin Login
+Address: ${address}
+Nonce: ${Date.now()}`;
+        await signer.signMessage(msg);
+      } catch {
+        // تجاهل إذا ألغى التوقيع
+      }
+
+      // تخزين الجلسة (ليعمل RequireAuth)
+      localStorage.setItem("userRole", "admin");
+      localStorage.setItem("wallet", address);
+      localStorage.setItem("userId", address);
+
+      setAdminMsg("✅ Logged in as administrator");
+      navigate("/admin", { replace: true });
+    } catch (e) {
+      console.error(e);
+      setAdminMsg("An error occurred while connecting to your wallet.");
+    } finally {
+      setAdminLoading(false);
+    }
+  }
+
   async function handleForgotPassword(e) {
     e.preventDefault();
     setForgotMsg("");
@@ -373,7 +424,6 @@ export default function TrustDoseAuth() {
       let user = null;
       let userDocId = null;
 
-      
       if (role === "patient") {
         try {
           const p = await getDoc(doc(db, "patients", `Ph_${id}`));
@@ -381,7 +431,6 @@ export default function TrustDoseAuth() {
         } catch {}
       }
 
-    
       if (!user && /^B-\d+$/i.test(id)) {
         try {
           let snap = await getDocs(query(collection(db, "Phar_Nahdi"), where("BranchID", "==", id)));
@@ -419,11 +468,9 @@ export default function TrustDoseAuth() {
         return;
       }
 
-      // ✅ إرسال رابط إعادة تعيين كلمة المرور مع البيانات
       const auth = getAuth();
       const BASE = window.location.origin;
-      
-      // بناء URL مع جميع المعلومات المطلوبة
+
       const params = new URLSearchParams({
         col: coll,
         doc: String(userDocId || ""),
@@ -441,8 +488,6 @@ export default function TrustDoseAuth() {
       await sendSignInLinkToEmail(auth, email, actionCodeSettings);
 
       setForgotMsg(`✅ Password reset link sent to ${email}. Check your inbox and spam folder!`);
-      
-      // إخفاء البوب اب بعد 3 ثواني
       setTimeout(() => {
         setShowForgotPw(false);
         setForgotId("");
@@ -451,10 +496,7 @@ export default function TrustDoseAuth() {
       
     } catch (err) {
       console.error("Forgot password error:", err);
-      
-      // رسائل خطأ واضحة
       let errorMessage = "Failed to send reset link";
-      
       if (err.code === "auth/invalid-email") {
         errorMessage = "Invalid email address";
       } else if (err.code === "auth/too-many-requests") {
@@ -462,7 +504,6 @@ export default function TrustDoseAuth() {
       } else if (err.message) {
         errorMessage = err.message;
       }
-      
       setForgotMsg(`❌ ${errorMessage}`);
     } finally {
       setForgotLoading(false);
@@ -545,7 +586,6 @@ export default function TrustDoseAuth() {
         let isCorrect = false;
 
         const isHashed = storedPassword.length === 64 && /^[a-f0-9]+$/.test(storedPassword);
-        
         if (isHashed) {
           isCorrect = await verifyPasswordSHA256(pass, storedPassword);
         } else {
@@ -588,7 +628,6 @@ export default function TrustDoseAuth() {
         setLoading(false);
         return; 
       }
-      
       else if (role === "pharmacy") navigate("/pharmacy", { replace: true });
       else if (role === "patient") navigate("/patient", { replace: true });
       else navigate("/", { replace: true });
@@ -847,6 +886,49 @@ export default function TrustDoseAuth() {
             >
               {loading ? "Signing in..." : "Sign in"}
             </button>
+
+            {/* [ADMIN: MetaMask] Divider */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8, margin: "14px 0 10px" }}>
+              <span style={{ height: 1, background: "#eee" }} />
+              <span style={{ color: "#888", fontSize: 12 }}>or</span>
+              <span style={{ height: 1, background: "#eee" }} />
+            </div>
+
+            {/* [ADMIN: MetaMask] Login button */}
+            <button
+              type="button"
+              onClick={handleAdminMetaMaskLogin}
+              disabled={adminLoading}
+              style={{
+                ...buttonStyle,
+                background: `linear-gradient(135deg, ${TD.primary}, ${TD.teal})`,
+                boxShadow: "0 8px 20px rgba(82,185,196,.25)",
+              }}
+              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(.99)")}
+              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+            >
+              {adminLoading ? "Connecting Wallet..." : "Admin – Sign in with MetaMask"}
+            </button>
+
+            {adminMsg && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  background: adminMsg.startsWith("✅")
+                    ? "rgba(16,185,129,.08)"
+                    : "rgba(239,68,68,.08)",
+                  color: adminMsg.startsWith("✅") ? "#065f46" : "#7f1d1d",
+                  border: `1px solid ${
+                    adminMsg.startsWith("✅") ? "rgba(16,185,129,.25)" : "rgba(239,68,68,.25)"
+                  }`,
+                  fontSize: 13.5,
+                }}
+              >
+                {adminMsg}
+              </div>
+            )}
 
             <div
               style={{
