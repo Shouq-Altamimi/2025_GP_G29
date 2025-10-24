@@ -424,27 +424,26 @@ export default function AdminAddDoctorOnly() {
         entityType: "Doctor",
         role: "Doctor",
         isActive: true,
-
+      
         // معلومات الطبيب
         name,
         specialty,
         facility,
         licenseNumber,
-
+      
         // ربط البلوك تشين
         walletAddress,
         accessId: id,
-        doctorId: id, // Doctor ID = Access ID
+        doctorId: id,
         chain: { contractAddress, txHash: chain.txHash, block: chain.block },
-
-        // كلمة المرور المؤقتة
-        tempPasswordHash,
-        passwordHash,
+      
+        // كلمة المرور المؤقتة (توحيد الاسم)
+        passwordHash: tempPasswordHash,         
         tempPassword: { expiresAtMs, valid: true },
-
+      
         createdAt: serverTimestamp(),
       });
-
+      
       // علّمنا الـ accessId بأنه مستهلك
       await markAccessIdClaimed_Firestore(id);
 
