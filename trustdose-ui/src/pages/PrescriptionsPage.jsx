@@ -11,7 +11,6 @@ const C = {
 };
 const PAGE_SIZE = 6;
 
-/* ===== Utils ===== */
 async function sha256Hex(input) {
   const enc = new TextEncoder();
   const hash = await crypto.subtle.digest("SHA-256", enc.encode(input));
@@ -26,7 +25,6 @@ function shortAddr(a) {
   return s.length > 10 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s;
 }
 
-/* ===== Page ===== */
 export default function PrescriptionsPage() {
   const { state } = useLocation();
   const navigate = useNavigate();
@@ -46,7 +44,6 @@ export default function PrescriptionsPage() {
     navigate("/doctor", { replace: true });
   };
 
-  /* --- Load prescriptions --- */
   useEffect(() => {
     if (!patientId) {
       navigate("/doctor", { replace: true });
@@ -100,7 +97,6 @@ export default function PrescriptionsPage() {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-3 md:px-5 pt-5 pb-10 min-h-[90vh] flex flex-col">
-      {/* ===== Title ===== */}
       <h1
         className="text-2xl font-bold mb-5"
         style={{ color: C.ink }}
@@ -108,7 +104,6 @@ export default function PrescriptionsPage() {
         Prescriptions {patientName ? `for ${patientName}` : ""}
       </h1>
 
-      {/* ===== Search + Back ===== */}
       <div className="bg-white border rounded-2xl p-5 mb-6 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
           <svg
@@ -149,7 +144,6 @@ export default function PrescriptionsPage() {
         </div>
       </div>
 
-      {/* ===== Prescriptions List ===== */}
       <div className="flex-1">
         {loading ? (
           <div className="text-gray-500 text-sm">Loading…</div>
@@ -225,7 +219,6 @@ export default function PrescriptionsPage() {
         )}
       </div>
 
-      {/* ===== Pagination (Sticky Bottom) ===== */}
       <div className="mt-auto pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-gray-100">
         <div className="text-sm text-gray-700">
           Showing {end} out of {total} prescriptions
