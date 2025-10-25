@@ -27,17 +27,78 @@ function pickStr(obj, keys) {
   return "";
 }
 
-/* ===== Hashing ===== */
-async function hashPassword(password) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+/* ===== Crypto helpers (PBKDF2 + SHA-256 legacy) ===== */
+async function sha256Hex(str) {
+  const data = new TextEncoder().encode(String(str));
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
 }
-async function verifyPassword(inputPassword, storedHash) {
-  const inputHash = await hashPassword(inputPassword);
-  return inputHash === storedHash;
+async function pbkdf2Hex(password, saltB64, iter = 100000) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(String(password)),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const salt = Uint8Array.from(atob(String(saltB64)), c => c.charCodeAt(0));
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: Number(iter) || 100000 },
+    keyMaterial,
+    256
+  );
+  return Array.from(new Uint8Array(bits))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+function randomSaltB64(len = 16) {
+  const buf = new Uint8Array(len);
+  crypto.getRandomValues(buf);
+  return btoa(String.fromCharCode(...buf));
+}
+const isHex64 = (s) => typeof s === "string" && /^[a-f0-9]{64}$/i.test(s);
+
+/* ===== Smart verify against doc (Temp → PBKDF2 → Legacy) ===== */
+async function verifyCurrentPassword(docData, inputPwd) {
+  const cur = String(inputPwd ?? "").trim();
+
+  // 1) Temp password
+  if (docData?.tempPassword?.valid && docData?.tempPassword?.value) {
+    if (cur === String(docData.tempPassword.value)) return { ok: true, mode: "TEMP" };
+  }
+
+  // 2) PBKDF2 current scheme
+  if (
+    docData?.passwordAlgo === "PBKDF2-SHA256" &&
+    docData?.passwordSalt &&
+    docData?.passwordIter &&
+    docData?.passwordHash
+  ) {
+    const h = await pbkdf2Hex(cur, docData.passwordSalt, docData.passwordIter);
+    if (h === String(docData.passwordHash)) return { ok: true, mode: "PBKDF2" };
+  }
+
+  // 3) Legacy: passwordHash without salt (treat as SHA-256 hex)
+  if (docData?.passwordHash && !docData?.passwordSalt) {
+    const h = await sha256Hex(cur);
+    if (h === String(docData.passwordHash)) return { ok: true, mode: "SHA256_LEGACY_hashField" };
+  }
+
+  // 4) Legacy: `password` field may be plaintext OR SHA-256 hex
+  if (docData?.password) {
+    const p = String(docData.password);
+    if (isHex64(p)) {
+      const h = await sha256Hex(cur);
+      if (h === p) return { ok: true, mode: "SHA256_LEGACY_passwordField" };
+    } else if (cur === p) {
+      return { ok: true, mode: "PLAINTEXT_LEGACY" };
+    }
+  }
+
+  return { ok: false };
 }
 
 /* ===== Doctor normalize ===== */
@@ -252,7 +313,6 @@ function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
     : "bg-white/25 text-white hover:bg-white/35";
   return <button onClick={onClick} className={`${base} ${styles}`}>{children}</button>;
 }
-
 
 function Row({ label, value }) {
   return (
@@ -532,37 +592,45 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
       setLoading(true);
 
       const docRef = doc(db, "doctors", doctorDocId);
-      const docSnap = await getDoc(docRef);
-      if (!docSnap.exists()) {
+      const snap = await getDoc(docRef);
+      if (!snap.exists()) {
         setMsg("Doctor record not found");
         setMsgType("error");
         setLoading(false);
         return;
       }
 
-      const currentPassword = docSnap.data().password;
+      const data = snap.data();
 
-      const isHashed =
-        currentPassword &&
-        currentPassword.length === 64 &&
-        /^[a-f0-9]+$/i.test(currentPassword);
-
-      const isOldCorrect = isHashed
-        ? await verifyPassword(oldPass, currentPassword)
-        : oldPass === currentPassword;
-
-      if (!isOldCorrect) {
+      // 1) verify current with smart verifier
+      const v = await verifyCurrentPassword(data, oldPass);
+      if (!v.ok) {
         setMsg("Current password is incorrect");
         setMsgType("error");
         setLoading(false);
         return;
       }
 
-      const hashedPassword = await hashPassword(newPass);
+      // 2) upgrade to PBKDF2
+      const salt = randomSaltB64(16);
+      const iter = 100000;
+      const newHash = await pbkdf2Hex(newPass, salt, iter);
+
       await updateDoc(docRef, {
-        password: hashedPassword,
+        passwordAlgo: "PBKDF2-SHA256",
+        passwordSalt: salt,
+        passwordIter: iter,
+        passwordHash: newHash,
         passwordUpdatedAt: serverTimestamp(),
         requirePasswordChange: false,
+
+        // invalidate tempPassword
+        "tempPassword.valid": false,
+        "tempPassword.expiresAtMs": 0,
+        "tempPassword.value": deleteField(),
+
+        // remove any legacy/plain fields
+        password: deleteField(),
       });
 
       setMsg("Password updated successfully! ✓");
@@ -573,6 +641,7 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
 
       onSaved?.({ requirePasswordChange: false, passwordUpdatedAt: new Date() });
     } catch (error) {
+      console.error(error);
       setMsg(error?.message || "Failed to update password");
       setMsgType("error");
     } finally {

@@ -61,6 +61,18 @@ async function pbkdf2Hash(password, saltBase64, iterations = 100_000) {
   const hashBytes = new Uint8Array(bits);
   return btoa(String.fromCharCode(...hashBytes));
 }
+async function pbkdf2Hex(password, saltBase64, iterations = 100_000) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const salt = Uint8Array.from(atob(saltBase64), (c) => c.charCodeAt(0));
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
+    key,
+    256
+  );
+  return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2,"0")).join("");
+}
+
 
 function genSaltBase64(len = 16) {
   const buf = new Uint8Array(len);
@@ -565,41 +577,59 @@ Nonce: ${Date.now()}`;
 
       console.log('🔐 Verifying password for role:', role);
 
-      if ("passwordHash" in user && "passwordSalt" in user) {
-        if (!pass) {
-          setMsg("Please enter your password.");
-          return;
-        }
-        const derived = await pbkdf2Hash(pass, user.passwordSalt, 100_000);
-        if (derived !== user.passwordHash) {
-          setMsg("❌ ID or password incorrect.");
-          return;
-        }
-      } 
-      else if ("password" in user) {
-        if (!pass) {
-          setMsg("Please enter your password.");
-          return;
-        }
+// أولوية: tempPassword (إن وجدت وكانت مطابقة)
+let verified = false;
+if (user?.tempPassword?.valid && user?.tempPassword?.value) {
+  if (!pass) { setMsg("Please enter your password."); return; }
+  if (String(pass) === String(user.tempPassword.value)) {
+    verified = true; // سماح بالدخول حتى لو لسه ما فعّل كلمة دائمة
+  }
+}
 
-        const storedPassword = String(user.password);
-        let isCorrect = false;
+// PBKDF2 حديث: موجود الحقلان passwordHash + passwordSalt
+if (!verified && ("passwordHash" in user) && ("passwordSalt" in user)) {
+  if (!pass) { setMsg("Please enter your password."); return; }
 
-        const isHashed = storedPassword.length === 64 && /^[a-f0-9]+$/.test(storedPassword);
-        if (isHashed) {
-          isCorrect = await verifyPasswordSHA256(pass, storedPassword);
-        } else {
-          isCorrect = pass === storedPassword;
-        }
+  const stored = String(user.passwordHash);
+  const iter = Number(user.passwordIter) || 100_000;
 
-        if (!isCorrect) {
-          setMsg("❌ ID or password incorrect.");
-          return;
-        }
-      } 
-      else {
-        console.warn(`[Auth] user has no password fields.`);
-      }
+  // إذا الهاش Hex-64 → اشتقاق Hex
+  if (/^[a-f0-9]{64}$/i.test(stored)) {
+    const derivedHex = await pbkdf2Hex(pass, user.passwordSalt, iter);
+    verified = (derivedHex === stored);
+  }
+  // إذا Base64 → اشتقاق Base64
+  else if (/^[A-Za-z0-9+/=]+$/.test(stored)) {
+    const derivedB64 = await pbkdf2Hash(pass, user.passwordSalt, iter);
+    verified = (derivedB64 === stored);
+  }
+
+  if (!verified) {
+    setMsg("❌ ID or password incorrect.");
+    return;
+  }
+}
+// قديم: حقل password (SHA-256 hex أو نص عادي)
+else if (!verified && ("password" in user)) {
+  if (!pass) { setMsg("Please enter your password."); return; }
+
+  const storedPassword = String(user.password);
+  const isHashed = storedPassword.length === 64 && /^[a-f0-9]+$/i.test(storedPassword);
+
+  if (isHashed) {
+    verified = await verifyPasswordSHA256(pass, storedPassword);
+  } else {
+    verified = (pass === storedPassword);
+  }
+
+  if (!verified) {
+    setMsg("❌ ID or password incorrect.");
+    return;
+  }
+} else if (!verified) {
+  console.warn("[Auth] user has no password fields.");
+}
+
 
       const displayName = user.name || user.companyName || id;
 
