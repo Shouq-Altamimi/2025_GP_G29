@@ -14,8 +14,8 @@ import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
-const PRESCRIPTION_ADDRESS = "0x10Bf60cCC275E9955c251980E85D3815cbd6a926"; // Prescription
-const DISPENSE_ADDRESS     = "0x8a75087b6a45D8a346Df0433259E9b9e5dFC3Ee8"; // Dispense
+const PRESCRIPTION_ADDRESS = "0x13aAa648feA702d77bD4C540D5fF0dB61c1f1246"; // Prescription
+const DISPENSE_ADDRESS     = "0x4fb9391C947B00B8a0A1CC8b738D81d415C5C1BF"; // Dispense
 
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected.");
