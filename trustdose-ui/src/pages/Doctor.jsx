@@ -21,7 +21,7 @@ import PRESCRIPTION from "../contracts/Prescription.json";
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
 
 //contract
-const CONTRACT_ADDRESS = "0x10Bf60cCC275E9955c251980E85D3815cbd6a926";
+const CONTRACT_ADDRESS = "0x0De1889DC044a862875eDf77029369dbBac00Dea";
 
 const LIMITS = Object.freeze({
   medicalCondition: { min: 5, max: 120 },

@@ -21,13 +21,18 @@ export default function AuthEmailHandler() {
         console.log("📧 Email verification started");
         console.log("🔗 Current URL:", href);
         
-        // استخرجي الباراميترات
-        const col = searchParams.get("col") || "doctors";
-        const documentId = searchParams.get("doc") || "";
-        const email = searchParams.get("e") || "";
-        const redirect = searchParams.get("redirect") || "/doctor";
+        // استخرجي الباراميترات (مع دعم pharmacies)
+        const colParam = (searchParams.get("col") || "doctors").trim().toLowerCase();
+        const safeCol = colParam === "pharmacies" ? "pharmacies" : "doctors"; // ✅ دعم الصيدلية
+        const documentId = (searchParams.get("doc") || "").trim();
+        let email = (searchParams.get("e") || "").trim().toLowerCase();
 
-        console.log("📋 Parameters:", { col, documentId, email, redirect });
+        // ✅ توجيه افتراضي بحسب المجموعة
+        const redirectParam = (searchParams.get("redirect") || "").trim();
+        const defaultRedirect = safeCol === "pharmacies" ? "/pharmacy" : "/doctor";
+        const redirect = redirectParam || defaultRedirect;
+
+        console.log("📋 Parameters:", { col: safeCol, documentId, email, redirect });
 
         // تحققي إن الرابط صالح من Firebase
         if (!isSignInWithEmailLink(auth, href)) {
@@ -35,6 +40,17 @@ export default function AuthEmailHandler() {
           setStatus("❌ Invalid or expired email link");
           setError(true);
           return;
+        }
+
+        // 🔁 لو الإيميل ناقص، جرّبي قراءة pending من localStorage (اختياري، يبقى منطقك كما هو إن وُجد e)
+        if (!email) {
+          try {
+            const pending = JSON.parse(localStorage.getItem("td_email_pending") || "{}");
+            if (pending?.email) {
+              email = String(pending.email).toLowerCase().trim();
+              console.log("ℹ Using pending email from localStorage:", email);
+            }
+          } catch {}
         }
 
         if (!email || !documentId) {
@@ -54,8 +70,8 @@ export default function AuthEmailHandler() {
         setStatus("💾 Saving email to profile...");
         console.log("💾 Updating Firestore...");
         
-        // حدّثي بيانات الدكتور في Firestore
-        await updateDoc(doc(db, col, documentId), {
+        // ✅ حدّثي بيانات الدكتور/الصيدلية في Firestore (حسب col)
+        await updateDoc(doc(db, safeCol, documentId), {
           email,
           emailVerifiedAt: serverTimestamp(),
         });
@@ -92,6 +108,10 @@ export default function AuthEmailHandler() {
       }
     })();
   }, [searchParams, nav]);
+
+  // ✅ زر الرجوع صار ديناميكي (يروح لواجهة الصيدلية أو الدكتور حسب الرابط)
+  const colParam = (searchParams.get("col") || "doctors").trim().toLowerCase();
+  const fallbackRedirect = colParam === "pharmacies" ? "/pharmacy" : "/doctor";
 
   return (
     <div className="min-h-screen grid place-items-center" style={{ 
@@ -131,7 +151,7 @@ export default function AuthEmailHandler() {
           {/* Error button */}
           {error && (
             <button
-              onClick={() => nav("/doctor", { replace: true })}
+              onClick={() => nav(fallbackRedirect, { replace: true })}
               className="mt-6 px-6 py-3 rounded-lg text-white font-medium transition-all hover:scale-105"
               style={{ background: "#B08CC1" }}
             >

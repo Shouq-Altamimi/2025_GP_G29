@@ -14,8 +14,8 @@ import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
-const PRESCRIPTION_ADDRESS = "0x10Bf60cCC275E9955c251980E85D3815cbd6a926"; // Prescription
-const DISPENSE_ADDRESS     = "0x8a75087b6a45D8a346Df0433259E9b9e5dFC3Ee8"; // Dispense
+const PRESCRIPTION_ADDRESS = "0x0De1889DC044a862875eDf77029369dbBac00Dea"; // Prescription
+const DISPENSE_ADDRESS     = "0x2b5bc6C1c43C8FFA781F8f65A8402d3525b0a76E"; // Dispense
 
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected.");
@@ -267,7 +267,7 @@ async function runSearch() {
     const lenOk = natDigits.length === 10;
     if (!firstOk || !lenOk) {
       setLoading(false);
-      setValidationMsg(!firstOk ? "Patient ID must start with 1 or 2." : "Patient ID must be exactly 10 digits.");
+      setValidationMsg(!firstOk ? "Patient ID must start with 1 or 2." : "National ID must be 10 digits and start with 1 or 2.");
       return;
     }
   }
@@ -380,10 +380,7 @@ async function runSearch() {
       return;
     }
 
-    const ok = window.confirm(
-      `Confirm dispensing prescription ${item.ref} for patient ${item.patientName || ""}?`
-    );
-    if (!ok) return;
+
 
     try {
       setLoading(true);

@@ -181,7 +181,7 @@ async function allocateSequentialAccessId() {
 
 /* ---------- Component ---------- */
 export default function AdminAddDoctorOnly() {
-  const [contractAddress, setContractAddress] = useState("0x4E2D2BBB07f80811dfA258E78dB35068D447F6E2");
+  const [contractAddress, setContractAddress] = useState("0x287bC09515731b20C51e51c6a5409ceA71E837fd");
   const [doctorId, setDoctorId] = useState(""); // = accessId
   const [facility, setFacility] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
