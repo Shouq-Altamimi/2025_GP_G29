@@ -1,8 +1,10 @@
-// ===================== Admin Dashboard (Full, pruned as requested) =====================
+// ===================== Admin Dashboard (Final, stable) =====================
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Search, Bell, ChevronDown } from "lucide-react";
+import { LogOut } from "lucide-react";
+import Header from "../components/Header.jsx";
+import Footer from "../components/Footer.jsx";
 
 import app, { db } from "../firebase";
 import {
@@ -12,14 +14,10 @@ import {
 } from "firebase/firestore";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 
-/* ---------- Auth: Anonymous مرة واحدة + ضمان الجاهزية قبل Firestore ---------- */
+/* ---------- Auth Ready (Anonymous) ---------- */
 const auth = getAuth(app);
-if (!auth.currentUser) {
-  signInAnonymously(auth).catch(() => {});
-}
-onAuthStateChanged(auth, (u) => {
-  if (u) console.log(" anon uid:", u.uid);
-});
+if (!auth.currentUser) signInAnonymously(auth).catch(() => {});
+onAuthStateChanged(auth, (u) => u && console.log("anon uid:", u.uid));
 
 let authReadyPromise = null;
 function ensureAuthReady() {
@@ -79,8 +77,7 @@ async function loadEthers() {
 }
 async function getProvider() {
   const E = await loadEthers();
-  if (E.BrowserProvider) return new E.BrowserProvider(window.ethereum); // v6
-  return new E.providers.Web3Provider(window.ethereum); // v5
+  return E.BrowserProvider ? new E.BrowserProvider(window.ethereum) : new E.providers.Web3Provider(window.ethereum);
 }
 async function getSigner(provider) {
   const s = provider.getSigner();
@@ -113,8 +110,8 @@ async function sha256Hex(text) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/* ---------- Firestore (docId = wallet lowercase) ---------- */
-async function saveDoctor_FirestoreByWallet(walletAddress, docData) {
+/* ---------- Firestore helpers ---------- */
+async function saveDoctor_FirestoreMulti(docData) {
   await ensureAuthReady();
   const ref = doc(db, "doctors", String(walletAddress || "").toLowerCase());
   await setDoc(ref, { ...docData, updatedAt: serverTimestamp() }, { merge: true });
@@ -176,14 +173,49 @@ async function allocateSequentialAccessId() {
     const n = m ? parseInt(m[1], 10) + 1 : 1;
     candidate = `Dr-${String(n).padStart(3, "0")}`;
   }
-  throw new Error("Failed to allocate a sequential Access ID. Please try again.");
+  throw new Error("Failed to allocate sequential Access ID. Please try again.");
+}
+
+/* ---------- On-chain save ---------- */
+async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPassword }) {
+  const E = await loadEthers();
+
+  if (!window.ethereum) throw new Error("MetaMask not detected");
+  const provider = E.BrowserProvider ? new E.BrowserProvider(window.ethereum) : new E.providers.Web3Provider(window.ethereum);
+  const code = await provider.getCode(contractAddress);
+  if (!code || code === "0x") throw new Error("No contract at this address (wrong network/address)");
+
+  const signer = await getSigner(provider);
+  const contract = new E.Contract(contractAddress, DoctorRegistry_ABI, signer);
+  const tempPassHash = await idCompat(tempPassword);
+
+  if (typeof contract.owner === "function") {
+    const owner = await contract.owner();
+    const me = await signer.getAddress();
+    if (owner?.toLowerCase?.() !== me?.toLowerCase?.()) {
+      throw new Error(`Use contract owner.\nOwner: ${owner}\nCurrent: ${me}`);
+    }
+  }
+
+  try {
+    if (contract.addDoctor?.staticCall) {
+      await contract.addDoctor.staticCall(doctorWallet, accessId, tempPassHash);
+    }
+  } catch (err) {
+    const reason = err?.reason || err?.message || err?.shortMessage || (err?.error && err.error.message) || "addDoctor() would revert";
+    throw new Error(reason);
+  }
+
+  const tx = await contract.addDoctor(doctorWallet, accessId, tempPassHash);
+  const rc = await tx.wait();
+  return { txHash: tx.hash, block: rc.blockNumber };
 }
 
 /* ---------- Component ---------- */
 export default function AdminAddDoctorOnly() {
-  const [contractAddress, setContractAddress] = useState("0xCF2573a8b093715f408f719A94e5C0482B53E1a2");
-  const [doctorId, setDoctorId] = useState(""); // = accessId
-  const [facility, setFacility] = useState("");
+  const [contractAddress, setContractAddress] = useState("0x4E2D2BBB07f80811dfA258E78dB35068D447F6E2");
+  const [DoctorID, setDoctorID] = useState("");
+  const [healthFacility, sethealthFacility] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
   const [name, setName] = useState("");
   const [specialty, setSpecialty] = useState("");
@@ -222,199 +254,52 @@ export default function AdminAddDoctorOnly() {
   }, []);
 
   const formOk = useMemo(
-    () =>
-      isHex40(contractAddress) &&
-      isHex40(walletAddress) &&
-      name && specialty && facility && licenseNumber &&
-      tempPassword,
-    [contractAddress, walletAddress, name, specialty, facility, licenseNumber, tempPassword]
+    () => isHex40(contractAddress) && isHex40(walletAddress) && name && speciality && healthFacility && licenseNumber && tempPassword,
+    [contractAddress, walletAddress, name, speciality, healthFacility, licenseNumber, tempPassword]
   );
 
-  // ====== Input sanitizers & guards ======
-  const sanitizeLettersSpaces = (s) => s.replace(/[^A-Za-z\s]+/g, "");
-  const sanitizeLicense = (s) => s.replace(/[^A-Za-z0-9-]+/g, "");
-  const guardBeforeInput = (allowedCharRegex) => (e) => {
-    if (e.data && !allowedCharRegex.test(e.data)) e.preventDefault();
-  };
-  const handlePasteSanitize = (sanitizer, setter) => (e) => {
-    e.preventDefault();
-    const text = (e.clipboardData || window.clipboardData).getData("text") || "";
-    setter(sanitizer(text));
-  };
-  const onlyLetterOrSpace = /^[A-Za-z\s]$/;
-  const onlyLicenseChar   = /^[A-Za-z0-9-]$/;
-
-  /* ---- MetaMask ---- */
   async function connectMetaMask() {
     try {
-      if (!window?.ethereum) { setStatus("⚠️ Please install MetaMask first."); return; }
+      if (!window?.ethereum) { setStatus("⚠️ MetaMask not detected"); return; }
       try { await window.ethereum.request({ method: "eth_requestAccounts" }); }
-      catch (e) {
-        if (e && (e.code === 4001 || e?.message?.includes("rejected"))) {
-          setStatus("❌ MetaMask: request was rejected."); return;
-        }
-      }
+      catch (e) { if (e && (e.code === 4001 || e?.message?.includes("rejected"))) { setStatus("❌ MetaMask: request rejected"); return; } }
       const provider = await getProvider();
       const signer = await getSigner(provider);
       const addr = await signer.getAddress();
-      if (!(await isAddressCompat(addr))) { setStatus("❌ MetaMask: invalid address returned."); return; }
       setWalletAddress(addr);
       setStatus("✅ Address fetched from MetaMask.");
-    } catch (e) { setStatus(`❌ MetaMask: ${e?.message || e}`); }
-  }
-
-  /* ---- On-chain save ---- */
-  async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPassword }) {
-    const E = await loadEthers();
-
-    if (!window.ethereum) throw new Error("MetaMask not found");
-    if (!((E.utils?.isAddress || E.isAddress)(contractAddress))) throw new Error("Invalid contract address");
-    if (!((E.utils?.isAddress || E.isAddress)(doctorWallet)))   throw new Error("Invalid wallet address");
-
-    const provider = E.BrowserProvider
-      ? new E.BrowserProvider(window.ethereum)          // v6
-      : new E.providers.Web3Provider(window.ethereum);  // v5
-
-    const signer = await (async () => {
-      const s = provider.getSigner();
-      return typeof s.then === "function" ? await s : s;
-    })();
-
-    const code = await provider.getCode(contractAddress);
-    if (!code || code === "0x") throw new Error("No contract at this address (wrong network/address)");
-
-    const contract = new E.Contract(contractAddress, DoctorRegistry_ABI, signer);
-
-    // تحقق المالك
-    try {
-      if (typeof contract.owner === "function") {
-        const owner = await contract.owner();
-        const me    = await signer.getAddress();
-        if (owner?.toLowerCase?.() !== me?.toLowerCase?.()) {
-          throw new Error(`You must use the owner account.\nOwner: ${owner}\nCurrent: ${me}`);
-        }
-      }
-    } catch (err) { throw new Error(err?.message || "Contract ownership verification failed"); }
-
-    // فحص استخدام Access ID على السلسلة
-    try {
-      if (typeof contract.isAccessIdUsed === "function") {
-        const used = await contract.isAccessIdUsed(accessId);
-        if (used) throw new Error(`Access ID "${accessId}" is already used on-chain`);
-      }
-    } catch (_) {}
-
-    // فحص وجود الدكتور (struct/array)
-    try {
-      if (typeof contract.getDoctor === "function") {
-        const info = await contract.getDoctor(doctorWallet);
-        console.log("🔎 getDoctor(", doctorWallet, ") =>", info);
-        const access = (info && (info.accessId ?? info[0])) ?? "";
-        const active = (info && (info.active ?? info[2])) ?? false;
-        if ((access && String(access).length > 0) || active === true) {
-          throw new Error("Doctor exists");
-        }
-      }
-    } catch (_) {}
-
-    const tempPassHash = await idCompat(tempPassword);
-
-    // Dry-run v6/v5
-    try {
-      if (contract.addDoctor?.staticCall) {
-        await contract.addDoctor.staticCall(doctorWallet, accessId, tempPassHash); // v6
-      } else if (contract.callStatic?.addDoctor) {
-        await contract.callStatic.addDoctor(doctorWallet, accessId, tempPassHash); // v5
-      } else if (contract.estimateGas?.addDoctor) {
-        await contract.estimateGas.addDoctor(doctorWallet, accessId, tempPassHash);
-      }
-    } catch (err) {
-      const reason = err?.reason || err?.message || err?.shortMessage || (err?.error && err.error.message) || "addDoctor() would revert";
-      throw new Error(reason);
+    } catch (e) {
+      setStatus(`❌ MetaMask: ${e?.message || e}`);
     }
-
-    // التنفيذ الفعلي
-    const tx = await contract.addDoctor(doctorWallet, accessId, tempPassHash);
-    const rc = await tx.wait();
-    return { txHash: tx.hash, block: rc.blockNumber };
   }
 
-  /* ---- Submit ---- */
+  async function handleLogout() {
+    try {
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("userId");
+      sessionStorage.clear();
+      try { await signOut(getAuth(app)); } catch {}
+    } finally {
+      window.location.href = "/auth";
+    }
+  }
+
   async function handleSave() {
     try {
       setSaving(true);
       if (!formOk) throw new Error("Please fill all required fields correctly");
+      setStatus("🔐 Ensuring anonymous auth…");
+      await ensureAuthReady();
 
-      await ensureAuthReady(); // مهم جداً قبل أي Firestore
-
-      // A) فحوصات مسبقة على السلسلة (لا نحجز ID قبل ما نتأكد)
-      setStatus("⏳ Preflight on-chain checks…");
-      const E = await loadEthers();
-      const provider = E.BrowserProvider
-        ? new E.BrowserProvider(window.ethereum)
-        : new E.providers.Web3Provider(window.ethereum);
-      const signer = await (async () => {
-        const s = provider.getSigner();
-        return typeof s.then === "function" ? await s : s;
-      })();
-      const code = await provider.getCode(contractAddress);
-      if (!code || code === "0x") throw new Error("No contract at this address (wrong network/address)");
-      const contract = new E.Contract(contractAddress, DoctorRegistry_ABI, signer);
-
-      // المالك
-      try {
-        if (typeof contract.owner === "function") {
-          const owner = await contract.owner();
-          const me = await signer.getAddress();
-          if (owner?.toLowerCase?.() !== me?.toLowerCase?.()) {
-            throw new Error(`You must use the owner account.\nOwner: ${owner}\nCurrent: ${me}`);
-          }
-        }
-      } catch (err) { throw new Error(err?.message || "Ownership check failed"); }
-
-      // الدكتور موجود؟
-      try {
-        if (typeof contract.getDoctor === "function") {
-          const info = await contract.getDoctor(walletAddress);
-          console.log("🔎 getDoctor preflight:", info);
-          const access = (info && (info.accessId ?? info[0])) ?? "";
-          const active = (info && (info.active ?? info[2])) ?? false;
-          if ((access && String(access).length > 0) || active === true) {
-            throw new Error("Doctor exists");
-          }
-        }
-      } catch (_) {}
-
-      // الـ Access ID المعروض قد يكون مستخدم — إن كان مستخدم نعرض التالي فقط
-      try {
-        if (typeof contract.isAccessIdUsed === "function") {
-          const used = await contract.isAccessIdUsed(accessId);
-          if (used) {
-            const preview = await peekNextAccessId();
-            setAccessId(preview);
-            setDoctorId(preview);
-            setStatus(`⚠️ "${accessId}" used on-chain. Previewed next: ${preview}`);
-          }
-        }
-      } catch (_) {}
-
-      // B) نحجز Access ID فعليًا الآن
-      setStatus("⏳ Allocating sequential Access ID…");
+      setStatus("🆔 Allocating sequential Access ID…");
       const id = await allocateSequentialAccessId();
       setAccessId(id);
       setDoctorId(id);
 
-      // C) On-chain
-      setStatus("⏳ Adding doctor on-chain…");
-      const chain = await saveOnChain({
-        contractAddress,
-        doctorWallet: walletAddress,
-        accessId: id,
-        tempPassword,
-      });
+      setStatus("⛓️ Adding doctor on-chain…");
+      const chain = await saveOnChain({ contractAddress, doctorWallet: walletAddress, accessId: id, tempPassword });
 
-      // D) Database — نخزّن هاش الباس المؤقت + كل البيانات بوثيقة docId = عنوان المحفظة
-      setStatus("⏳ Saving to database…");
+      setStatus("🗄️ Saving to Firestore…");
       const tempPasswordHash = await sha256Hex(tempPassword);
       const passwordHash     = tempPasswordHash; // للتوافق مع القواعد إن وُجدت
       const expiresAtMs = Date.now() + 24 * 60 * 60 * 1000; // 24h
@@ -424,17 +309,14 @@ export default function AdminAddDoctorOnly() {
         entityType: "Doctor",
         role: "Doctor",
         isActive: true,
-
-        // معلومات الطبيب
+      
+        // الحقول المشتركة
         name,
-        specialty,
-        facility,
         licenseNumber,
 
         // ربط البلوك تشين
         walletAddress,
         accessId: id,
-        doctorId: id, // Doctor ID = Access ID
         chain: { contractAddress, txHash: chain.txHash, block: chain.block },
 
         // كلمة المرور المؤقتة
@@ -443,9 +325,20 @@ export default function AdminAddDoctorOnly() {
         tempPassword: { expiresAtMs, valid: true },
 
         createdAt: serverTimestamp(),
+      
+        // ✅ التسميات القديمة (للتوافق مع الريتريف عند البنات)
+        specialty: speciality,
+        doctorId: DoctorID,
+        facility: healthFacility,
+      
+        // ✅ التسميات الجديدة (المستخدمة في كود الأدمن)
+        speciality,
+        DoctorID,
+        healthFacility,
       });
+      
 
-      // علّمنا الـ accessId بأنه مستهلك
+      setStatus("🏷️ Marking Access ID as claimed…");
       await markAccessIdClaimed_Firestore(id);
 
       // E) Success + تجهيز التالي
@@ -455,7 +348,9 @@ export default function AdminAddDoctorOnly() {
       setDoctorId(previewNext);
       setTempPassword(generateTempPassword());
     } catch (e) {
-      setStatus(`❌ ${e?.message || e}`);
+      const msg = e?.message || String(e);
+      if (/permission|denied|insufficient/i.test(msg)) setStatus(`❌ Firestore permission: ${msg}`);
+      else setStatus(`❌ ${msg}`);
     } finally {
       setSaving(false);
     }
@@ -472,35 +367,25 @@ export default function AdminAddDoctorOnly() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#F7F5FB] font-sans">
-      {/* HEADER */}
-      <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 p-4">
-          <a href="/" className="flex items-center gap-2 text-[#4A2C59]">
-            <img
-              src="/images/TrustDose_logo.png"
-              alt="TrustDose"
-              className="h-16 w-auto object-contain -ml-3"
-              style={{ transform: "scale(1.35)", transformOrigin: "left center" }}
-            />
-            <span className="hidden sm:inline text-sm text-zinc-500"></span>
-          </a>
-          <div className="ml-auto hidden items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-600 md:flex">
-            <Search className="h-4 w-4" />
-            <input className="w-48 bg-transparent outline-none placeholder:text-zinc-400" placeholder="Search…" />
-          </div>
-          <button className="rounded-xl p-2 text-zinc-600 hover:bg-zinc-100"><Bell className="h-5 w-5" /></button>
-          <button className="flex items-center gap-2 rounded-XL border border-zinc-300 px-3 py-2 text-sm text-[#4A2C59] hover:bg-zinc-50">
-            <div className="grid h-7 w-7 place-items-center rounded-full bg-zinc-200 text-zinc-700">AD</div>
-            <span className="hidden sm:inline">Admin</span>
-            <ChevronDown className="h-4 w-4" />
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      {/* Header: فقط زر الخروج */}
+      <Header
+        hideMenu
+        rightNode={
+          <button
+            onClick={handleLogout}
+            className="inline-flex items-center gap-2 rounded-xl border border-zinc-300 px-3 py-2 text-sm text-[#4A2C59] hover:bg-zinc-50"
+            title="Logout"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Logout</span>
           </button>
         </div>
       </header>
 
-      {/* BODY */}
-      <main className="mx-auto grid max-w-5xl grid-cols-1 gap-6 p-4 md:grid-cols-1 md:p-6">
-        <aside className="mx-auto h-max w-full max-w-2xl rounded-3xl bg-white p-6 shadow-lg ring-1 ring-[#B08CC1]/20 md:sticky md:top-24">
+      {/* Form box */}
+      <main className="flex-1 flex items-center justify-center px-4 py-10">
+        <aside className="w-full max-w-xl bg-white rounded-3xl shadow-xl border border-gray-200 p-6">
           <h3 className="mb-4 text-xl font-semibold text-[#4A2C59]">Add Doctor</h3>
 
           {/* Contract */}
@@ -547,13 +432,9 @@ export default function AdminAddDoctorOnly() {
             />
             <input
               placeholder="Health Facility"
-              value={facility}
-              onBeforeInput={guardBeforeInput(onlyLetterOrSpace)}
-              onPaste={handlePasteSanitize(sanitizeLettersSpaces, setFacility)}
-              onChange={(e) => setFacility(sanitizeLettersSpaces(e.target.value))}
-              title="English letters only"
-              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
-              required
+              value={healthFacility}
+              onChange={(e) => sethealthFacility(e.target.value.replace(/[^A-Za-z.\-\s]+/g, ""))}
+              className="rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
             />
             <input
               placeholder="License Number"
@@ -567,7 +448,7 @@ export default function AdminAddDoctorOnly() {
             />
           </div>
 
-          {/* Wallet + MetaMask */}
+          {/* ✅ زر MetaMask جنب الحقل */}
           <div className="mt-3 flex items-center gap-2">
             <input
               placeholder="Wallet Address 0x…"
@@ -579,6 +460,7 @@ export default function AdminAddDoctorOnly() {
               onClick={connectMetaMask}
               type="button"
               className="rounded-2xl border border-gray-200 bg-[#F8F6FB] px-4 py-3 text-[#4A2C59] hover:bg-[#EDE4F3]"
+              title="Use MetaMask"
             >
               Use MetaMask
             </button>
@@ -629,6 +511,8 @@ export default function AdminAddDoctorOnly() {
           <p className="mt-3 min-h-[20px] text-center text-xs text-gray-500">{status}</p>
         </aside>
       </main>
+
+      <Footer />
     </div>
   );
 }
