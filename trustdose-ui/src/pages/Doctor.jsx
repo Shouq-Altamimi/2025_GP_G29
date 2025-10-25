@@ -91,14 +91,15 @@ async function getSignerEnsured() {
 }
 
 //prescription ID
-
-const START_NUMBER = 1000; 
+const START_NUMBER = 1000;
+const LETTERS = "abcdefghijklmnopqrstuvwxyz";
 
 export async function generateSequentialPrescriptionId() {
+  // last prescription
   const q = query(
     collection(db, "prescriptions"),
-    orderBy("prescriptionID", "desc"),
-    limit(1)
+    orderBy("prescriptionID", "desc"),//descending order
+    limit(1)//last one only
   );
   const snap = await getDocs(q);
 
@@ -106,15 +107,15 @@ export async function generateSequentialPrescriptionId() {
 
   if (!snap.empty) {
     const lastId = snap.docs[0].data().prescriptionID;
-    const lastNumber = parseInt(lastId);
-    if (!isNaN(lastNumber)) {
-      nextNumber = lastNumber + 1;
+    const numericPart = parseInt(lastId.slice(1));
+    if (!isNaN(numericPart)) {
+      nextNumber = numericPart + 1;
     }
   }
+  const randomLetter = LETTERS[Math.floor(Math.random() * LETTERS.length)];
 
-  return nextNumber.toString(); 
+  return `${randomLetter}${nextNumber}`;
 }
-
 // 
 
 
@@ -172,37 +173,44 @@ export default function Doctor() {
     setSearched(false);
     setSearchMsg("");
   }
+async function runSearch() {
+  const id = q.trim();
 
-  async function runSearch() {
-    const id = q.trim();
-    if (!/^[12]\d{9}$/.test(id)) {
-      setSearchMsg("National ID must be 10 digits and start with 1 or 2.");
-      setSelectedPatient(null);
-      setSearched(false);
-      return;
-    }
-    setIsLoading(true);
-    setSearchMsg("");
-    try {
-      const rec = await fetchPatientByNationalId(id);
-      if (rec) {
-        const patient = mapPatient(rec, id);
-        setSelectedPatient(patient);
-        setSearched(true);
-      } else {
-        setSelectedPatient(null);
-        setSearched(true);
-        setSearchMsg("The national ID you entered isn’t registered in our system.");
-      }
-    } catch (e) {
-      console.error(e);
-      setSelectedPatient(null);
-      setSearched(false);
-      setSearchMsg("Error fetching from database. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
+  // يسمح بأي رقم، لكن يتحقق عند الضغط
+  const natDigits = id.replace(/\D/g, "");
+  const firstOk = natDigits.length > 0 && (natDigits[0] === "1" || natDigits[0] === "2");
+  const lenOk = natDigits.length === 10;
+
+  if (!firstOk || !lenOk) {
+    setSearchMsg(!firstOk ? "National ID must start with 1 or 2." : "National ID must be 10 digits.");
+    setSelectedPatient(null);
+    setSearched(false);
+    return;
   }
+
+  setIsLoading(true);
+  setSearchMsg("");
+  try {
+    const rec = await fetchPatientByNationalId(id);
+    if (rec) {
+      const patient = mapPatient(rec, id);
+      setSelectedPatient(patient);
+      setSearched(true);
+    } else {
+      setSelectedPatient(null);
+      setSearched(true);
+      setSearchMsg("The national ID you entered isn’t registered in our system.");
+    }
+  } catch (e) {
+    console.error(e);
+    setSelectedPatient(null);
+    setSearched(false);
+    setSearchMsg("Error fetching from database. Please try again.");
+  } finally {
+    setIsLoading(false);
+  }
+}
+
 
 //blockchain then saving 
   async function confirmAndSave() {
@@ -318,7 +326,6 @@ export default function Doctor() {
       setTimeout(() => setRxMsg(""), 3000);
 
       navigate("/prescriptions", {
-        replace: true,
         state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
       });
     } catch (e) {
@@ -364,21 +371,21 @@ export default function Doctor() {
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 relative">
               <input
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:border-transparent transition-all"
-                style={{ outlineColor: C.primary }}
-                placeholder="Enter 10-digit National ID"
-                value={q}
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={10}
-                onChange={(e) => {
-                  let v = e.target.value.replace(/[^0-9]/g, ""); 
-                  if (v.length > 0 && !/^[12]/.test(v)) v = ""; 
-                  v = v.slice(0, 10); 
-                  setQ(v);
-                }}
-                onKeyDown={(e) => e.key === "Enter" && q.length === 10 && runSearch()}
-              />
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:border-transparent transition-all"
+              style={{ outlineColor: C.primary }}
+              placeholder="Enter 10-digit National ID"
+              value={q}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={10}
+              onChange={(e) => {
+                let v = e.target.value.replace(/[^0-9]/g, ""); 
+                v = v.slice(0, 10);
+                setQ(v);
+              }}
+              onKeyDown={(e) => e.key === "Enter" && q.length === 10 && runSearch()}
+            />
+
               {q && (
                 <button
                   onClick={() => {
