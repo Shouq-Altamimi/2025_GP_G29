@@ -13,6 +13,8 @@ import {
   where,
   addDoc,
   serverTimestamp,
+  orderBy,
+  limit,
 } from "firebase/firestore";
 import { ethers } from "ethers";
 import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "lucide-react";
@@ -21,7 +23,7 @@ import PRESCRIPTION from "../contracts/Prescription.json";
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
 
 //contract
-const CONTRACT_ADDRESS = "0x0De1889DC044a862875eDf77029369dbBac00Dea";
+const CONTRACT_ADDRESS = "0x13aAa648feA702d77bD4C540D5fF0dB61c1f1246";
 
 const LIMITS = Object.freeze({
   medicalCondition: { min: 5, max: 120 },
@@ -89,29 +91,32 @@ async function getSignerEnsured() {
 }
 
 //prescription ID
-function generatePrescriptionId(prefix = "RX-", len = 8) {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let id = prefix;
-  for (let i = 0; i < len; i++) {
-    id += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return id;
-}
-//to ensure uniqueness
-async function generateUniquePrescriptionId() {
-  let id;
-  let exists = true;
 
-  while (exists) {
-    id = generatePrescriptionId();
-    const qSnap = await getDocs(
-      query(collection(db, "prescriptions"), where("prescriptionID", "==", id))
-    );
-    exists = !qSnap.empty; 
+const START_NUMBER = 1000; 
+
+export async function generateSequentialPrescriptionId() {
+  const q = query(
+    collection(db, "prescriptions"),
+    orderBy("prescriptionID", "desc"),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+
+  let nextNumber = START_NUMBER;
+
+  if (!snap.empty) {
+    const lastId = snap.docs[0].data().prescriptionID;
+    const lastNumber = parseInt(lastId);
+    if (!isNaN(lastNumber)) {
+      nextNumber = lastNumber + 1;
+    }
   }
 
-  return id;
+  return nextNumber.toString(); 
 }
+
+// 
+
 
 
 
@@ -276,29 +281,29 @@ export default function Doctor() {
       } catch {}
 
       const payload = {
-        [F.createdAt]: serverTimestamp(),
-        [F.doctorId]: doctorAddress,
-        [F.doctorName]: welcome?.name || "",
-        [F.doctorPhone]: welcome?.phone || "",
-        [F.doctorFacility]: welcome?.healthFacility || "",
-        [F.medicineLabel]: selectedMed.label,
-        [F.medicineName]: selectedMed.name,
-        [F.dosageForm]: selectedMed.dosageForm || "",
-        [F.dosage]: finalDose,
-        [F.frequency]: finalFreq,
-        [F.durationDays]: finalDuration,
-        [F.medicalCondition]: mc,
-        [F.notes]: notes || "",
-        [F.onchainTx]: txHash,
-        [F.patientDisplayId]: natId ? natId.slice(-4) : "",
-        [F.patientNationalIdHash]: "0x" + natIdHashHex,
-        nationalID: natId,
-        patientName: selectedPatient.name,
-        onchainId: onchainId ?? null,
-        reason: mc,
-        prescriptionID: generatePrescriptionId(),
-        dispensed: false,
-      };
+      [F.createdAt]: serverTimestamp(),
+      [F.doctorId]: doctorAddress,
+      [F.doctorName]: welcome?.name || "",
+      [F.doctorPhone]: welcome?.phone || "",
+      [F.doctorFacility]: welcome?.healthFacility || "",
+      [F.medicineLabel]: selectedMed.label,
+      [F.medicineName]: selectedMed.name,
+      [F.dosageForm]: selectedMed.dosageForm || "",
+      [F.dosage]: finalDose,
+      [F.frequency]: finalFreq,
+      [F.durationDays]: finalDuration,
+      [F.medicalCondition]: mc, // هذا كافي
+      [F.notes]: notes || "",
+      [F.onchainTx]: txHash,
+      [F.patientDisplayId]: natId ? natId.slice(-4) : "",
+      [F.patientNationalIdHash]: "0x" + natIdHashHex,
+      nationalID: natId,
+      patientName: selectedPatient.name,
+      onchainId: onchainId ?? null,
+      prescriptionID: await generateSequentialPrescriptionId(),
+      dispensed: false,
+    };
+
       if (selectedMed?.sensitivity) payload[F.sensitivity] = selectedMed.sensitivity;
 
       await addDoc(collection(db, "prescriptions"), payload);

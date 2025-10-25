@@ -16,11 +16,25 @@ import {
   updateDoc,
   deleteField,
 } from "firebase/firestore";
-import { FilePlus2, User, LogOut, X, Eye, EyeOff, Lock, CheckCircle, XCircle } from "lucide-react";
+import {
+  FilePlus2,
+  User,
+  LogOut,
+  X,
+  Eye,
+  EyeOff,
+  Lock,
+  CheckCircle,
+  XCircle,
+  Circle,          // ✅ for unchecked requirement
+} from "lucide-react";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
+/* =========================
+   Helpers
+   ========================= */
 function pickStr(obj, keys) {
   for (const k of keys) {
     const v = obj?.[k];
@@ -29,20 +43,24 @@ function pickStr(obj, keys) {
   return "";
 }
 
-// دوال التشفير SHA-256
+/* =========================
+   Crypto (SHA-256 for doctors)
+   ========================= */
 async function hashPassword(password) {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-
 async function verifyPassword(inputPassword, storedHash) {
   const inputHash = await hashPassword(inputPassword);
   return inputHash === storedHash;
 }
 
+/* =========================
+   Doctor normalize
+   ========================= */
 function normalizeDoctor(raw) {
   if (!raw) return null;
   return {
@@ -60,9 +78,9 @@ function normalizeDoctor(raw) {
 function validateAndNormalizePhone(raw) {
   const original = String(raw || "").trim();
   if (/\s/.test(original)) return { ok: false, reason: "No spaces allowed." };
-  if (/[٠-٩۰-۹]/.test(original)) return { ok: false, reason: "English digits only (0-9)." };
+  if (/[٠-٩۰-۹]/.test(original)) return { ok: false, reason: "English digits only (0–9)." };
   if (!/^\+?[0-9]+$/.test(original))
-    return { ok: false, reason: "Digits 0-9 only (and optional leading +)." };
+    return { ok: false, reason: "Digits 0–9 only (and optional leading +)." };
   if (/^05\d{8}$/.test(original)) {
     const last8 = original.slice(2);
     return { ok: true, normalized: `+9665${last8}` };
@@ -71,6 +89,9 @@ function validateAndNormalizePhone(raw) {
   return { ok: false, reason: "Must start with 05 or +9665 followed by 8 digits." };
 }
 
+/* =========================
+   Page shell
+   ========================= */
 export default function DoctorHeader() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -232,6 +253,9 @@ export default function DoctorHeader() {
   );
 }
 
+/* =========================
+   UI bits
+   ========================= */
 function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
   const base =
     "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
@@ -247,8 +271,20 @@ function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
   );
 }
 
+function Row({ label, value }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-gray-500">{label}</span>
+      <span className="font-medium text-gray-800 text-right">{value}</span>
+    </div>
+  );
+}
+
+/* =========================
+   Account modal
+   ========================= */
 function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
-  // ===== Phone =====
+  // Phone
   const [phone, setPhone] = useState(doctor?.phone || "");
   const [phoneInfo, setPhoneInfo] = useState({ ok: false, reason: "", normalized: "" });
   const [saving, setSaving] = useState(false);
@@ -282,11 +318,10 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
     }
   }
 
-  // ===== Email =====
+  // Email
   const [emailInput, setEmailInput] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
-
   const hasEmail = !!doctor?.email;
 
   async function sendVerifyLink() {
@@ -295,7 +330,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       const raw = String(emailInput || "").trim().toLowerCase();
       const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
       if (!ok) {
-        setEmailMsg("الرجاء إدخال بريد إلكتروني صالح.");
+        setEmailMsg("Please enter a valid email.");
         return;
       }
 
@@ -307,19 +342,14 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
         redirect: "/doctor",
       });
 
-      const settings = {
-        url: `${BASE}/auth-email?${params.toString()}`,
-        handleCodeInApp: true,
-      };
-
+      const settings = { url: `${BASE}/auth-email?${params.toString()}`, handleCodeInApp: true };
       setEmailLoading(true);
       await sendSignInLinkToEmail(getAuth(), raw, settings);
 
       localStorage.setItem("td_email_pending", JSON.stringify({ email: raw, ts: Date.now() }));
-      setEmailMsg("تم إرسال رابط التحقق إلى بريدك. افتحيه ثم ارجعي للتطبيق.");
+      setEmailMsg("A verification link has been sent to your email. Open it, then return to the app.");
     } catch (e) {
-      console.error("Firebase:", e.code, e.message);
-      setEmailMsg(`Firebase: ${e?.code || e?.message || "تعذر إرسال رابط التحقق."}`);
+      setEmailMsg(`Firebase: ${e?.code || e?.message || "Unable to send verification link."}`);
     } finally {
       setEmailLoading(false);
     }
@@ -331,16 +361,8 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       <div className="fixed inset-0 z-50 grid place-items-center px-4 overflow-y-auto py-8">
         <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold" style={{ color: C.ink }}>
-              My Account
-            </h3>
-            <button
-              onClick={onClose}
-              className="h-8 w-8 grid place-items-center rounded-lg hover:bg-gray-100"
-              aria-label="Close"
-            >
-              ✕
-            </button>
+            <h3 className="text-lg font-semibold" style={{ color: C.ink }}>My Account</h3>
+            <button onClick={onClose} className="h-8 w-8 grid place-items-center rounded-lg hover:bg-gray-100" aria-label="Close">✕</button>
           </div>
 
           <div className="space-y-3 text-sm">
@@ -381,10 +403,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
               {hasEmail ? (
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-gray-800">{doctor.email}</span>
-                  <span
-                    className="text-[12px] px-2 py-0.5 rounded-full border"
-                    style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}
-                  >
+                  <span className="text-[12px] px-2 py-0.5 rounded-full border" style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}>
                     Verified
                   </span>
                 </div>
@@ -410,12 +429,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                   </div>
 
                   {!!emailMsg && (
-                    <div
-                      className="mt-2 text-sm"
-                      style={{
-                        color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534",
-                      }}
-                    >
+                    <div className="mt-2 text-sm" style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534" }}>
                       {emailMsg}
                     </div>
                   )}
@@ -423,9 +437,9 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
               )}
             </div>
 
-            {/* Password Reset Section - Only show if email is verified */}
+            {/* Password (only if email exists) */}
             {hasEmail && (
-              <PasswordResetSection 
+              <PasswordResetSection
                 doctor={doctor}
                 doctorDocId={doctorDocId}
                 onSaved={onSaved}
@@ -436,9 +450,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
           </div>
 
           <div className="mt-4 flex items-center justify-end gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg border">
-              Cancel
-            </button>
+            <button onClick={onClose} className="px-4 py-2 rounded-lg border">Cancel</button>
             <button
               onClick={save}
               disabled={!canSave}
@@ -454,22 +466,27 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   );
 }
 
-// ===== Password Reset Component =====
+/* =========================
+   Password Reset (with vertical checklist + strength on typing)
+   ========================= */
 function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  
-  const [oldPass, setOldPass] = useState('');
-  const [newPass, setNewPass] = useState('');
-  const [confirmPass, setConfirmPass] = useState('');
-  
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState('');
-  const [msgType, setMsgType] = useState('');
 
-  // نفس دالة passwordStrength من Auth.js
-  const passwordStrength = (pw) => {
+  const [oldPass, setOldPass] = useState("");
+  const [newPass, setNewPass] = useState("");
+  const [confirmPass, setConfirmPass] = useState("");
+
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [msgType, setMsgType] = useState("");
+
+  // show checklist + bar only when user starts typing
+  const showReqs = (newPass || "").length > 0;
+
+  // strength logic (same as patient)
+  function passwordStrength(pw) {
     const p = String(pw || "");
     let score = 0;
     const hasLower = /[a-z]/.test(p);
@@ -478,138 +495,107 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
     const hasSymbol = /[^A-Za-z0-9]/.test(p);
     const len8 = p.length >= 8;
     const len12 = p.length >= 12;
+
     if (len8) score++;
     if (hasLower) score++;
     if (hasUpper) score++;
     if (hasDigit) score++;
     if (hasSymbol) score++;
     if (len12) score++;
+
     let label = "Weak";
     let color = "#ef4444";
     if (score >= 4) { label = "Medium"; color = "#f59e0b"; }
     if (score >= 5) { label = "Strong"; color = "#10b981"; }
+
     const width = Math.min(100, Math.round((score / 6) * 100));
     return { score, label, color, width, hasLower, hasUpper, hasDigit, hasSymbol, len8 };
-  };
+  }
+  const st = passwordStrength(newPass);
 
-  const pwInfo = passwordStrength(newPass);
-  
-  // إضافة passValidation هنا
-  const passValidation = (() => {
-    const p = String(newPass || "");
-    if (!p) return { ok: false, msg: "Password is required" };
-    if (p.length < 8) return { ok: false, msg: "At least 8 characters required" };
-    if (!/[a-z]/.test(p)) return { ok: false, msg: "Must include lowercase letter" };
-    if (!/[A-Z]/.test(p)) return { ok: false, msg: "Must include uppercase letter" };
-    if (!/\d/.test(p)) return { ok: false, msg: "Must include number" };
-    return { ok: true, msg: "Password meets requirements" };
-  })();
-  
-  const meetsPolicy = pwInfo.len8 && pwInfo.hasLower && pwInfo.hasUpper && pwInfo.hasDigit;
+  // must have a–z + A–Z + 0–9 + length ≥ 8
+  const passOk = st.hasLower && st.hasUpper && st.hasDigit && st.len8;
+
+  function Req({ ok, label }) {
+    return (
+      <div className="flex items-center gap-2 text-sm leading-6">
+        {ok ? <CheckCircle size={18} className="text-green-600" /> : <Circle size={18} className="text-gray-400" />}
+        <span className={ok ? "text-green-700" : "text-gray-700"}>{label}</span>
+      </div>
+    );
+  }
 
   const handleResetPassword = async () => {
     try {
-      setMsg('');
-      setMsgType('');
-
-      console.log('🔐 Starting password reset...');
-      console.log('Doctor Doc ID:', doctorDocId);
+      setMsg(""); setMsgType("");
 
       if (!oldPass || !newPass || !confirmPass) {
-        setMsg('Please fill all fields');
-        setMsgType('error');
+        setMsg("Please fill all fields");
+        setMsgType("error");
         return;
       }
-
-      if (!passValidation.ok) {
-        setMsg(passValidation.msg);
-        setMsgType('error');
+      if (!passOk) {
+        setMsg("Please meet all password requirements");
+        setMsgType("error");
         return;
       }
-
       if (newPass !== confirmPass) {
-        setMsg('New passwords do not match');
-        setMsgType('error');
+        setMsg("New passwords do not match");
+        setMsgType("error");
         return;
       }
-
       if (oldPass === newPass) {
-        setMsg('New password must be different from old password');
-        setMsgType('error');
+        setMsg("New password must be different from old password");
+        setMsgType("error");
         return;
       }
 
       setLoading(true);
 
-      const docRef = doc(db, 'doctors', doctorDocId);
-      console.log('📄 Fetching doctor document...');
+      const docRef = doc(db, "doctors", doctorDocId);
       const docSnap = await getDoc(docRef);
-      
       if (!docSnap.exists()) {
-        console.error('❌ Doctor document not found');
-        setMsg('Doctor record not found');
-        setMsgType('error');
+        setMsg("Doctor record not found");
+        setMsgType("error");
         setLoading(false);
         return;
       }
 
       const currentPassword = docSnap.data().password;
-      console.log('Current password in DB:', currentPassword);
-      console.log('Old password entered:', oldPass);
 
-      // التحقق من كلمة المرور القديمة
-      let isOldCorrect = false;
-      
-      // فحص إذا كانت الباسوورد مشفرة (SHA-256 = 64 حرف hex)
-      const isHashed = currentPassword && currentPassword.length === 64 && /^[a-f0-9]+$/.test(currentPassword);
-      console.log('Is password hashed?', isHashed);
-      
-      if (isHashed) {
-        // الباسوورد مشفرة، نستخدم verifyPassword
-        isOldCorrect = await verifyPassword(oldPass, currentPassword);
-        console.log('Hashed verification result:', isOldCorrect);
-      } else {
-        // الباسوورد plain text
-        isOldCorrect = oldPass === currentPassword;
-        console.log('Plain text verification result:', isOldCorrect);
-      }
+      // verify old password (supports hashed or plain legacy)
+      const isHashed =
+        currentPassword &&
+        currentPassword.length === 64 &&
+        /^[a-f0-9]+$/i.test(currentPassword);
+
+      const isOldCorrect = isHashed
+        ? await verifyPassword(oldPass, currentPassword)
+        : oldPass === currentPassword;
 
       if (!isOldCorrect) {
-        console.error('❌ Current password is incorrect');
-        setMsg('Current password is incorrect');
-        setMsgType('error');
+        setMsg("Current password is incorrect");
+        setMsgType("error");
         setLoading(false);
         return;
       }
 
-      // تشفير الباسوورد الجديدة
-      console.log('🔒 Hashing new password...');
+      // update with SHA-256 hash
       const hashedPassword = await hashPassword(newPass);
-      console.log('New hashed password:', hashedPassword);
-
-      // تحديث الباسوورد في Firebase
-      console.log('💾 Updating password in Firebase...');
       await updateDoc(docRef, {
         password: hashedPassword,
         passwordUpdatedAt: new Date(),
       });
 
-      console.log('✅ Password updated successfully!');
-      setMsg('Password updated successfully! ✓');
-      setMsgType('success');
-      
-      setOldPass('');
-      setNewPass('');
-      setConfirmPass('');
-
+      setMsg("Password updated successfully! ✓");
+      setMsgType("success");
+      setOldPass("");
+      setNewPass("");
+      setConfirmPass("");
       onSaved?.({ passwordUpdated: true });
-
     } catch (error) {
-      console.error('❌ Password reset error:', error);
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
-      setMsg(error.message || 'Failed to update password');
-      setMsgType('error');
+      setMsg(error?.message || "Failed to update password");
+      setMsgType("error");
     } finally {
       setLoading(false);
     }
@@ -623,6 +609,7 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
       </div>
 
       <div className="space-y-3">
+        {/* Current */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             Current Password <span className="text-rose-600">*</span>
@@ -635,10 +622,11 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
               className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:border-transparent"
               style={{ outlineColor: C.primary }}
               placeholder="Enter current password"
+              autoComplete="current-password"
             />
             <button
               type="button"
-              onClick={() => setShowOld(!showOld)}
+              onClick={() => setShowOld((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
             >
               {showOld ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -646,6 +634,7 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
           </div>
         </div>
 
+        {/* New */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             New Password <span className="text-rose-600">*</span>
@@ -654,27 +643,46 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
             <input
               type={showNew ? "text" : "password"}
               value={newPass}
-              onChange={(e) => setNewPass(e.target.value)}
+              onChange={(e) => setNewPass(e.target.value)} // shows checklist/strength on typing
               className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:border-transparent"
               style={{ outlineColor: C.primary }}
               placeholder="Enter new password"
+              autoComplete="new-password"
             />
             <button
               type="button"
-              onClick={() => setShowNew(!showNew)}
+              onClick={() => setShowNew((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
             >
               {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
-          {newPass && (
-            <div className={`text-xs mt-1 flex items-center gap-1 ${passValidation.ok ? 'text-green-600' : 'text-rose-600'}`}>
-              {passValidation.ok ? <CheckCircle size={14} /> : <XCircle size={14} />}
-              {passValidation.msg}
-            </div>
+
+          {/* Requirements (vertical) + Strength bar */}
+          {showReqs && (
+            <>
+              <div className="mt-3 flex flex-col gap-2">
+                <Req ok={st.hasUpper}  label="Uppercase (A–Z)" />
+                <Req ok={st.hasLower}  label="Lowercase (a–z)" />
+                <Req ok={st.hasDigit}  label="Digit (0–9)" />
+                <Req ok={st.hasSymbol} label="Symbol (!@#$…)" />
+                <Req ok={st.len8}      label="Length ≥ 8" />
+              </div>
+
+              <div className="mt-3">
+                <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+                  <div className="h-2 rounded-full transition-all" style={{ width: `${st.width}%`, background: st.color }} />
+                </div>
+                <div className="mt-2 text-sm">
+                  Strength: <span style={{ color: st.color, fontWeight: 700 }}>{st.label}</span>
+                  <span className="text-gray-600"> &nbsp; (min 8 chars, include a–z, A–Z, 0–9)</span>
+                </div>
+              </div>
+            </>
           )}
         </div>
 
+        {/* Confirm */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             Confirm New Password <span className="text-rose-600">*</span>
@@ -687,15 +695,17 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
               className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:border-transparent"
               style={{ outlineColor: C.primary }}
               placeholder="Confirm new password"
+              autoComplete="new-password"
             />
             <button
               type="button"
-              onClick={() => setShowConfirm(!showConfirm)}
+              onClick={() => setShowConfirm((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
             >
               {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
+
           {confirmPass && newPass !== confirmPass && (
             <div className="text-xs mt-1 text-rose-600 flex items-center gap-1">
               <XCircle size={14} />
@@ -704,35 +714,36 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
           )}
         </div>
 
+        {/* Status */}
         {msg && (
-          <div className={`p-3 rounded-lg text-sm ${
-            msgType === 'success' 
-              ? 'bg-green-50 text-green-800 border border-green-200' 
-              : 'bg-rose-50 text-rose-800 border border-rose-200'
-          }`}>
+          <div
+            className={`p-3 rounded-lg text-sm ${
+              msgType === "success"
+                ? "bg-green-50 text-green-800 border border-green-200"
+                : "bg-rose-50 text-rose-800 border border-rose-200"
+            }`}
+          >
             {msg}
           </div>
         )}
 
+        {/* Submit */}
         <button
           onClick={handleResetPassword}
-          disabled={loading || !oldPass || !newPass || !confirmPass || newPass !== confirmPass || !passValidation.ok}
+          disabled={
+            loading ||
+            !oldPass ||
+            !newPass ||
+            !confirmPass ||
+            newPass !== confirmPass ||
+            !passOk
+          }
           className="w-full py-2.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-[1.02]"
           style={{ background: C.primary }}
         >
-          {loading ? 'Updating...' : 'Update Password'}
+          {loading ? "Updating..." : "Update Password"}
         </button>
       </div>
-
-    </div>
-  );
-}
-
-function Row({ label, value }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-gray-500">{label}</span>
-      <span className="font-medium text-gray-800 text-right">{value}</span>
     </div>
   );
 }

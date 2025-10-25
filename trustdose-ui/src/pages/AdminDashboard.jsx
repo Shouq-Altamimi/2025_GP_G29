@@ -181,7 +181,7 @@ async function allocateSequentialAccessId() {
 
 /* ---------- Component ---------- */
 export default function AdminAddDoctorOnly() {
-  const [contractAddress, setContractAddress] = useState("0x287bC09515731b20C51e51c6a5409ceA71E837fd");
+  const [contractAddress, setContractAddress] = useState("0xCF2573a8b093715f408f719A94e5C0482B53E1a2");
   const [doctorId, setDoctorId] = useState(""); // = accessId
   const [facility, setFacility] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
@@ -424,26 +424,27 @@ export default function AdminAddDoctorOnly() {
         entityType: "Doctor",
         role: "Doctor",
         isActive: true,
-      
+
         // معلومات الطبيب
         name,
         specialty,
         facility,
         licenseNumber,
-      
+
         // ربط البلوك تشين
         walletAddress,
         accessId: id,
-        doctorId: id,
+        doctorId: id, // Doctor ID = Access ID
         chain: { contractAddress, txHash: chain.txHash, block: chain.block },
-      
-        // كلمة المرور المؤقتة (توحيد الاسم)
-        passwordHash: tempPasswordHash,         
+
+        // كلمة المرور المؤقتة
+        tempPasswordHash,
+        passwordHash,
         tempPassword: { expiresAtMs, valid: true },
-      
+
         createdAt: serverTimestamp(),
       });
-      
+
       // علّمنا الـ accessId بأنه مستهلك
       await markAccessIdClaimed_Firestore(id);
 
