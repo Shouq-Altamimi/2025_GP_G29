@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 
 /* =========================
-   0) Local mapping (اختياري)
+   0) Local mapping 
    ========================= */
 const DOCTOR_MAP = {
   "0x4F5b09D9940a1fF83463De89BD25C216fBd86E5C": {
@@ -143,7 +143,7 @@ async function hydrateNames(items) {
       "";
 
     const facilityName =
-      p.doctorFacility || // ✅ الحقل الموجود في prescriptions
+      p.doctorFacility || 
       p.facilityName ||
       p.facility ||
       p.healthFacility ||
