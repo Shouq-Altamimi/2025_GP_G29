@@ -1,4 +1,4 @@
-// ===================== Admin Dashboard (Final UI fixed + Header/Footer unified) =====================
+// ===================== Admin Dashboard (Final UI fixed + MM near input + dual keys) =====================
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -133,7 +133,7 @@ async function markAccessIdClaimed_Firestore(id) {
 async function peekNextAccessId() {
   await ensureAuthReady();
   const q = query(collection(db, "doctors"), orderBy("createdAt", "desc"), limit(100));
-  const snap = await getDocs(q); // ✅ كانت awai — تم تصحيحها إلى await
+  const snap = await getDocs(q);
   let maxNum = 0;
   snap.forEach((d) => {
     const a = d.data()?.accessId;
@@ -152,13 +152,12 @@ async function allocateSequentialAccessId() {
     const n = m ? parseInt(m[1], 10) + 1 : 1;
     candidate = `Dr-${String(n).padStart(3, "0")}`;
   }
-  throw new Error("Failed to allocate a sequential Access ID. Please try again.");
+  throw new Error("Failed to allocate sequential Access ID. Please try again.");
 }
 
 /* ---------- On-chain save ---------- */
 async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPassword }) {
   const E = await loadEthers();
-  if (!window.ethereum) throw new Error("MetaMask not found");
   const provider = E.BrowserProvider ? new E.BrowserProvider(window.ethereum) : new E.providers.Web3Provider(window.ethereum);
   const signer = await getSigner(provider);
   const contract = new E.Contract(contractAddress, DoctorRegistry_ABI, signer);
@@ -172,6 +171,7 @@ async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPasswo
 export default function AdminAddDoctorOnly() {
   const navigate = useNavigate();
 
+  // ===== Logout =====
   async function handleLogout() {
     try {
       localStorage.removeItem("userRole");
@@ -179,10 +179,11 @@ export default function AdminAddDoctorOnly() {
       sessionStorage.clear();
       try { await signOut(getAuth(app)); } catch {}
     } finally {
-      try { navigate("/auth", { replace: true }); } catch {}
+      navigate("/auth", { replace: true });
     }
   }
 
+  // ===== Form state =====
   const [contractAddress, setContractAddress] = useState("0x4E2D2BBB07f80811dfA258E78dB35068D447F6E2");
   const [DoctorID, setDoctorID] = useState("");
   const [healthFacility, sethealthFacility] = useState("");
@@ -194,6 +195,22 @@ export default function AdminAddDoctorOnly() {
   const [tempPassword, setTempPassword] = useState(generateTempPassword());
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // ===== MetaMask next to input =====
+  async function connectMetaMask() {
+    try {
+      if (!window?.ethereum) { setStatus("⚠️ Please install MetaMask first."); return; }
+      await window.ethereum.request({ method: "eth_requestAccounts" });
+      const provider = await getProvider();
+      const signer = await getSigner(provider);
+      const addr = await signer.getAddress();
+      setWalletAddress(addr);
+      setStatus("✅ Address fetched from MetaMask.");
+    } catch (e) {
+      if (e?.code === 4001) setStatus("❌ MetaMask request rejected.");
+      else setStatus(`❌ MetaMask: ${e?.message || e}`);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -213,27 +230,6 @@ export default function AdminAddDoctorOnly() {
     [contractAddress, walletAddress, name, speciality, healthFacility, licenseNumber, tempPassword]
   );
 
-  // ✅ زر ميتاماسك (بجانب حقل المحفظة)
-  async function connectMetaMask() {
-    try {
-      if (!window?.ethereum) { setStatus("⚠️ Please install MetaMask first."); return; }
-      try { await window.ethereum.request({ method: "eth_requestAccounts" }); }
-      catch (e) {
-        if (e && (e.code === 4001 || e?.message?.includes("rejected"))) {
-          setStatus("❌ MetaMask: request was rejected."); return;
-        }
-      }
-      const provider = await getProvider();
-      const signer = await getSigner(provider);
-      const addr = await signer.getAddress();
-      if (!isHex40(addr)) { setStatus("❌ MetaMask: invalid address returned."); return; }
-      setWalletAddress(addr);
-      setStatus("✅ Address fetched from MetaMask.");
-    } catch (e) {
-      setStatus(`❌ MetaMask: ${e?.message || e}`);
-    }
-  }
-
   async function handleSave() {
     try {
       setSaving(true);
@@ -252,20 +248,31 @@ export default function AdminAddDoctorOnly() {
       const tempPasswordHash = await sha256Hex(tempPassword);
       const expiresAtMs = Date.now() + 24 * 60 * 60 * 1000;
 
+      // ✅ نكتب المفاتيح بصيغتين معاً لتفادي الـ permissions وكسر الريتريف القديم
       await saveDoctor_FirestoreMulti({
         entityType: "Doctor",
         role: "Doctor",
         isActive: true,
+
+        // names / facility / specialty in both spellings
         name,
-        speciality,
-        healthFacility,
+        specialty: speciality,     // للـ rules القديمة
+        speciality,                // للريتريف عند البنات
+        facility: healthFacility,  // للـ rules القديمة
+        healthFacility,            // للريتريف عند البنات
         licenseNumber,
+
+        // blockchain + IDs (both)
         walletAddress,
         accessId: id,
-        DoctorID: id,
+        doctorId: id,              // للـ rules القديمة
+        DoctorID: id,              // للريتريف عند البنات
         chain: { contractAddress, txHash: chain.txHash, block: chain.block },
+
+        // temp password (hash only)
         passwordHash: tempPasswordHash,
         tempPassword: { expiresAtMs, valid: true },
+
         createdAt: serverTimestamp(),
       });
 
@@ -277,10 +284,7 @@ export default function AdminAddDoctorOnly() {
       setDoctorID(previewNext);
       setTempPassword(generateTempPassword());
     } catch (e) {
-      const msg = String(e?.message || e);
-      setStatus(msg.includes("Missing or insufficient permissions")
-        ? "❌ Firestore permission: Missing or insufficient permissions."
-        : `❌ ${msg}`);
+      setStatus(`❌ ${e?.message || e}`);
     } finally {
       setSaving(false);
     }
@@ -288,7 +292,7 @@ export default function AdminAddDoctorOnly() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Header + Logout (موجود كما هو) */}
+      {/* Header (no MetaMask here) */}
       <Header
         hideMenu
         rightNode={
@@ -303,12 +307,11 @@ export default function AdminAddDoctorOnly() {
         }
       />
 
-      {/* Box */}
+      {/* Form box */}
       <main className="flex-1 flex items-center justify-center px-4 py-10">
         <aside className="w-full max-w-xl bg-white rounded-3xl shadow-xl border border-gray-200 p-6">
           <h3 className="mb-4 text-xl font-semibold text-[#4A2C59]">Add Doctor</h3>
 
-          {/* Contract */}
           <input
             placeholder="Contract Address — 0x…"
             value={contractAddress}
@@ -316,23 +319,21 @@ export default function AdminAddDoctorOnly() {
             className="mb-3 w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
           />
 
-          {/* Name / Specialty */}
           <div className="grid grid-cols-1 gap-3">
             <input
               placeholder="Doctor Name"
               value={name}
-              onChange={(e) => setName(e.target.value.replace(/[^A-Za-z.\s]+/g, ""))}   // ✅ يسمح بالنقطة
+              onChange={(e) => setName(e.target.value.replace(/[^A-Za-z\s]+/g, ""))}
               className="rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
             />
             <input
               placeholder="Specialty"
               value={speciality}
-              onChange={(e) => setspeciality(e.target.value.replace(/[^A-Za-z.\s]+/g, ""))} // (اختياري) نفس سلوك الاسم
+              onChange={(e) => setspeciality(e.target.value.replace(/[^A-Za-z\s]+/g, ""))}
               className="rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
             />
           </div>
 
-          {/* Doctor ID / Facility / License Number */}
           <div className="mt-3 grid grid-cols-1 gap-3">
             <input
               placeholder="Doctor ID"
@@ -343,7 +344,7 @@ export default function AdminAddDoctorOnly() {
             <input
               placeholder="Health Facility"
               value={healthFacility}
-              onChange={(e) => sethealthFacility(e.target.value.replace(/[^A-Za-z.\-\s]+/g, ""))} // ✅ يسمح بالنقطة والشرطة -
+              onChange={(e) => sethealthFacility(e.target.value.replace(/[^A-Za-z.\s]+/g, ""))}
               className="rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
             />
             <input
@@ -354,7 +355,7 @@ export default function AdminAddDoctorOnly() {
             />
           </div>
 
-          {/* Wallet + MetaMask (الزر هنا بجانب الحقل) */}
+          {/* ✅ Wallet + Use MetaMask (side by side) */}
           <div className="mt-3 flex items-center gap-2">
             <input
               placeholder="Wallet Address 0x…"
@@ -366,12 +367,12 @@ export default function AdminAddDoctorOnly() {
               onClick={connectMetaMask}
               type="button"
               className="rounded-2xl border border-gray-200 bg-[#F8F6FB] px-4 py-3 text-[#4A2C59] hover:bg-[#EDE4F3]"
+              title="Fetch address from MetaMask"
             >
               Use MetaMask
             </button>
           </div>
 
-          {/* Credentials */}
           <div className="mt-4 space-y-2">
             <div className="flex justify-between border border-gray-200 bg-gray-50 px-4 py-2 rounded-2xl text-sm text-gray-700">
               <span><b>Access ID:</b> {accessId}</span>
@@ -381,7 +382,6 @@ export default function AdminAddDoctorOnly() {
             </div>
           </div>
 
-          {/* Actions */}
           <div className="mt-5 flex justify-end gap-3">
             <button onClick={() => window.history.back()} className="rounded-2xl border border-gray-200 px-5 py-3 text-[#4A2C59] hover:bg-[#F5F0FA]">
               Cancel
@@ -401,7 +401,6 @@ export default function AdminAddDoctorOnly() {
         </aside>
       </main>
 
-      {/* Footer */}
       <Footer />
     </div>
   );
