@@ -1,4 +1,4 @@
-// ===================== Admin Dashboard (Final UI fixed + MM near input + dual keys) =====================
+// ===================== Admin Dashboard (Final UI fixed + MM near input + dual keys + Modern Welcome Banner Outside) =====================
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -248,28 +248,25 @@ export default function AdminAddDoctorOnly() {
       const tempPasswordHash = await sha256Hex(tempPassword);
       const expiresAtMs = Date.now() + 24 * 60 * 60 * 1000;
 
-      // ✅ نكتب المفاتيح بصيغتين معاً لتفادي الـ permissions وكسر الريتريف القديم
+      // ✅ write dual keys for compatibility
       await saveDoctor_FirestoreMulti({
         entityType: "Doctor",
         role: "Doctor",
         isActive: true,
 
-        // names / facility / specialty in both spellings
         name,
-        specialty: speciality,     // للـ rules القديمة
-        speciality,                // للريتريف عند البنات
-        facility: healthFacility,  // للـ rules القديمة
-        healthFacility,            // للريتريف عند البنات
+        specialty: speciality,
+        speciality,
+        facility: healthFacility,
+        healthFacility,
         licenseNumber,
 
-        // blockchain + IDs (both)
         walletAddress,
         accessId: id,
-        doctorId: id,              // للـ rules القديمة
-        DoctorID: id,              // للريتريف عند البنات
+        doctorId: id,
+        DoctorID: id,
         chain: { contractAddress, txHash: chain.txHash, block: chain.block },
 
-        // temp password (hash only)
         passwordHash: tempPasswordHash,
         tempPassword: { expiresAtMs, valid: true },
 
@@ -292,7 +289,7 @@ export default function AdminAddDoctorOnly() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Header (no MetaMask here) */}
+      {/* Header */}
       <Header
         hideMenu
         rightNode={
@@ -307,7 +304,22 @@ export default function AdminAddDoctorOnly() {
         }
       />
 
-      {/* Form box */}
+      
+      <section className="mx-auto w-full max-w-5xl px-6 mt-10 mb-4">
+        <div className="flex items-center gap-0">
+          <img
+            src="/Images/TrustDose-pill.png"
+            alt=""
+            className="w-[75px] h-[75px] shrink-0 select-none"
+            onError={(e) => (e.currentTarget.style.display = "none")}
+          />
+          <h1 className="text-[28px] leading-tight font-extrabold tracking-tight text-[#2A1E36]">
+            Welcome, Admin
+          </h1>
+        </div>
+      </section>
+
+      {/* ===== Form box ===== */}
       <main className="flex-1 flex items-center justify-center px-4 py-10">
         <aside className="w-full max-w-xl bg-white rounded-3xl shadow-xl border border-gray-200 p-6">
           <h3 className="mb-4 text-xl font-semibold text-[#4A2C59]">Add Doctor</h3>
@@ -355,7 +367,7 @@ export default function AdminAddDoctorOnly() {
             />
           </div>
 
-          {/* ✅ Wallet + Use MetaMask (side by side) */}
+          {/* Wallet + Use MetaMask */}
           <div className="mt-3 flex items-center gap-2">
             <input
               placeholder="Wallet Address 0x…"
