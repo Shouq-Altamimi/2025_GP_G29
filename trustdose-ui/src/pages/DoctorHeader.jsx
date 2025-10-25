@@ -6,35 +6,19 @@ import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
 import { db } from "../firebase.js";
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-  limit as fsLimit,
-  updateDoc,
-  deleteField,
+  collection, doc, getDoc, getDocs,
+  query, where, limit as fsLimit,
+  updateDoc, deleteField, serverTimestamp,
 } from "firebase/firestore";
 import {
-  FilePlus2,
-  User,
-  LogOut,
-  X,
-  Eye,
-  EyeOff,
-  Lock,
-  CheckCircle,
-  XCircle,
-  Circle,          // ✅ for unchecked requirement
+  FilePlus2, User, LogOut, X, Eye, EyeOff, Lock,
+  CheckCircle, XCircle, Circle
 } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
-/* =========================
-   Helpers
-   ========================= */
+/* ===== Helpers ===== */
 function pickStr(obj, keys) {
   for (const k of keys) {
     const v = obj?.[k];
@@ -43,9 +27,7 @@ function pickStr(obj, keys) {
   return "";
 }
 
-/* =========================
-   Crypto (SHA-256 for doctors)
-   ========================= */
+/* ===== Hashing ===== */
 async function hashPassword(password) {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
@@ -58,9 +40,7 @@ async function verifyPassword(inputPassword, storedHash) {
   return inputHash === storedHash;
 }
 
-/* =========================
-   Doctor normalize
-   ========================= */
+/* ===== Doctor normalize ===== */
 function normalizeDoctor(raw) {
   if (!raw) return null;
   return {
@@ -72,6 +52,8 @@ function normalizeDoctor(raw) {
     phone: pickStr(raw, ["phone"]),
     email: pickStr(raw, ["email"]),
     password: raw?.password || "",
+    requirePasswordChange: raw?.requirePasswordChange ?? false,
+    passwordUpdatedAt: raw?.passwordUpdatedAt ?? null,
   };
 }
 
@@ -79,8 +61,7 @@ function validateAndNormalizePhone(raw) {
   const original = String(raw || "").trim();
   if (/\s/.test(original)) return { ok: false, reason: "No spaces allowed." };
   if (/[٠-٩۰-۹]/.test(original)) return { ok: false, reason: "English digits only (0–9)." };
-  if (!/^\+?[0-9]+$/.test(original))
-    return { ok: false, reason: "Digits 0–9 only (and optional leading +)." };
+  if (!/^\+?[0-9]+$/.test(original)) return { ok: false, reason: "Digits 0–9 only (and optional leading +)." };
   if (/^05\d{8}$/.test(original)) {
     const last8 = original.slice(2);
     return { ok: true, normalized: `+9665${last8}` };
@@ -89,106 +70,120 @@ function validateAndNormalizePhone(raw) {
   return { ok: false, reason: "Must start with 05 or +9665 followed by 8 digits." };
 }
 
-/* =========================
-   Page shell
-   ========================= */
+/* ===== Alert style (same as Patient) ===== */
+function AlertBanner({ children }) {
+  return (
+    <div style={{ margin: "0 24px 16px 24px" }}>
+      <div
+        style={{
+          background: "#fff5cc",
+          color: "#8a6d3b",
+          padding: "12px",
+          borderRadius: "10px",
+          textAlign: "center",
+          border: "1px solid #ffe8a1",
+          fontWeight: 500,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ===== Page ===== */
 export default function DoctorHeader() {
   const location = useLocation();
   const navigate = useNavigate();
-  const isPatientPage = location.pathname.includes("/patient");
-  const isDoctorPage =
-    location.pathname.startsWith("/doctor") ||
-    location.pathname.startsWith("/prescriptions");
+  const isDoctorPage = location.pathname.startsWith("/doctor");
 
   const [open, setOpen] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [doctor, setDoctor] = useState(null);
   const [doctorDocId, setDoctorDocId] = useState(null);
 
+  const [showEmailAlert, setShowEmailAlert] = useState(false);
+  const [showResetAlert, setShowResetAlert] = useState(false);
+
   useEffect(() => {
     if (!isDoctorPage) return;
-
     (async () => {
       const role = localStorage.getItem("userRole");
       const userDoctorID = localStorage.getItem("userId");
 
-      if (role !== "doctor" || !userDoctorID) {
-        setDoctor(null);
-        setDoctorDocId(null);
-        setOpen(false);
-        setShowAccount(false);
-        sessionStorage.removeItem("td_doctor");
-        return;
-      }
+      if (role !== "doctor" || !userDoctorID) return;
 
-      try {
-        const qy = query(
-          collection(db, "doctors"),
-          where("DoctorID", "==", String(userDoctorID)),
-          fsLimit(1)
+      const qy = query(collection(db, "doctors"), where("DoctorID", "==", String(userDoctorID)), fsLimit(1));
+      const qs = await getDocs(qy);
+      if (!qs.empty) {
+        const d = qs.docs[0];
+        const norm = normalizeDoctor(d.data());
+        setDoctor(norm);
+        setDoctorDocId(d.id);
+        setShowEmailAlert(!norm.email);
+        setShowResetAlert(
+          norm.requirePasswordChange === true ||
+          (!!norm.email && !norm.passwordUpdatedAt)
         );
-        const qs = await getDocs(qy);
-
-        if (!qs.empty) {
-          const d = qs.docs[0];
-          const norm = normalizeDoctor(d.data());
-          setDoctor(norm);
-          setDoctorDocId(d.id);
-
-          sessionStorage.setItem(
-            "td_doctor",
-            JSON.stringify({
-              DoctorID: norm?.DoctorID || String(userDoctorID),
-              name: norm?.name || "",
-              phone: norm?.phone || "",
-              email: norm?.email || "",
-              healthFacility: norm?.healthFacility || "",
-              speciality: norm?.speciality || "",
-            })
-          );
-          return;
-        }
-
-        setDoctor(null);
-        setDoctorDocId(null);
-        sessionStorage.removeItem("td_doctor");
-      } catch (e) {
-        console.error("Load doctor by DoctorID failed:", e);
-        setDoctor(null);
-        setDoctorDocId(null);
-        sessionStorage.removeItem("td_doctor");
       }
     })();
-  }, [isDoctorPage]);
+  }, [isDoctorPage, location.pathname]);
 
   function signOut() {
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("userId");
-    sessionStorage.removeItem("td_patient");
-    sessionStorage.removeItem("td_doctor");
+    localStorage.clear();
+    sessionStorage.clear();
     navigate("/auth");
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header
-        hideMenu={isPatientPage}
+        hideMenu={false}
         onMenuClick={() => {
           if (isDoctorPage && doctorDocId) setOpen(true);
         }}
       />
+
+      {/* Alerts */}
+      {showEmailAlert && (
+        <AlertBanner>
+          ⚠️ You haven’t added an email address yet. <br />
+          Please add your email from{" "}
+          <button
+            onClick={() => setShowAccount(true)}
+            style={{ fontWeight: 700, color: C.primary }}
+          >
+            My Profile
+          </button>{" "}
+          to activate your account and receive notifications.
+        </AlertBanner>
+      )}
+
+      {showResetAlert && (
+        <AlertBanner>
+          ⚠️ You need to set your password. <br />
+          Please open{" "}
+          <button
+            onClick={() => setShowAccount(true)}
+            style={{ fontWeight: 700, color: C.primary }}
+          >
+            My Profile
+          </button>{" "}
+          and change your password to continue.
+        </AlertBanner>
+      )}
+
       <div className="flex-1">
         <Outlet />
       </div>
       <Footer />
 
+      {/* Sidebar */}
       {isDoctorPage && doctorDocId && (
         <>
           <div
             onClick={() => setOpen(false)}
-            className={`fixed inset-0 z-40 bg-black/40 transition-opacity ${
-              open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-            }`}
+            className={`fixed inset-0 z-40 bg-black/40 transition-opacity ${open ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           />
           <aside
             className="fixed top-0 left-0 z-50 h-full w-[290px] shadow-2xl"
@@ -201,11 +196,7 @@ export default function DoctorHeader() {
           >
             <div className="flex items-center justify-between px-4 py-4">
               <img src="/Images/TrustDose_logo.png" alt="TrustDose" className="h-7 w-auto" />
-              <button
-                onClick={() => setOpen(false)}
-                className="h-9 w-9 grid place-items-center rounded-lg hover:bg-white/20 text-white"
-                aria-label="Close sidebar"
-              >
+              <button onClick={() => setOpen(false)} className="h-9 w-9 grid place-items-center rounded-lg hover:bg-white/20 text-white">
                 <X size={18} />
               </button>
             </div>
@@ -213,20 +204,14 @@ export default function DoctorHeader() {
             <nav className="px-3">
               <DrawerItem
                 active={location.pathname.startsWith("/doctor")}
-                onClick={() => {
-                  navigate("/doctor");
-                  setOpen(false);
-                }}
+                onClick={() => { navigate("/doctor"); setOpen(false); }}
               >
                 <FilePlus2 size={18} />
                 <span>Create Prescription</span>
               </DrawerItem>
 
               <DrawerItem
-                onClick={() => {
-                  setShowAccount(true);
-                  setOpen(false);
-                }}
+                onClick={() => { setShowAccount(true); setOpen(false); }}
               >
                 <User size={18} />
                 <span>My Account</span>
@@ -246,30 +231,28 @@ export default function DoctorHeader() {
           doctor={doctor}
           doctorDocId={doctorDocId}
           onClose={() => setShowAccount(false)}
-          onSaved={(d) => setDoctor((prev) => ({ ...prev, ...d }))}
+          onSaved={(d) => {
+            setDoctor((prev) => ({ ...prev, ...d }));
+            if (d.email) setShowEmailAlert(false);
+            if (d.requirePasswordChange === false) setShowResetAlert(false);
+          }}
         />
       )}
     </div>
   );
 }
 
-/* =========================
-   UI bits
-   ========================= */
+/* ===== DrawerItem ===== */
 function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
-  const base =
-    "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
+  const base = "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
   const styles = active
     ? "bg-white text-[#5B3A70]"
     : variant === "ghost"
     ? "text-white/90 hover:bg-white/10"
     : "bg-white/25 text-white hover:bg-white/35";
-  return (
-    <button onClick={onClick} className={`${base} ${styles}`}>
-      {children}
-    </button>
-  );
+  return <button onClick={onClick} className={`${base} ${styles}`}>{children}</button>;
 }
+
 
 function Row({ label, value }) {
   return (
@@ -284,7 +267,6 @@ function Row({ label, value }) {
    Account modal
    ========================= */
 function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
-  // Phone
   const [phone, setPhone] = useState(doctor?.phone || "");
   const [phoneInfo, setPhoneInfo] = useState({ ok: false, reason: "", normalized: "" });
   const [saving, setSaving] = useState(false);
@@ -361,7 +343,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       <div className="fixed inset-0 z-50 grid place-items-center px-4 overflow-y-auto py-8">
         <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold" style={{ color: C.ink }}>My Account</h3>
+            <h3 className="text-lg font-semibold" style={{ color: C.ink }}>My Profile</h3>
             <button onClick={onClose} className="h-8 w-8 grid place-items-center rounded-lg hover:bg-gray-100" aria-label="Close">✕</button>
           </div>
 
@@ -467,7 +449,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
 }
 
 /* =========================
-   Password Reset (with vertical checklist + strength on typing)
+   Password Reset
    ========================= */
 function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
   const [showOld, setShowOld] = useState(false);
@@ -482,10 +464,8 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState("");
 
-  // show checklist + bar only when user starts typing
   const showReqs = (newPass || "").length > 0;
 
-  // strength logic (same as patient)
   function passwordStrength(pw) {
     const p = String(pw || "");
     let score = 0;
@@ -513,7 +493,6 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
   }
   const st = passwordStrength(newPass);
 
-  // must have a–z + A–Z + 0–9 + length ≥ 8
   const passOk = st.hasLower && st.hasUpper && st.hasDigit && st.len8;
 
   function Req({ ok, label }) {
@@ -563,7 +542,6 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
 
       const currentPassword = docSnap.data().password;
 
-      // verify old password (supports hashed or plain legacy)
       const isHashed =
         currentPassword &&
         currentPassword.length === 64 &&
@@ -580,11 +558,11 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
         return;
       }
 
-      // update with SHA-256 hash
       const hashedPassword = await hashPassword(newPass);
       await updateDoc(docRef, {
         password: hashedPassword,
-        passwordUpdatedAt: new Date(),
+        passwordUpdatedAt: serverTimestamp(),
+        requirePasswordChange: false,
       });
 
       setMsg("Password updated successfully! ✓");
@@ -592,7 +570,8 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
       setOldPass("");
       setNewPass("");
       setConfirmPass("");
-      onSaved?.({ passwordUpdated: true });
+
+      onSaved?.({ requirePasswordChange: false, passwordUpdatedAt: new Date() });
     } catch (error) {
       setMsg(error?.message || "Failed to update password");
       setMsgType("error");
@@ -643,7 +622,7 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
             <input
               type={showNew ? "text" : "password"}
               value={newPass}
-              onChange={(e) => setNewPass(e.target.value)} // shows checklist/strength on typing
+              onChange={(e) => setNewPass(e.target.value)}
               className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:border-transparent"
               style={{ outlineColor: C.primary }}
               placeholder="Enter new password"
@@ -658,7 +637,6 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
             </button>
           </div>
 
-          {/* Requirements (vertical) + Strength bar */}
           {showReqs && (
             <>
               <div className="mt-3 flex flex-col gap-2">
@@ -714,7 +692,6 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
           )}
         </div>
 
-        {/* Status */}
         {msg && (
           <div
             className={`p-3 rounded-lg text-sm ${
@@ -727,7 +704,6 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
           </div>
         )}
 
-        {/* Submit */}
         <button
           onClick={handleResetPassword}
           disabled={
