@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
-
-/// @title TrustDose Doctor Registry (Upsert)
-//  - addDoctor(): يسمح بالإضافة أو التحديث لنفس عنوان المحفظة (upsert)
-//  - يمنع تكرار الـ Access ID عبر كل الدكاترة
-//  - خيار إداري releaseAccessId() لتحرير ID قديم إذا احتجتِ إعادة استخدامه
 contract DoctorRegistry {
     struct Doctor {
-        string  accessId;       // e.g. "Dr-001"
-        bytes32 tempPassHash;   // keccak256(tempPassword)
+        string  accessId;       //  "Dr-001"
+        bytes32 tempPassHash;   // (tempPassword)
         bool    active;         // enable/disable
     }
 
@@ -17,7 +12,7 @@ contract DoctorRegistry {
     // doctorAddress => Doctor
     mapping(address => Doctor) public doctors;
 
-    // لمنع تكرار الـ Access ID عبر الجميع
+    // منع تكرار الاكسس اي دي
     mapping(bytes32 => bool) private usedAccessIds;
 
     event DoctorUpserted(address indexed doctor, string accessId, bytes32 tempPassHash);
@@ -33,9 +28,6 @@ contract DoctorRegistry {
         owner = msg.sender;
     }
 
-    /// @notice إضافة أو تحديث دكتور (upsert) — owner فقط
-    /// @dev يمنع تكرار الـ Access ID. لو كان الدكتور موجودًا سيتم استبدال
-    ///      accessId/tempPassHash وتفعيله.
     function addDoctor(
         address _doctor,
         string calldata _accessId,
@@ -48,9 +40,6 @@ contract DoctorRegistry {
         require(!usedAccessIds[newIdHash], "ACCESS_ID_TAKEN");
 
         Doctor storage d = doctors[_doctor];
-
-        // ملاحظة: لا نحرر الـ accessId القديم تلقائيًا للحفاظ على عدم تكراره تاريخيًا.
-        // إن أردتِ تحريره يدويًا، استخدمي releaseAccessId(accessIdOld).
         d.accessId     = _accessId;
         d.tempPassHash = _tempPassHash;
         d.active       = true;
@@ -60,7 +49,7 @@ contract DoctorRegistry {
         emit DoctorUpserted(_doctor, _accessId, _tempPassHash);
     }
 
-    /// @notice تعطيل/تفعيل دكتور — owner فقط
+
     function setDoctorActive(address _doctor, bool _active) external onlyOwner {
         require(_doctor != address(0), "Zero address");
         require(bytes(doctors[_doctor].accessId).length != 0, "No such doctor");
@@ -73,7 +62,6 @@ contract DoctorRegistry {
         return usedAccessIds[keccak256(bytes(_accessId))];
     }
 
-    /// @notice قراءة بيانات الدكتور
     function getDoctor(address _doctor)
         external
         view
@@ -83,9 +71,6 @@ contract DoctorRegistry {
         return (d.accessId, d.tempPassHash, d.active);
     }
 
-    /// ====================== (اختياري) إدارة الـ Access ID ======================
-    /// @notice تحرير Access ID قديم لإعادة استخدامه لاحقًا — owner فقط
-    /// @dev استخدميها فقط إذا كنتِ متأكدة أنه لن يسبب تضاربًا في السجلات خارج السلسلة.
     function releaseAccessId(string calldata _accessId) external onlyOwner {
         bytes32 idHash = keccak256(bytes(_accessId));
         require(usedAccessIds[idHash], "ID not used");
