@@ -183,10 +183,13 @@ export default function AdminAddDoctorOnly() {
     }
   }
 
+  // ===== Constants =====
+  const HOSPITAL_NAME = "Dr. Sulaiman Al Habib Hospital";
+
   // ===== Form state =====
-  const [contractAddress, setContractAddress] = useState("0xC3Fe819fF631939F4f7889c05152C7ab744fc6CD");
+  const [contractAddress, setContractAddress] = useState("0xA41A59dA0602AcccE599B844Aea1931Ae0BA1Fd8");
   const [DoctorID, setDoctorID] = useState("");
-  const [healthFacility, sethealthFacility] = useState("");
+  const [healthFacility, sethealthFacility] = useState(HOSPITAL_NAME); // fixed value
   const [licenseNumber, setLicenseNumber] = useState("");
   const [name, setName] = useState("");
   const [speciality, setspeciality] = useState("");
@@ -304,7 +307,6 @@ export default function AdminAddDoctorOnly() {
         }
       />
 
-      
       <section className="mx-auto w-full max-w-5xl px-6 mt-10 mb-4">
         <div className="flex items-center gap-0">
           <img
@@ -353,8 +355,10 @@ export default function AdminAddDoctorOnly() {
               readOnly
               className="rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
             />
-             <input
-              value="Dr. Sulaiman Al Habib Hospital"
+
+            {/* Fixed Health Facility */}
+            <input
+              value={healthFacility}
               readOnly
               className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none bg-gray-50 focus:ring-2 focus:ring-[#B08CC1]"
             />
