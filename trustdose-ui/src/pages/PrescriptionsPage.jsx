@@ -42,6 +42,45 @@ export default function PrescriptionsPage() {
     navigate("/doctor", { replace: true });
   };
 
+  /* === إخفاء زر المينيو/الهامبرجر فقط في هذه الصفحة === */
+  useEffect(() => {
+    const selectors = [
+      "header button[aria-label*='menu' i]",
+      "header button[aria-label*='sidebar' i]",
+      "header [data-testid='sidebar-toggle']",
+      "header .menu-toggle",
+      "header .hamburger",
+      "header .lucide-menu",
+      "button#menuBtn",
+      "#menuBtn",
+    ];
+
+    const original = new Map();
+
+    const hideHamburger = () => {
+      selectors.forEach((sel) => {
+        document.querySelectorAll(sel).forEach((el) => {
+          const target = el.tagName === "svg" && el.closest("button") ? el.closest("button") : el;
+          if (!original.has(target)) original.set(target, target.style.display);
+          target.style.display = "none";
+        });
+      });
+    };
+
+    hideHamburger();
+    const obs = new MutationObserver(hideHamburger);
+    obs.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      obs.disconnect();
+      original.forEach((val, el) => {
+        if (el) el.style.display = val || "";
+      });
+      original.clear();
+    };
+  }, []);
+  /* ===================================================== */
+
   useEffect(() => {
     (async () => {
       const sp = new URLSearchParams(location.search);
@@ -104,7 +143,7 @@ export default function PrescriptionsPage() {
         setLoading(false);
       }
     })();
-  }, [natHash]); 
+  }, [natHash]);
 
   const filtered = useMemo(() => {
     const v = qText.trim().toLowerCase();
