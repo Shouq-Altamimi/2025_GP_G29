@@ -2,14 +2,12 @@
 import React, { useMemo, useState } from "react";
 import { Search, FileText, Loader2 } from "lucide-react"; 
 
-// ===== Firestore =====
 import { db } from "../firebase";
 import {
   collection, query, where, getDocs,
   doc as fsDoc, updateDoc, serverTimestamp
 } from "firebase/firestore";
 
-// ===== Ethers / Contracts =====
 import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
@@ -20,9 +18,9 @@ const DISPENSE_ADDRESS     = "0x4ABEA6F20bB1E4AbcABE4E7ac272582535BB60fD"; // Di
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected.");
   await window.ethereum.request({ method: "eth_requestAccounts" });
-  const provider = new ethers.BrowserProvider(window.ethereum); // ethers v6
+  const provider = new ethers.BrowserProvider(window.ethereum); 
   const network = await provider.getNetwork();
-  const allowed = [1337n, 5777n, 31337n]; // Ganache/Hardhat
+  const allowed = [1337n, 5777n, 31337n]; 
   if (!allowed.includes(network.chainId)) {
     console.warn("⚠ Unexpected chainId =", network.chainId.toString());
   }
@@ -66,10 +64,8 @@ function niceErr(e, fallback = "On-chain dispense failed.") {
   );
 }
 
-// منع الحروف العربية داخل خانة البحث
 const ARABIC_LETTERS_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g;
 
-/** branding */
 const brand = { purple: "#B08CC1", purpleDark: "#9F76B4", teal: "#52B9C4", ink: "#4A2C59" };
 const card = {
   background: "#fff",
@@ -80,7 +76,6 @@ const card = {
 };
 
 export default function PharmacyApp() {
-  // داتا تجريبية لأقسام التسليم/البيندنج فقط
   const [rxs, setRxs] = useState([
     { ref: "RX-001", patientId: "1001", patientName: "Salem",   medicine: "Insulin",   dose: "10u",   timesPerDay: 2, durationDays: 30, createdAt: nowISO(), dispensed: false, accepted: false },
     { ref: "RX-002", patientId: "1002", patientName: "Maha",   medicine: "Panadol",   dose: "500mg", timesPerDay: 3, durationDays: 5,   createdAt: nowISO(), dispensed: false, accepted: false },
@@ -117,7 +112,6 @@ export default function PharmacyApp() {
     </div>
   );
 }
-// عرض وقت Firestore مثل لوحة فايربيز: "20 October 2025 at 12:00:13 UTC+3"
 function formatFsCreatedAt(v) {
   if (!v) return "-";
   if (typeof v === "string") return v;
@@ -131,7 +125,6 @@ function formatFsCreatedAt(v) {
 
   if (!(d instanceof Date) || isNaN(d)) return String(v);
 
-  // ننسق حسب توقيت الرياض (UTC+3) تمامًا مثل ما تشوفينه في الكونسول
   const base = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Riyadh",
     day: "2-digit",
@@ -141,12 +134,11 @@ function formatFsCreatedAt(v) {
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-  }).format(d); // ex: "20 October 2025, 12:00:13"
+  }).format(d); 
 
   return base.replace(",", "") + " UTC+3";
 }
 
-// يعرض الوقت كما هو مخزّن في Firestore (UTC) مع الثواني
 function fmtUTC(ts) {
   if (!ts) return "-";
   const d = ts?.toDate ? ts.toDate() : new Date(ts);
@@ -159,28 +151,22 @@ function fmtUTC(ts) {
   }).format(d) + " UTC";
 }
 
-/** ========================= PickUp (البحث والتسليم في الصيدلية) ========================= */
 function PickUpSection({ setRxs, q, setQ, addNotification }) {
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ النتائج كمصفوفة — لدعم أكثر من وصفة للمريض
-  const [results, setResults] = useState([]); // [{...normalized}, ...]
+  const [results, setResults] = useState([]); 
   const [infoMsg, setInfoMsg] = useState("");
   const [validationMsg, setValidationMsg] = useState("");
 
-  // ✅ زرّ التحميل لكل وصفة
-  const [dispensingId, setDispensingId] = useState(null); // _docId الذي يتم صرفه الآن
-
-  // ====== منطق الإدخال ======
+  const [dispensingId, setDispensingId] = useState(null); 
   const raw = String(q || "").trim();
-  const isPatientIdMode = /^\d/.test(raw); // إذا بدأ برقم → Patient ID
+  const isPatientIdMode = /^\d/.test(raw); 
   const natDigitsAll = toEnglishDigits(raw).replace(/\D/g, "");
-  const natDigits = isPatientIdMode ? natDigitsAll.slice(0, 10) : ""; // حد أقصى 10 أرقام
+  const natDigits = isPatientIdMode ? natDigitsAll.slice(0, 10) : ""; 
   const rxID = !isPatientIdMode ? raw : ""; // Prescription ID
   
-  // ====== تنسيق آمن (يمنع 0 غير مفيد) ======
   const safeInt = (v) => {
     const n = Number(v);
     return Number.isFinite(n) ? n : undefined;
@@ -199,10 +185,8 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       : "-";
 
     const onchain = safeInt(data.onchainId);
-    // ----- Doctor + Frequency (ADD-ONLY) -----
     const docName  = data.doctorName ?? data.doctor?.name ?? "-";
     const docPhone = data.doctorPhone || data.doctor_phone || data.phone || "-";
-    // اتركي الهاتف كسلسلة حتى لا نفقد +966
     const freq     = data.frequency ?? data.freq ?? (data.timesPerDay ? `${data.timesPerDay} times/day` : "-");
 
     return {
@@ -230,14 +214,11 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     };
   }
 
-  // ====== منع العربية + تحضير القيمة ======
   function handleChange(v) {
     const s = String(v).replace(ARABIC_LETTERS_RE, "");
-    // التعبير المنتظم لـ ID الوصفة: حرف أبجدي واحد (صغير أو كبير) يتبعه 4 أرقام أو أكثر.
     const rxFormatRe = /^[a-zA-Z]\d{4,}$/; 
 
     if (/^\d/.test(s)) {
-      // (منطق Patient ID: إذا بدأ برقم)
       const digits = toEnglishDigits(s).replace(/\D/g, "").slice(0, 10);
       setQ(digits);
       if (digits.length && digits[0] !== "1" && digits[0] !== "2") {
@@ -248,11 +229,9 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
         setValidationMsg("");
       }
     } else {
-      // (منطق Prescription ID: إذا بدأ بحرف)
       setQ(s);
       
       if (s.length > 0 && !rxFormatRe.test(s)) {
-        // ⬅️ تم تعديل رسالة التحقق هنا
         setValidationMsg("Prescription ID must be 1 letter followed by 4 or more digits."); 
       } else {
         setValidationMsg("");
@@ -271,7 +250,6 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     setResults([]);
     setInfoMsg("");
 
-    // 1. التحقق من صحة المدخل قبل بدء البحث
     if (validationMsg) { 
       setLoading(false);
       return;
@@ -290,7 +268,6 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     try {
       const col = collection(db, "prescriptions");
 
-      // === Prescription ID: نتيجة واحدة (حتى لو غير مؤهلة) ===
       if (rxID) { 
         const snap = await getDocs(query(col, where("prescriptionID", "==", rxID)));
         if (!snap.empty) {
@@ -313,7 +290,6 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
         return;
       }
 
-      // === Patient ID: غير حساسة + غير مصروفة + onchainId صالح ===
       const tasks = [
         getDocs(query(
           col,
@@ -349,17 +325,14 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       }
 
       if (list.length === 0) {
-        // نبحث هنا عن أي وصفة على الإطلاق (مؤهلة أو غير مؤهلة) لنحدد ما إذا كانت الهوية الوطنية موجودة
         const fbTasks = [ getDocs(query(col, where("nationalID", "==", natDigits))) ];
         if (!Number.isNaN(nNum)) fbTasks.push(getDocs(query(col, where("nationalID", "==", nNum))));
         const fbSnaps = await Promise.all(fbTasks);
         const haveAny = fbSnaps.some(s => s && !s.empty);
         
         if (haveAny) {
-          // الهوية موجودة، لكن الوصفات غير مؤهلة (مصروفة/حساسة/بدون onchainId)
           setInfoMsg("No eligible pickup prescriptions. They may be sensitive, already dispensed, or missing on-chain id.");
         } else {
-          // الهوية غير موجودة إطلاقاً في النظام
           setError("The national ID you entered isn't registered in our system."); 
         }
       }
@@ -383,7 +356,6 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     setValidationMsg("");
   }
 
-  // ✅ Confirm → On-chain → Firestore
   async function markDispensed(item) {
     if (!item || !item._docId) return;
 
@@ -401,7 +373,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
   
 
     try {
-      setDispensingId(item._docId); // ⬅️ سبِنّر لهذا الكارد فقط
+      setDispensingId(item._docId); 
       setLoading(true);
       setError("");
       setInfoMsg("");
@@ -529,7 +501,6 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
         )}
       </section>
 
-      {/* ====== النتائج ====== */}
       {searched && !loading && results.length === 0 && !error && !infoMsg && !validationMsg && ( 
         <div className="text-gray-600">No matching prescriptions found.</div>
       )}
@@ -542,8 +513,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
               r.dispensed === false &&
               Number.isFinite(r.onchainId);
 
-            const isThisLoading = dispensingId === r._docId; // ⬅️ لتفعيل السبينّر لهذا الكارد
-
+            const isThisLoading = dispensingId === r._docId; 
             return (
               <div key={r._docId} style={card}>
                 <div><b>Prescription:</b> {r.ref}</div>
@@ -608,7 +578,6 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
   );
 }
 
-/** ========================= Delivery ========================= */
 function DeliverySection({ rows = [], setRxs, addNotification }) {
   function acceptOrder(ref) {
     setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, accepted: true, acceptedAt: nowISO() } : rx));
@@ -638,7 +607,6 @@ function DeliverySection({ rows = [], setRxs, addNotification }) {
   );
 }
 
-/** ========================= Pending ========================= */
 function PendingSection({ rows = [], setRxs, addNotification }) {
   function cancel(ref) {
     setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, accepted: false, acceptedAt: undefined } : rx));

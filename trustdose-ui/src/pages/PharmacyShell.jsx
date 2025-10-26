@@ -237,7 +237,7 @@ try {
                 variant={pharmacyDocId ? "solid" : "disabled"}
               >
                 <User size={18} />
-                <span>My Account</span>
+                <span>My Profile</span>
               </DrawerItem>
 
               <DrawerItem onClick={signOut} variant="ghost">
@@ -349,7 +349,7 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
         <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-semibold" style={{ color: C.ink }}>
-              My Account
+               My Profile
             </h3>
             <button
               onClick={onClose}
