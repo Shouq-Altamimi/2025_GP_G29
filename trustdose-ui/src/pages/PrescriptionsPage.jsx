@@ -97,12 +97,21 @@ export default function PrescriptionsPage() {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-3 md:px-5 pt-5 pb-10 min-h-[90vh] flex flex-col">
-      <h1
-        className="text-2xl font-bold mb-5"
-        style={{ color: C.ink }}
-      >
-        Prescriptions {patientName ? `for ${patientName}` : ""}
-      </h1>
+
+      <div className="flex items-center gap-4 mb-6">
+        <img
+          src="/Images/TrustDose-pill.png"
+          alt="TrustDose Capsule"
+          style={{ width: 56, height: "auto" }}
+        />
+        <h1
+          className="text-2xl font-bold"
+          style={{ color: C.ink }}
+        >
+          Prescriptions {patientName ? `for ${patientName}` : ""}
+        </h1>
+      </div>
+
 
       <div className="bg-white border rounded-2xl p-5 mb-6 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
@@ -131,7 +140,10 @@ export default function PrescriptionsPage() {
             style={{ outlineColor: C.primary }}
             placeholder="Filter by medicine name…"
             value={qText}
-            onChange={(e) => setQText(e.target.value)}
+            onChange={(e) => {
+              const onlyLetters = e.target.value.replace(/[^a-zA-Z]/g, "");
+              setQText(onlyLetters);
+            }}
           />
 
           <button
