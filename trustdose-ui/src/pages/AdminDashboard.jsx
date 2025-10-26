@@ -1,4 +1,3 @@
-// ===================== Admin Dashboard (Final UI fixed + MM near input + dual keys + Modern Welcome Banner Outside) =====================
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -15,7 +14,6 @@ import {
 } from "firebase/firestore";
 import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "firebase/auth";
 
-/* ---------- Auth Ready ---------- */
 const auth = getAuth(app);
 if (!auth.currentUser) signInAnonymously(auth).catch(() => {});
 onAuthStateChanged(auth, (u) => u && console.log(" anon uid:", u.uid));
@@ -35,7 +33,6 @@ function ensureAuthReady() {
   return authReadyPromise;
 }
 
-/* ---------- Contract ABI ---------- */
 const DoctorRegistry_ABI = [
   {
     inputs: [
@@ -70,7 +67,6 @@ const DoctorRegistry_ABI = [
   { inputs: [], name: "owner", outputs: [{ internalType: "address", name: "", type: "address" }], stateMutability: "view", type: "function" }
 ];
 
-/* ---------- ethers helpers ---------- */
 async function loadEthers() {
   const mod = await import("ethers");
   return mod.ethers ? mod.ethers : mod;
@@ -89,7 +85,6 @@ async function idCompat(text) {
   return (E.utils?.id || E.id)(text);
 }
 
-/* ---------- Helpers ---------- */
 function generateTempPassword() {
   const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const a = letters[Math.floor(Math.random() * letters.length)];
@@ -106,7 +101,7 @@ async function sha256Hex(text) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/* ---------- Firestore ---------- */
+/*database*/
 async function saveDoctor_FirestoreMulti(docData) {
   await ensureAuthReady();
   return addDoc(collection(db, "doctors"), { ...docData, createdAt: serverTimestamp() });
@@ -155,7 +150,7 @@ async function allocateSequentialAccessId() {
   throw new Error("Failed to allocate sequential Access ID. Please try again.");
 }
 
-/* ---------- On-chain save ---------- */
+/* Blockchain */
 async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPassword }) {
   const E = await loadEthers();
   const provider = E.BrowserProvider ? new E.BrowserProvider(window.ethereum) : new E.providers.Web3Provider(window.ethereum);
@@ -167,11 +162,10 @@ async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPasswo
   return { txHash: tx.hash, block: rc.blockNumber };
 }
 
-/* ---------- Component ---------- */
 export default function AdminAddDoctorOnly() {
   const navigate = useNavigate();
 
-  // ===== Logout =====
+
   async function handleLogout() {
     try {
       localStorage.removeItem("userRole");
@@ -183,10 +177,9 @@ export default function AdminAddDoctorOnly() {
     }
   }
 
-  // ===== Constants =====
+
   const HOSPITAL_NAME = "Dr. Sulaiman Al Habib Hospital";
 
-  // ===== Form state =====
   const [contractAddress, setContractAddress] = useState("0xBe2dE8CA591fEd40377410433A2eC87db2D92F6f");
   const [DoctorID, setDoctorID] = useState("");
   const [healthFacility, sethealthFacility] = useState(HOSPITAL_NAME); // fixed value
@@ -199,7 +192,7 @@ export default function AdminAddDoctorOnly() {
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // ===== MetaMask next to input =====
+  
   async function connectMetaMask() {
     try {
       if (!window?.ethereum) { setStatus("⚠️ Please install MetaMask first."); return; }
@@ -251,7 +244,7 @@ export default function AdminAddDoctorOnly() {
       const tempPasswordHash = await sha256Hex(tempPassword);
       const expiresAtMs = Date.now() + 24 * 60 * 60 * 1000;
 
-      // ✅ write dual keys for compatibility
+      
       await saveDoctor_FirestoreMulti({
         entityType: "Doctor",
         role: "Doctor",
@@ -321,7 +314,7 @@ export default function AdminAddDoctorOnly() {
         </div>
       </section>
 
-      {/* ===== Form box ===== */}
+      {/* Form box */}
       <main className="flex-1 flex items-center justify-center px-4 py-10">
         <aside className="w-full max-w-xl bg-white rounded-3xl shadow-xl border border-gray-200 p-6">
           <h3 className="mb-4 text-xl font-semibold text-[#4A2C59]">Add Doctor</h3>
@@ -356,7 +349,7 @@ export default function AdminAddDoctorOnly() {
               className="rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
             />
 
-            {/* Fixed Health Facility */}
+            {/* Health Facility */}
             <input
               value={healthFacility}
               readOnly
