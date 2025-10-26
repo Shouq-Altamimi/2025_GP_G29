@@ -206,7 +206,7 @@ export default function DoctorHeader() {
           >
             My Profile
           </button>{" "}
-          to activate your account and receive notifications.
+          to activate your account.
         </AlertBanner>
       )}
 
