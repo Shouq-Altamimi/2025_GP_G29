@@ -14,9 +14,7 @@ const PAGE_SIZE = 6;
 async function sha256Hex(input) {
   const enc = new TextEncoder();
   const hash = await crypto.subtle.digest("SHA-256", enc.encode(input));
-  return [...new Uint8Array(hash)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function shortAddr(a) {
@@ -26,15 +24,15 @@ function shortAddr(a) {
 }
 
 export default function PrescriptionsPage() {
-  const { state } = useLocation();
+  const location = useLocation();
+  const state = location.state;
   const navigate = useNavigate();
 
   const cached = sessionStorage.getItem("td_patient");
   const fallback = cached ? JSON.parse(cached) : null;
 
-  const patientId = state?.patientId || fallback?.id || "";
-  const patientName = state?.patientName || fallback?.name || "";
-
+  const [natHash, setNatHash] = useState("");
+  const [patientName, setPatientName] = useState(state?.patientName || fallback?.name || "");
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [qText, setQText] = useState("");
@@ -45,14 +43,43 @@ export default function PrescriptionsPage() {
   };
 
   useEffect(() => {
-    if (!patientId) {
+    (async () => {
+      const sp = new URLSearchParams(location.search);
+      const urlPid = sp.get("pid");
+
+      if (urlPid && /^0x[a-f0-9]{64}$/i.test(urlPid)) {
+        setNatHash(urlPid);
+        if (!patientName && fallback?.name) setPatientName(fallback.name);
+        return;
+      }
+
+      if (urlPid && /^[0-9]{10}$/.test(urlPid)) {
+        const hash = await sha256Hex(urlPid);
+        const hashed = "0x" + hash;
+        window.history.replaceState(null, "", `/prescriptions?pid=${hashed}`);
+        setNatHash(hashed);
+        if (!patientName && fallback?.name) setPatientName(fallback.name);
+        return;
+      }
+
+      const rawId = state?.patientId || fallback?.id || "";
+      if (rawId && /^[0-9]{10}$/.test(String(rawId))) {
+        const hash = await sha256Hex(String(rawId));
+        const hashed = "0x" + hash;
+        window.history.replaceState(null, "", `/prescriptions?pid=${hashed}`);
+        setNatHash(hashed);
+        return;
+      }
+
       navigate("/doctor", { replace: true });
-      return;
-    }
+    })();
+  }, [location.search]);
+
+  useEffect(() => {
+    if (!natHash) return;
     (async () => {
       setLoading(true);
       try {
-        const natHash = "0x" + (await sha256Hex(String(patientId)));
         const colRef = collection(db, "prescriptions");
         const qRef = query(colRef, where("patientNationalIdHash", "==", natHash));
         const snap = await getDocs(qRef);
@@ -68,11 +95,16 @@ export default function PrescriptionsPage() {
         );
 
         setList(data);
+
+        if (!patientName) {
+          const guess = data.find((x) => x.patientName)?.patientName;
+          if (guess) setPatientName(guess);
+        }
       } finally {
         setLoading(false);
       }
     })();
-  }, [patientId, navigate]);
+  }, [natHash]); 
 
   const filtered = useMemo(() => {
     const v = qText.trim().toLowerCase();
@@ -88,50 +120,24 @@ export default function PrescriptionsPage() {
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = filtered.slice(start, end);
 
-  useEffect(() => {
-    setPage(0);
-  }, [qText]);
-  useEffect(() => {
-    setPage((p) => Math.min(p, pageCount - 1));
-  }, [pageCount]);
+  useEffect(() => setPage(0), [qText]);
+  useEffect(() => setPage((p) => Math.min(p, pageCount - 1)), [pageCount]);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-3 md:px-5 pt-5 pb-10 min-h-[90vh] flex flex-col">
-
       <div className="flex items-center gap-4 mb-6">
-        <img
-          src="/Images/TrustDose-pill.png"
-          alt="TrustDose Capsule"
-          style={{ width: 56, height: "auto" }}
-        />
-        <h1
-          className="text-2xl font-bold"
-          style={{ color: C.ink }}
-        >
+        <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 56, height: "auto" }} />
+        <h1 className="text-2xl font-bold" style={{ color: C.ink }}>
           Prescriptions {patientName ? `for ${patientName}` : ""}
         </h1>
       </div>
 
-
       <div className="bg-white border rounded-2xl p-5 mb-6 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke={C.primary}
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 103.5 10.5a7.5 7.5 0 0013.15 6.15z"
-            />
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke={C.primary} strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 103.5 10.5a7.5 7.5 0 0013.15 6.15z" />
           </svg>
-          <h2 className="text-lg font-semibold" style={{ color: C.ink }}>
-            Search Prescriptions
-          </h2>
+          <h2 className="text-lg font-semibold" style={{ color: C.ink }}>Search Prescriptions</h2>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
@@ -165,11 +171,8 @@ export default function PrescriptionsPage() {
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {pageItems.map((rx) => {
-                const prescriber = rx.doctorName
-                  ? `Dr. ${rx.doctorName}`
-                  : shortAddr(rx.doctorId);
+                const prescriber = rx.doctorName ? `Dr. ${rx.doctorName}` : shortAddr(rx.doctorId);
                 const facility = rx.doctorFacility ? ` — ${rx.doctorFacility}` : "";
-
                 const dateTime = rx.createdAtTS
                   ? rx.createdAtTS.toLocaleString("en-GB", {
                       day: "2-digit",
@@ -181,36 +184,24 @@ export default function PrescriptionsPage() {
                   : "—";
 
                 return (
-                  <div
-                    key={rx.id}
-                    className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between"
-                  >
+                  <div key={rx.id} className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between">
                     <div>
                       <div className="text-lg font-bold text-slate-800 truncate">
                         {rx.medicineLabel || rx.medicineName || "—"}
                       </div>
 
                       <div className="text-sm text-slate-700 mt-1 font-semibold">
-                        Prescribed by{" "}
-                        <span className="font-normal">
-                          {prescriber}
-                          {facility}
-                        </span>
+                        Prescribed by <span className="font-normal">{prescriber}{facility}</span>
                       </div>
 
                       <div className="text-sm text-slate-700 mt-1 font-semibold">
-                        Dosage:{" "}
-                        <span className="font-normal">
-                          {rx.dosage || "—"} • {rx.frequency || "—"} •{" "}
-                          {rx.durationDays || rx.duration || "—"}
+                        Dosage: <span className="font-normal">
+                          {rx.dosage || "—"} • {rx.frequency || "—"} • {rx.durationDays || rx.duration || "—"}
                         </span>
                       </div>
 
                       <div className="text-sm text-slate-700 mt-2 font-semibold">
-                        Medical Condition:{" "}
-                        <span className="font-normal">
-                          {rx.medicalCondition || rx.reason || "—"}
-                        </span>
+                        Medical Condition: <span className="font-normal">{rx.medicalCondition || rx.reason || "—"}</span>
                       </div>
 
                       {rx.notes && (
@@ -220,9 +211,7 @@ export default function PrescriptionsPage() {
                       )}
                     </div>
 
-                    <div className="text-right text-xs text-gray-500 mt-3">
-                      {dateTime}
-                    </div>
+                    <div className="text-right text-xs text-gray-500 mt-3">{dateTime}</div>
                   </div>
                 );
               })}
@@ -232,28 +221,15 @@ export default function PrescriptionsPage() {
       </div>
 
       <div className="mt-auto pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-gray-100">
-        <div className="text-sm text-gray-700">
-          Showing {end} out of {total} prescriptions
-        </div>
+        <div className="text-sm text-gray-700">Showing {end} out of {total} prescriptions</div>
 
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-500">
-            Page {page + 1} of {pageCount}
-          </span>
+          <span className="text-xs text-gray-500">Page {page + 1} of {pageCount}</span>
           <div className="flex gap-2">
-            <button
-              className="px-4 py-2 rounded-lg border text-sm disabled:opacity-50"
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-            >
+            <button className="px-4 py-2 rounded-lg border text-sm disabled:opacity-50" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>
               ← Prev
             </button>
-            <button
-              className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
-              style={{ background: C.primary }}
-              onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-              disabled={page >= pageCount - 1}
-            >
+            <button className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ background: C.primary }} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} disabled={page >= pageCount - 1}>
               Next →
             </button>
           </div>

@@ -16,6 +16,7 @@ import PRESCRIPTION from "../contracts/Prescription.json";
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
 const CONTRACT_ADDRESS = "0x7f3a7C1e5E0856fcb4004A4Fe2B36FE9a8F9b5e4";
 
+const OTHER_MAX = 20; 
 const LIMITS = Object.freeze({
   medicalCondition: { min: 5, max: 120 },
   notes: { min: 0, max: 300 },
@@ -31,7 +32,6 @@ const DOSAGE_BY_FORM = {
   cream: ["Apply thin layer"],
   ointment: ["Apply thin layer"],
 };
-const OTHER_VALUE = "__OTHER__";
 function getDoseOptions(form) { return form ? DOSAGE_BY_FORM[form] || [] : []; }
 
 const F = Object.freeze({
@@ -100,6 +100,23 @@ export default function Doctor() {
     if (role !== "doctor" || !wd) navigate("/auth", { replace: true });
   }, [navigate]);
 
+  // ===== عند وجود pid في URL: حوله لهاش إن كان رقم، أو اتركه إن كان هاش =====
+  useEffect(() => {
+    (async () => {
+      const sp = new URLSearchParams(location.search);
+      const rawPid = sp.get("pid");
+      if (!rawPid) return;
+
+      // رقم وطني → نحوله لهاش في الرابط (خصوصية)
+      if (/^[0-9]{10}$/.test(rawPid)) {
+        const hash = await sha256Hex(rawPid);
+        const hashedParam = "0x" + hash;
+        window.history.replaceState(null, "", `/doctor?pid=${hashedParam}`);
+      }
+      // إن كان هاش، نتركه كما هو
+    })();
+  }, [location.search]);
+
   const [welcome] = useState(() => readWelcomeSync());
   const [q, setQ] = useState("");
   const [searchMsg, setSearchMsg] = useState("");
@@ -127,9 +144,25 @@ export default function Doctor() {
     })();
   }, []);
 
+  // لو جاي عبر ?pid=... (رقم/هاش)، نحاول تعبئة البحث تلقائيًا لو عندنا رقم بالكاش
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
-    const raw = sp.get("pid") || sessionStorage.getItem("td_last_patient") || "";
+    const urlPid = sp.get("pid");
+
+    if (urlPid && /^0x[a-f0-9]{64}$/i.test(urlPid)) {
+      // عندنا هاش في الرابط — نستخدم الرقم من الكاش إن وجد للبحث الفعلي
+      const cached = sessionStorage.getItem("td_last_patient") || "";
+      const pid = String(cached).replace(/\D/g, "");
+      if (pid) {
+        setQ(pid);
+        setSearchMsg("");
+        runSearch(pid, { silent: true });
+      }
+      return;
+    }
+
+    // إن لم يوجد pid، لكن عندنا آخر رقم في الكاش — نستخدمه
+    const raw = sessionStorage.getItem("td_last_patient") || "";
     const pid = String(raw).replace(/\D/g, "");
     if (!pid) return;
     setQ(pid);
@@ -171,8 +204,8 @@ export default function Doctor() {
         setSelectedPatient(patient);
         setSearched(true);
         sessionStorage.setItem("td_last_patient", natDigits);
-        const currentPid = new URLSearchParams(window.location.search).get("pid");
-        if (currentPid !== natDigits) navigate(`/doctor?pid=${natDigits}`, { replace: true });
+
+        // لا نضيف الرقم للعنوان، وإن وُجد pid في الرابط نخليه هاش كما فعلنا في useEffect
       } else {
         setSelectedPatient(null);
         setSearched(true);
@@ -187,14 +220,15 @@ export default function Doctor() {
       setIsLoading(false);
     }
   }
-  //blockchain then saving 
+
+  // ===== Blockchain then saving 
   async function confirmAndSave() {
     if (!selectedPatient) return setRxMsg("Please search for a patient first.");
     if (!selectedMed) return setRxMsg("Please choose a medicine from the list.");
 
-    const finalDose = dose === OTHER_VALUE ? "" : dose;
-    const finalFreq = timesPerDay === OTHER_VALUE ? "" : timesPerDay;
-    const finalDuration = durationDays === OTHER_VALUE ? "" : durationDays;
+    const finalDose = dose;
+    const finalFreq = timesPerDay;
+    const finalDuration = durationDays;
 
     if (!finalDose) return setRxMsg("Please enter/select a dosage.");
     if (!finalFreq) return setRxMsg("Please enter/select a frequency.");
@@ -294,9 +328,19 @@ export default function Doctor() {
       setRxMsg("Prescription created & confirmed on-chain ✓");
       setTimeout(() => setRxMsg(""), 3000);
 
-      navigate("/prescriptions", {
-        state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
-      });
+      // ✅ انتقل مع pid هاش
+      (async () => {
+        const pidHash = "0x" + (await sha256Hex(natId));
+        sessionStorage.setItem("td_patient", JSON.stringify({
+          id: selectedPatient.id,
+          name: selectedPatient.name,
+        }));
+        navigate(`/prescriptions?pid=${pidHash}`, {
+          replace: true,
+          state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
+        });
+      })();
+
     } catch (e) {
       console.error("createPrescription failed:", e);
       setRxMsg(e?.info?.error?.message || e?.shortMessage || e?.message || "Blockchain confirmation failed.");
@@ -309,7 +353,7 @@ export default function Doctor() {
   if (!welcome) return null;
 
   return (
-    <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-6 py-6 md:py-8">
+   <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-6 py-6 md:py-8">
       {(welcome.name || welcome.healthFacility || welcome.speciality) && (
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -420,10 +464,18 @@ export default function Doctor() {
 
               <div className="flex justify-end">
                 <button
-                  onClick={() => navigate("/prescriptions", {
-                    replace: true,
-                    state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
-                  })}
+                  onClick={async () => {
+                    // ✅ نخزن بيانات المريض قبل الانتقال + نمرر pid هاش في الرابط
+                    const pidHash = "0x" + (await sha256Hex(selectedPatient.id.toString()));
+                    sessionStorage.setItem("td_patient", JSON.stringify({
+                      id: selectedPatient.id,
+                      name: selectedPatient.name,
+                    }));
+                    navigate(`/prescriptions?pid=${pidHash}`, {
+                      replace: true,
+                      state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
+                    });
+                  }}
                   className="px-6 py-3 text-white rounded-xl transition-colors flex items-center gap-2 font-medium shadow-sm"
                   style={{ backgroundColor: C.primary }}
                 >
@@ -467,7 +519,11 @@ export default function Doctor() {
                   style={{ outlineColor: mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min ? "#f87171" : C.primary }}
                   placeholder="e.g., Hypertension"
                   value={medicalCondition}
-                  onChange={(e) => setMedicalCondition(e.target.value.slice(0, LIMITS.medicalCondition.max))}
+                  onChange={(e) => {
+                    let raw = e.target.value;
+                    raw = raw.replace(/[^A-Za-z0-9 ]/g, "");
+                    setMedicalCondition(raw.slice(0, LIMITS.medicalCondition.max));
+                  }}
                   onBlur={() => setMcTouched(true)}
                 />
                 <div className="mt-1 flex items-center justify-between text-xs">
@@ -556,24 +612,25 @@ export default function Doctor() {
                 </label>
 
                 <textarea
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all resize-none"
-                  style={{
-                    outlineColor: C.primary,
-                    minHeight: "48px",
-                    maxHeight: "200px",
-                  }}
-                  rows={1}
-                  placeholder="Special instructions"
-                  value={notes}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value.length <= LIMITS.notes.max) {
-                      setNotes(value);
-                      e.target.style.height = "auto";
-                      e.target.style.height = e.target.scrollHeight + "px";
-                    }
-                  }}
-                />
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all resize-none"
+                style={{
+                  outlineColor: C.primary,
+                  minHeight: "48px",
+                  overflow: "hidden",    
+                }}
+                rows={1}
+                placeholder="Special instructions"
+                value={notes}
+                onChange={(e) => {
+                  let raw = e.target.value.replace(/[^A-Za-z0-9 ]/g, "");
+                  if (raw.length <= LIMITS.notes.max) {
+                    setNotes(raw);
+                    e.target.style.height = "auto";                 
+                    e.target.style.height = e.target.scrollHeight + "px"; 
+                  }
+                }}
+              />
+
 
                 <div className="mt-1 text-xs text-gray-500">
                   {notes.length}/{LIMITS.notes.max}
@@ -631,47 +688,79 @@ function InfoCard({ label, value, bold = false, highlight = false }) {
   );
 }
 
-function SelectField({ label, value, onChange, placeholder, options, required = false, allowOther = false }) {
-  const isCustom = allowOther && !!value && !options.includes(value) && value !== OTHER_VALUE;
-  const selectValue = isCustom ? OTHER_VALUE : (value || "");
-  const customActive = allowOther && (isCustom || selectValue === OTHER_VALUE);
+function SelectField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  options,
+  required = false,
+  allowOther = false,
+}) {
+  const [isCustomMode, setIsCustomMode] = useState(false);
+  const [customText, setCustomText] = useState("");
 
-  const missing = required && (
-    (customActive ? (!isCustom) : (selectValue === "")) ||
-    (isCustom && !value)
-  );
+  useEffect(() => {
+    const optionHit = options?.includes?.(value);
+    if (optionHit) {
+      setIsCustomMode(false);
+      setCustomText("");
+    } else if (allowOther && value && value !== "__OTHER__") {
+      setIsCustomMode(true);
+      setCustomText(String(value));
+    }
+  }, [value, options, allowOther]);
+
+  const selectValue = isCustomMode ? "__OTHER__" : (value || "");
+  const missing = required && (isCustomMode ? customText.trim() === "" : selectValue === "");
 
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">
         {label} {required && <span className="text-rose-500">*</span>}
       </label>
+
       <div className="relative">
         <select
-          className={`w-full pl-4 pr-10 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all appearance-none bg-white ${missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"}`}
+          className={`w-full pl-4 pr-10 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all appearance-none bg-white ${
+            missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+          }`}
           style={{ outlineColor: missing ? "#f87171" : C.primary }}
           value={selectValue}
           onChange={(e) => {
             const v = e.target.value;
-            if (allowOther && v === OTHER_VALUE) onChange(OTHER_VALUE);
-            else onChange(v);
+            if (allowOther && v === "__OTHER__") {
+              setIsCustomMode(true);
+              if (!customText) onChange(""); 
+            } else {
+              setIsCustomMode(false);
+              setCustomText("");
+              onChange(v);
+            }
           }}
         >
           <option value="" disabled hidden>{placeholder}</option>
           {options.map((o) => <option key={o} value={o}>{o}</option>)}
-          {allowOther && <option value={OTHER_VALUE}>Other…</option>}
+          {allowOther && <option value="__OTHER__">Other…</option>}
         </select>
         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">▾</div>
       </div>
 
-      {customActive && (
+      {isCustomMode && (
         <div className="mt-2">
           <input
-            className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"}`}
+            className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
+              missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+            }`}
             style={{ outlineColor: missing ? "#f87171" : C.primary }}
             placeholder={`Enter custom ${label.toLowerCase()}`}
-            value={isCustom ? value : ""}
-            onChange={(e) => onChange(e.target.value)}
+            value={customText}
+            maxLength={OTHER_MAX}
+            onChange={(e) => {
+              const clean = e.target.value.replace(/[^A-Za-z0-9 ]/g, "").slice(0, OTHER_MAX);
+              setCustomText(clean);
+              onChange(clean); 
+            }}
           />
           {missing && <div className="mt-1 text-xs text-rose-600">This field is required.</div>}
         </div>
@@ -680,47 +769,79 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
   );
 }
 
-function DosageSelect({ value, onChange, options = [], required = true, placeholder = "Select dosage", allowOther = true }) {
-  const isCustom = allowOther && !!value && !options.includes(value) && value !== OTHER_VALUE;
-  const selectValue = isCustom ? OTHER_VALUE : (value || "");
-  const customActive = allowOther && (isCustom || selectValue === OTHER_VALUE);
 
-  const missing = required && (
-    (customActive ? (!isCustom) : (selectValue === "")) ||
-    (isCustom && !value)
-  );
+function DosageSelect({
+  value,
+  onChange,
+  options = [],
+  required = true,
+  placeholder = "Select dosage",
+  allowOther = true,
+}) {
+  const [isCustomMode, setIsCustomMode] = useState(false);
+  const [customText, setCustomText] = useState("");
+
+  useEffect(() => {
+    const optionHit = options?.includes?.(value);
+    if (optionHit) {
+      setIsCustomMode(false);
+      setCustomText("");
+    } else if (allowOther && value && value !== "__OTHER__") {
+      setIsCustomMode(true);
+      setCustomText(String(value));
+    }
+  }, [value, options, allowOther]);
+
+  const selectValue = isCustomMode ? "__OTHER__" : (value || "");
+  const missing = required && (isCustomMode ? customText.trim() === "" : selectValue === "");
 
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">
         Dosage {required && <span className="text-rose-500">*</span>}
       </label>
+
       <div className="relative">
         <select
-          className={`w-full pl-4 pr-10 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all appearance-none bg-white ${missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"}`}
+          className={`w-full pl-4 pr-10 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all appearance-none bg-white ${
+            missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+          }`}
           style={{ outlineColor: missing ? "#f87171" : C.primary }}
           value={selectValue}
           onChange={(e) => {
             const v = e.target.value;
-            if (allowOther && v === OTHER_VALUE) onChange(OTHER_VALUE);
-            else onChange(v);
+            if (allowOther && v === "__OTHER__") {
+              setIsCustomMode(true);
+              if (!customText) onChange("");
+            } else {
+              setIsCustomMode(false);
+              setCustomText("");
+              onChange(v);
+            }
           }}
         >
           <option value="" disabled hidden>{placeholder}</option>
           {options.map((o) => <option key={o} value={o}>{o}</option>)}
-          {allowOther && <option value={OTHER_VALUE}>Other…</option>}
+          {allowOther && <option value="__OTHER__">Other…</option>}
         </select>
         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">▾</div>
       </div>
 
-      {customActive && (
+      {isCustomMode && (
         <div className="mt-2">
           <input
-            className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"}`}
+            className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
+              missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+            }`}
             style={{ outlineColor: missing ? "#f87171" : C.primary }}
             placeholder="Enter custom dosage"
-            value={isCustom ? value : ""}
-            onChange={(e) => onChange(e.target.value)}
+            value={customText}
+            maxLength={OTHER_MAX}
+            onChange={(e) => {
+              const clean = e.target.value.replace(/[^A-Za-z0-9 ]/g, "").slice(0, OTHER_MAX);
+              setCustomText(clean);
+              onChange(clean); 
+            }}
           />
           {missing && <div className="mt-1 text-xs text-rose-600">Please enter dosage.</div>}
         </div>
@@ -728,6 +849,7 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
     </div>
   );
 }
+
 
 function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine name" }) {
   const [open, setOpen] = useState(false);
