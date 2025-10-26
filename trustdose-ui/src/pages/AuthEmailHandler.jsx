@@ -21,14 +21,22 @@ export default function AuthEmailHandler() {
         console.log("📧 Email verification started");
         console.log("🔗 Current URL:", href);
 
-        // ===== Params (with pharmacies support) =====
+        // ===== Params (with doctors, pharmacies, patients support) =====
         const colParam = (searchParams.get("col") || "doctors").trim().toLowerCase();
-        const safeCol = colParam === "pharmacies" ? "pharmacies" : "doctors"; // allow known collections only
+        const safeCol = ["doctors", "pharmacies", "patients"].includes(colParam)
+          ? colParam
+          : "doctors";
+
         const documentId = (searchParams.get("doc") || "").trim();
         let email = (searchParams.get("e") || "").trim().toLowerCase();
 
         const redirectParam = (searchParams.get("redirect") || "").trim();
-        const defaultRedirect = safeCol === "pharmacies" ? "/pharmacy" : "/doctor";
+        const defaultRedirect =
+          safeCol === "pharmacies"
+            ? "/pharmacy"
+            : safeCol === "patients"
+            ? "/patient"
+            : "/doctor";
         const redirect = redirectParam || defaultRedirect;
 
         console.log("📋 Parameters:", { col: safeCol, documentId, email, redirect });
@@ -69,7 +77,7 @@ export default function AuthEmailHandler() {
         setStatus("💾 Saving email to profile...");
         console.log("💾 Updating Firestore...");
 
-        // Update Firestore doc (doctors/pharmacies)
+        // Update Firestore doc (doctor/pharmacy/patient)
         await updateDoc(doc(db, safeCol, documentId), {
           email,
           emailVerifiedAt: serverTimestamp(),
@@ -77,10 +85,14 @@ export default function AuthEmailHandler() {
         console.log("✅ Firestore updated");
 
         // Sign out temp auth
-        try { await signOut(auth); } catch {}
+        try {
+          await signOut(auth);
+        } catch {}
 
         // Clear pending email
-        try { localStorage.removeItem("td_email_pending"); } catch {}
+        try {
+          localStorage.removeItem("td_email_pending");
+        } catch {}
 
         setStatus("✅ Email verified successfully!");
         console.log("🎉 Verification complete! Redirecting...");
@@ -106,7 +118,12 @@ export default function AuthEmailHandler() {
   }, [searchParams, nav]);
 
   const colParam = (searchParams.get("col") || "doctors").trim().toLowerCase();
-  const fallbackRedirect = colParam === "pharmacies" ? "/pharmacy" : "/doctor";
+  const fallbackRedirect =
+    colParam === "pharmacies"
+      ? "/pharmacy"
+      : colParam === "patients"
+      ? "/patient"
+      : "/doctor";
 
   return (
     <div
@@ -127,7 +144,7 @@ export default function AuthEmailHandler() {
             />
           </div>
 
-          {/* Status */}
+          {/* Status message */}
           <div
             className={`text-lg font-medium mb-2 ${
               error ? "text-red-600" : status.includes("✅") ? "text-green-600" : "text-gray-700"
@@ -136,14 +153,14 @@ export default function AuthEmailHandler() {
             {status}
           </div>
 
-          {}
+          {/* Loading spinner */}
           {!error && !status.includes("✅") && (
             <div className="mt-4">
               <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-purple-600 border-r-transparent"></div>
             </div>
           )}
 
-          {}
+          {/* Error button */}
           {error && (
             <button
               onClick={() => nav(fallbackRedirect, { replace: true })}
@@ -158,4 +175,3 @@ export default function AuthEmailHandler() {
     </div>
   );
 }
-
