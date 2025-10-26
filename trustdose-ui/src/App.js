@@ -29,16 +29,6 @@ import RequireAuth from "./auth/RequireAuth";
 export default function App() {
   return (
     <BrowserRouter>
-      {/* (اختياري) ناف بار للتجربة فقط */}
-      <nav style={{ padding: 12, borderBottom: "1px solid #eee", display: "flex", gap: 12 }}>
-        <Link to="/auth">Login</Link>
-        <Link to="/admin">Admin</Link>
-        <Link to="/doctor-home">DoctorHome</Link>
-        <Link to="/doctor">Doctor</Link>
-        <Link to="/pharmacy">Pharmacy</Link>
-        <Link to="/patient">Patient</Link>
-      </nav>
-
       <Routes>
         {/* افتراضي → auth */}
         <Route path="/" element={<Navigate to="/auth" replace />} />
@@ -58,38 +48,48 @@ export default function App() {
           }
         />
 
-        {/* صفحات الطبيب (أمثلة) */}
-        <Route path="/doctor-home" element={
-          <RequireAuth allowedRoles={["doctor"]}>
-            <DoctorHome />
-          </RequireAuth>
-        } />
-
-        <Route element={
-          <RequireAuth allowedRoles={["doctor"]}>
-            <Shell />
-          </RequireAuth>
-        }>
+        {/* الطبيب */}
+        <Route
+          path="/doctor-home"
+          element={
+            <RequireAuth allowedRoles={["doctor"]}>
+              <DoctorHome />
+            </RequireAuth>
+          }
+        />
+        <Route
+          element={
+            <RequireAuth allowedRoles={["doctor"]}>
+              <Shell />
+            </RequireAuth>
+          }
+        >
           <Route path="/doctor" element={<Doctor />} />
           <Route path="/prescriptions" element={<PrescriptionsPage />} />
         </Route>
 
-        {/* صفحات المريض */}
-        <Route path="/patient" element={
-          <RequireAuth allowedRoles={["patient"]}>
-            <PShell />
-          </RequireAuth>
-        }>
+        {/* المريض */}
+        <Route
+          path="/patient"
+          element={
+            <RequireAuth allowedRoles={["patient"]}>
+              <PShell />
+            </RequireAuth>
+          }
+        >
           <Route index element={<Patient />} />
           <Route path="prescriptions" element={<PrescriptionsPage />} />
         </Route>
 
         {/* الصيدلية */}
-        <Route path="/pharmacy" element={
-          <RequireAuth allowedRoles={["pharmacy"]}>
-            <PharmacyShell />
-          </RequireAuth>
-        }>
+        <Route
+          path="/pharmacy"
+          element={
+            <RequireAuth allowedRoles={["pharmacy"]}>
+              <PharmacyShell />
+            </RequireAuth>
+          }
+        >
           <Route index element={<Pharmacy />} />
         </Route>
 
@@ -99,3 +99,4 @@ export default function App() {
     </BrowserRouter>
   );
 }
+
