@@ -16,7 +16,12 @@ import {
   updateDoc,
   deleteField,
 } from "firebase/firestore";
-import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInAnonymously,
+  sendSignInLinkToEmail,
+} from "firebase/auth";
 import {
   User,
   LogOut,
@@ -30,6 +35,20 @@ import {
 } from "lucide-react";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
+
+/* =========================
+   Auth helper
+   ========================= */
+async function ensureAuthReady() {
+  const auth = getAuth();
+  if (!auth.currentUser) {
+    try {
+      await signInAnonymously(auth);
+    } catch {}
+  }
+  await new Promise((res) => onAuthStateChanged(auth, (u) => u && res()));
+  return auth;
+}
 
 /* =========================
    Crypto helpers
@@ -94,14 +113,15 @@ async function verifyPatientPassword(inputPw, docData) {
   return false;
 }
 async function buildPBKDF2Update(newPassword, iterations = 100_000) {
+  const iters = Math.max(50_000, Math.min(300_000, iterations));
   const salt = new Uint8Array(16);
   crypto.getRandomValues(salt);
-  const hashB64 = await pbkdf2HashBase64(newPassword, salt, iterations, 32);
+  const hashB64 = await pbkdf2HashBase64(newPassword, salt, iters, 32);
   return {
-    passwordAlgo: `PBKDF2-SHA256-${Math.round(iterations / 1000)}k`,
-    passwordIter: iterations,
-    passwordSalt: bytesToBase64(salt),
-    passwordHash: hashB64,
+    passwordAlgo: `PBKDF2-SHA256-${Math.round(iters / 1000)}k`,
+    passwordIter: iters,
+    passwordSalt: bytesToBase64(salt), 
+    passwordHash: hashB64,             
     passwordUpdatedAt: new Date(),
   };
 }
@@ -166,6 +186,8 @@ export default function PShell() {
 
   useEffect(() => {
     (async () => {
+      await ensureAuthReady(); 
+
       const pid = resolvePatientId();
       if (!pid) return;
 
@@ -180,8 +202,7 @@ export default function PShell() {
 
       try {
         const col = collection(db, "patients");
-        const q1 = query(col, where("nationalId", "==", String(pid)), fsLimit(1));
-        const r1 = await getDocs(q1);
+        const r1 = await getDocs(query(col, where("nationalId", "==", String(pid)), fsLimit(1)));
         if (!r1.empty) {
           const d = r1.docs[0];
           setPatient(normalizePatient(d.data()));
@@ -192,8 +213,7 @@ export default function PShell() {
 
       try {
         const col = collection(db, "patients");
-        const q2 = query(col, where("nationalID", "==", String(pid)), fsLimit(1));
-        const r2 = await getDocs(q2);
+        const r2 = await getDocs(query(col, where("nationalID", "==", String(pid)), fsLimit(1)));
         if (!r2.empty) {
           const d = r2.docs[0];
           setPatient(normalizePatient(d.data()));
@@ -343,6 +363,9 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
         setEmailMsg("Please enter a valid email.");
         return;
       }
+
+      const auth = await ensureAuthReady(); 
+
       const BASE = window.location.origin;
       const params = new URLSearchParams({
         col: "patients",
@@ -355,7 +378,7 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
         handleCodeInApp: true,
       };
       setEmailLoading(true);
-      await sendSignInLinkToEmail(getAuth(), raw, settings);
+      await sendSignInLinkToEmail(auth, raw, settings);
       localStorage.setItem("td_email_pending", JSON.stringify({ email: raw, ts: Date.now() }));
       setEmailMsg("A verification link has been sent to your email. Open it, then return to the app.");
     } catch (e) {
@@ -393,12 +416,21 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
             {hasEmail ? (
               <div className="flex items-center gap-2">
                 <span className="font-medium text-gray-800">{P.email}</span>
-                <span
-                  className="text-[12px] px-2 py-0.5 rounded-full border"
-                  style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}
-                >
-                  Verified / On File
-                </span>
+                {P.emailVerifiedAt ? (
+                  <span
+                    className="text-[12px] px-2 py-0.5 rounded-full border"
+                    style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}
+                  >
+                    Verified
+                  </span>
+                ) : (
+                  <span
+                    className="text-[12px] px-2 py-0.5 rounded-full border"
+                    style={{ background: "#FEF2F2", color: "#991B1B", borderColor: "#FECACA" }}
+                  >
+                    Not verified
+                  </span>
+                )}
               </div>
             ) : (
               <>
@@ -422,7 +454,7 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
                 </div>
 
                 {!!emailMsg && (
-                  <div className="mt-2 text-sm text-gray-700">
+                  <div className="mt-2 text-sm" style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534" }}>
                     {emailMsg}
                   </div>
                 )}
@@ -431,11 +463,7 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
           </div>
 
           {hasEmail && (
-            <PatientPasswordSection
-              patientDocId={patientDocId}
-              onSaved={() => {}}
-              color={C.primary}
-            />
+            <PatientPasswordSection patientDocId={patientDocId} onSaved={() => {}} color={C.primary} />
           )}
 
           <div className="mt-4 flex items-center justify-end">
@@ -465,10 +493,8 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState("");
 
-  // ✅ show checklist + bar only when the user starts typing
   const showReqs = (newPass || "").length > 0;
 
-  // ===== inline passwordStrength (no extra file) =====
   function passwordStrength(pw) {
     const p = String(pw || "");
     let score = 0;
@@ -487,16 +513,15 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
     if (len12) score++;
 
     let label = "Weak";
-    let color = "#ef4444";
-    if (score >= 4) { label = "Medium"; color = "#f59e0b"; }
-    if (score >= 5) { label = "Strong"; color = "#10b981"; }
+    let colorLocal = "#ef4444";
+    if (score >= 4) { label = "Medium"; colorLocal = "#f59e0b"; }
+    if (score >= 5) { label = "Strong"; colorLocal = "#10b981"; }
 
     const width = Math.min(100, Math.round((score / 6) * 100));
-    return { score, label, color, width, hasLower, hasUpper, hasDigit, hasSymbol, len8 };
+    return { score, label, color: colorLocal, width, hasLower, hasUpper, hasDigit, hasSymbol, len8 };
   }
 
   const st = passwordStrength(newPass);
-  // Enable submit if (Upper + Lower + Digit + Length ≥ 8). Symbol optional.
   const passOk = st.hasLower && st.hasUpper && st.hasDigit && st.len8;
 
   function Req({ ok, label }) {
@@ -513,58 +538,46 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
       setMsg(""); setMsgType("");
 
       if (!oldPass || !newPass || !confirmPass) {
-        setMsg("Please fill all fields");
-        setMsgType("error");
-        return;
+        setMsg("Please fill all fields"); setMsgType("error"); return;
       }
       if (!passOk) {
-        setMsg("Please meet all password requirements");
-        setMsgType("error");
-        return;
+        setMsg("Please meet all password requirements"); setMsgType("error"); return;
       }
       if (newPass !== confirmPass) {
-        setMsg("New passwords do not match");
-        setMsgType("error");
-        return;
+        setMsg("New passwords do not match"); setMsgType("error"); return;
       }
       if (oldPass === newPass) {
-        setMsg("New password must be different");
-        setMsgType("error");
-        return;
+        setMsg("New password must be different"); setMsgType("error"); return;
       }
 
       setLoading(true);
+      await ensureAuthReady(); // ✅
 
       const ref = doc(db, "patients", patientDocId);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
-        setMsg("Patient record not found");
-        setMsgType("error");
-        setLoading(false);
-        return;
+        setMsg("Patient record not found"); setMsgType("error"); setLoading(false); return;
       }
       const data = snap.data();
 
       const ok = await verifyPatientPassword(oldPass, data);
       if (!ok) {
-        setMsg("Current password is incorrect");
-        setMsgType("error");
-        setLoading(false);
-        return;
+        setMsg("Current password is incorrect"); setMsgType("error"); setLoading(false); return;
       }
 
-      const payload = await buildPBKDF2Update(
-        newPass,
-        Number(data?.passwordIter) || parseItersFromAlgo(data?.passwordAlgo) || 100_000
-      );
-      if (data?.password) payload.password = deleteField();
+      const baseIter =
+        Number(data?.passwordIter) ||
+        parseItersFromAlgo(data?.passwordAlgo) ||
+        100_000;
+
+      const payload = await buildPBKDF2Update(newPass, baseIter); 
+      if (data?.password) payload.password = deleteField(); 
+
       await updateDoc(ref, payload);
 
       setMsg("Password updated successfully! ✓");
       setMsgType("success");
-      setOldPass("");
-      setNewPass("");
-      setConfirmPass("");
+      setOldPass(""); setNewPass(""); setConfirmPass("");
       onSaved?.({ passwordUpdated: true });
     } catch (e) {
       setMsg(e?.message || "Failed to update password");
@@ -616,7 +629,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
             <input
               type={showNew ? "text" : "password"}
               value={newPass}
-              onChange={(e) => setNewPass(e.target.value)} // show requirements on typing
+              onChange={(e) => setNewPass(e.target.value)} 
               className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:border-transparent"
               style={{ outlineColor: C.primary }}
               placeholder="Enter new password"
@@ -631,7 +644,6 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
             </button>
           </div>
 
-          {/* ✅ Requirements in a single column */}
           {showReqs && (
             <>
               <div className="mt-3 flex flex-col gap-2">
@@ -642,7 +654,6 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
                 <Req ok={st.len8}      label="Length ≥ 8" />
               </div>
 
-              {/* Strength bar */}
               <div className="mt-3">
                 <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
                   <div

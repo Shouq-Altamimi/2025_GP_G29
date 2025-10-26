@@ -127,7 +127,7 @@ async function fetchPrescriptionsSmart(foundDocId, nid) {
 }
 
 /* =========================
-   Hydrate doctor info (from prescription only)
+   Hydrate doctor info 
    ========================= */
 async function hydrateNames(items) {
   const out = [];
@@ -304,35 +304,48 @@ export default function PatientPage() {
   const toggleOpen = (id) => setOpenIds((s) => ({ ...s, [id]: !s[id] }));
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", padding: 20 }}>
-      <div style={{ maxWidth: 900, margin: "0 auto" }}>
+    <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
+      {showEmailAlert && (
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "center",
+      background: "transparent",
+      marginTop: 0, 
+      paddingTop: 0,
+    }}
+  >
+    <div
+      style={{
+        background: "#fff5cc",
+        color: "#8a6d3b",
+        border: "1px solid #ffe8a1",
+        borderRadius: 12, 
+        padding: "12px 24px",
+        marginTop: 12,
+        maxWidth: 1000,
+        width: "90%", 
+        textAlign: "center",
+        fontWeight: 500,
+      }}
+    >
+      ⚠️ You haven’t added an email address yet. <br />
+      Please add your email from{" "}
+      <span style={{ fontWeight: 700, color: TD.brand.primary }}>My Profile</span>{" "}
+      to activate your account and receive notifications.
+    </div>
+  </div>
+)}
+
+
+
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: 20 }}>
         {loading && <div>Loading...</div>}
         {!loading && err && <div style={{ color: "red" }}>{err}</div>}
 
         {!loading && !err && (
           <>
             <WelcomeHeader name={fullName} />
-
-            {/* Email alert */}
-            {showEmailAlert && (
-              <div
-                style={{
-                  background: "#fff5cc",
-                  color: "#8a6d3b",
-                  padding: "12px",
-                  borderRadius: "10px",
-                  marginBottom: "16px",
-                  textAlign: "center",
-                  border: "1px solid #ffe8a1",
-                  fontWeight: 500,
-                }}
-              >
-                ⚠️ You haven’t added an email address yet. <br />
-                Please add your email from <span style={{ fontWeight: 700, color: TD.brand.primary }}>My Profile</span> to
-                activate your account and receive notifications.
-              </div>
-            )}
-
             <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Prescriptions</h2>
 
             {!rx.items.length && (
