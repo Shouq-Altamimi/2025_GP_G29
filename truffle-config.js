@@ -13,6 +13,8 @@ networks: {
 
 // truffle-config.js
 module.exports = {
+ contracts_directory: "./contracts",  // <<< هذا يضمن أنه يستخدم المجلد الصحيح
+  contracts_build_directory: "./build/contracts",
   networks: {
     development: {
       host: "127.0.0.1",

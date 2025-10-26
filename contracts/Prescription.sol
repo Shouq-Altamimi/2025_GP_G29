@@ -42,9 +42,12 @@ contract Prescription {
     );
 
     //auth
-    constructor(address _doctor) {
-        isDoctor[_doctor] = true;
+    constructor(address[] memory _doctors) {
+    for (uint256 i = 0; i < _doctors.length; i++) {
+        isDoctor[_doctors[i]] = true;
     }
+}
+
 
     //from out
     function createPrescription(

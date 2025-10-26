@@ -184,7 +184,7 @@ export default function AdminAddDoctorOnly() {
   }
 
   // ===== Form state =====
-  const [contractAddress, setContractAddress] = useState("0x4E2D2BBB07f80811dfA258E78dB35068D447F6E2");
+  const [contractAddress, setContractAddress] = useState("0xC3Fe819fF631939F4f7889c05152C7ab744fc6CD");
   const [DoctorID, setDoctorID] = useState("");
   const [healthFacility, sethealthFacility] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
