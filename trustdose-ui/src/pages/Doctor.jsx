@@ -109,10 +109,9 @@ export default function Doctor() {
   const [medList, setMedList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // ✅ fixed: include timesPerDay definition
   const [selectedMed, setSelectedMed] = useState(null);
   const [dose, setDose] = useState("");
-  const [timesPerDay, setTimesPerDay] = useState("");   // ✅ added
+  const [timesPerDay, setTimesPerDay] = useState("");   
   const [durationDays, setDurationDays] = useState("");
   const [medicalCondition, setMedicalCondition] = useState("");
   const [notes, setNotes] = useState("");
