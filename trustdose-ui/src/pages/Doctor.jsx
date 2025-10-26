@@ -14,7 +14,7 @@ import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "luci
 import PRESCRIPTION from "../contracts/Prescription.json";
 
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
-const CONTRACT_ADDRESS = "0x815107c63c0E3eFeaCEaD5F6E1CCB1601371e0FF";
+const CONTRACT_ADDRESS = "0x7f3a7C1e5E0856fcb4004A4Fe2B36FE9a8F9b5e4";
 
 const LIMITS = Object.freeze({
   medicalCondition: { min: 5, max: 120 },
