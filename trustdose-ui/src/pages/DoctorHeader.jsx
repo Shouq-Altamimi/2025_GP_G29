@@ -265,7 +265,7 @@ export default function DoctorHeader() {
                 onClick={() => { setShowAccount(true); setOpen(false); }}
               >
                 <User size={18} />
-                <span>My Account</span>
+                <span>My Profile</span>
               </DrawerItem>
 
               <DrawerItem onClick={signOut} variant="ghost">
