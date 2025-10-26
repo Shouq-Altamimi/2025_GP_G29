@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use client";
 
 import React, { useMemo, useState, useEffect, useRef } from "react";
@@ -7,7 +6,7 @@ import { db } from "../firebase";
 import {
   collection, doc, getDoc, getDocs,
   query, where, addDoc, serverTimestamp,
-  orderBy, limit
+  orderBy, limit, runTransaction 
 } from "firebase/firestore";
 import { ethers } from "ethers";
 import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "lucide-react";
@@ -77,15 +76,20 @@ async function getSignerEnsured() {
 
 const START_NUMBER = 1000;
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
+
 export async function generateSequentialPrescriptionId() {
-  const q = query(collection(db, "prescriptions"), orderBy("prescriptionID", "desc"), limit(1));
-  const snap = await getDocs(q);
-  let nextNumber = START_NUMBER;
-  if (!snap.empty) {
-    const lastId = snap.docs[0].data().prescriptionID;
-    const numericPart = parseInt(lastId.slice(1));
-    if (!isNaN(numericPart)) nextNumber = numericPart + 1;
-  }
+  const counterRef = doc(db, "counters", "prescriptions");
+  const nextNumber = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(counterRef);
+    const current =
+      snap.exists() && typeof snap.data().next === "number"
+        ? snap.data().next
+        : START_NUMBER;
+    const updated = current + 1;
+    tx.set(counterRef, { next: updated }, { merge: true });
+    return updated;
+  });
+
   const randomLetter = LETTERS[Math.floor(Math.random() * LETTERS.length)];
   return `${randomLetter}${nextNumber}`;
 }
@@ -100,20 +104,17 @@ export default function Doctor() {
     if (role !== "doctor" || !wd) navigate("/auth", { replace: true });
   }, [navigate]);
 
-  // ===== عند وجود pid في URL: حوله لهاش إن كان رقم، أو اتركه إن كان هاش =====
   useEffect(() => {
     (async () => {
       const sp = new URLSearchParams(location.search);
       const rawPid = sp.get("pid");
       if (!rawPid) return;
 
-      // رقم وطني → نحوله لهاش في الرابط (خصوصية)
       if (/^[0-9]{10}$/.test(rawPid)) {
         const hash = await sha256Hex(rawPid);
         const hashedParam = "0x" + hash;
         window.history.replaceState(null, "", `/doctor?pid=${hashedParam}`);
       }
-      // إن كان هاش، نتركه كما هو
     })();
   }, [location.search]);
 
@@ -144,13 +145,11 @@ export default function Doctor() {
     })();
   }, []);
 
-  // لو جاي عبر ?pid=... (رقم/هاش)، نحاول تعبئة البحث تلقائيًا لو عندنا رقم بالكاش
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
     const urlPid = sp.get("pid");
 
     if (urlPid && /^0x[a-f0-9]{64}$/i.test(urlPid)) {
-      // عندنا هاش في الرابط — نستخدم الرقم من الكاش إن وجد للبحث الفعلي
       const cached = sessionStorage.getItem("td_last_patient") || "";
       const pid = String(cached).replace(/\D/g, "");
       if (pid) {
@@ -161,7 +160,6 @@ export default function Doctor() {
       return;
     }
 
-    // إن لم يوجد pid، لكن عندنا آخر رقم في الكاش — نستخدمه
     const raw = sessionStorage.getItem("td_last_patient") || "";
     const pid = String(raw).replace(/\D/g, "");
     if (!pid) return;
@@ -205,7 +203,6 @@ export default function Doctor() {
         setSearched(true);
         sessionStorage.setItem("td_last_patient", natDigits);
 
-        // لا نضيف الرقم للعنوان، وإن وُجد pid في الرابط نخليه هاش كما فعلنا في useEffect
       } else {
         setSelectedPatient(null);
         setSearched(true);
@@ -280,7 +277,7 @@ export default function Doctor() {
       let onchainId = null;
       try {
         const iface = new ethers.Interface(PRESCRIPTION.abi);
-        for (const log of receipt.logs || []) {
+        for (const log of (receipt.logs || [])) {
           try {
             const parsed = iface.parseLog(log);
             if (parsed?.name === "PrescriptionCreated") {
@@ -290,6 +287,9 @@ export default function Doctor() {
           } catch {}
         }
       } catch {}
+
+      const generatedId = await generateSequentialPrescriptionId(); 
+      const generatedNum = parseInt(generatedId.slice(1), 10);    
 
       const payload = {
         [F.createdAt]: serverTimestamp(),
@@ -311,7 +311,8 @@ export default function Doctor() {
         nationalID: natId,
         patientName: selectedPatient.name,
         onchainId: onchainId ?? null,
-        prescriptionID: await generateSequentialPrescriptionId(),
+        prescriptionID: generatedId,   
+        prescriptionNum: generatedNum, 
         dispensed: false,
       };
 
@@ -328,7 +329,6 @@ export default function Doctor() {
       setRxMsg("Prescription created & confirmed on-chain ✓");
       setTimeout(() => setRxMsg(""), 3000);
 
-      // ✅ انتقل مع pid هاش
       (async () => {
         const pidHash = "0x" + (await sha256Hex(natId));
         sessionStorage.setItem("td_patient", JSON.stringify({
@@ -465,7 +465,6 @@ export default function Doctor() {
               <div className="flex justify-end">
                 <button
                   onClick={async () => {
-                    // ✅ نخزن بيانات المريض قبل الانتقال + نمرر pid هاش في الرابط
                     const pidHash = "0x" + (await sha256Hex(selectedPatient.id.toString()));
                     sessionStorage.setItem("td_patient", JSON.stringify({
                       id: selectedPatient.id,
@@ -612,25 +611,24 @@ export default function Doctor() {
                 </label>
 
                 <textarea
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all resize-none"
-                style={{
-                  outlineColor: C.primary,
-                  minHeight: "48px",
-                  overflow: "hidden",    
-                }}
-                rows={1}
-                placeholder="Special instructions"
-                value={notes}
-                onChange={(e) => {
-                  let raw = e.target.value.replace(/[^A-Za-z0-9 ]/g, "");
-                  if (raw.length <= LIMITS.notes.max) {
-                    setNotes(raw);
-                    e.target.style.height = "auto";                 
-                    e.target.style.height = e.target.scrollHeight + "px"; 
-                  }
-                }}
-              />
-
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all resize-none"
+                  style={{
+                    outlineColor: C.primary,
+                    minHeight: "48px",
+                    overflow: "hidden",
+                  }}
+                  rows={1}
+                  placeholder="Special instructions"
+                  value={notes}
+                  onChange={(e) => {
+                    let raw = e.target.value.replace(/[^A-Za-z0-9 ]/g, "");
+                    if (raw.length <= LIMITS.notes.max) {
+                      setNotes(raw);
+                      e.target.style.height = "auto";
+                      e.target.style.height = e.target.scrollHeight + "px";
+                    }
+                  }}
+                />
 
                 <div className="mt-1 text-xs text-gray-500">
                   {notes.length}/{LIMITS.notes.max}
