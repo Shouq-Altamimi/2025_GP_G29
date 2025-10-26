@@ -353,12 +353,12 @@ export default function AdminAddDoctorOnly() {
               readOnly
               className="rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
             />
-            <input
-              placeholder="Health Facility"
-              value={healthFacility}
-              onChange={(e) => sethealthFacility(e.target.value.replace(/[^A-Za-z.\s]+/g, ""))}
-              className="rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
+             <input
+              value="Dr. Sulaiman Al Habib Hospital"
+              readOnly
+              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none bg-gray-50 focus:ring-2 focus:ring-[#B08CC1]"
             />
+
             <input
               placeholder="License Number"
               value={licenseNumber}
