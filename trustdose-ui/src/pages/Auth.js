@@ -16,7 +16,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
-import { ethers } from "ethers"; // [ADMIN: MetaMask] - import
+import { ethers } from "ethers";
 
 const TD = {
   primary: "#B08CC1",
@@ -61,6 +61,7 @@ async function pbkdf2Hash(password, saltBase64, iterations = 100_000) {
   const hashBytes = new Uint8Array(bits);
   return btoa(String.fromCharCode(...hashBytes));
 }
+
 async function pbkdf2Hex(password, saltBase64, iterations = 100_000) {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
@@ -72,7 +73,6 @@ async function pbkdf2Hex(password, saltBase64, iterations = 100_000) {
   );
   return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2,"0")).join("");
 }
-
 
 function genSaltBase64(len = 16) {
   const buf = new Uint8Array(len);
@@ -93,6 +93,11 @@ const DISTRICTS_BY_CITY = {
   ],
 };
 
+// ✅ منع الأحرف والأرقام العربية
+function hasArabic(str) {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(str);
+}
+
 function toEnglishDigits(s) {
   if (!s) return "";
   let out = "";
@@ -104,15 +109,23 @@ function toEnglishDigits(s) {
   }
   return out;
 }
+
 function isDigitsLike(s) {
   return /^\+?\d+$/.test(s || "");
 }
 
 function validateAndNormalizePhone(raw) {
   const original = String(raw || "");
+  
+  // ✅ منع العربي
+  if (hasArabic(original)) {
+    return { ok: false, reason: "Arabic characters not allowed." };
+  }
+  
   if (/\s/.test(original)) {
     return { ok: false, reason: "Phone number must not contain spaces." };
   }
+  
   const cleaned = toEnglishDigits(original).trim();
   if (!isDigitsLike(cleaned)) {
     return { ok: false, reason: "Phone should contain digits only (and optional leading +)." };
@@ -126,14 +139,15 @@ function validateAndNormalizePhone(raw) {
   }
   return {
     ok: false,
-    reason:
-      "Phone must start with 05 or +9665 followed by 8 digits (e.g., 05xxxxxxxx or +9665xxxxxxxx).",
+    reason: "Phone must start with 05 or +9665 followed by 8 digits (e.g., 05xxxxxxxx or +9665xxxxxxxx).",
   };
 }
 
+// ✅ التحقق المحسّن من الهوية الوطنية
 function isValidNationalIdStrict(raw) {
   const s = String(raw || "");
   if (/\s/.test(s)) return false;
+  if (hasArabic(s)) return false;
   return /^[12][0-9]{9}$/.test(s);
 }
 
@@ -141,9 +155,16 @@ function isValidNationalIdLive(raw) {
   const s = String(raw || "");
   if (s === "") return { ok: true, reason: "" };
   if (/\s/.test(s)) return { ok: false, reason: "No spaces allowed." };
+  if (hasArabic(s)) return { ok: false, reason: "Arabic not allowed." };
   if (!/^[0-9]*$/.test(s)) return { ok: false, reason: "Digits 0-9 only (ASCII)." };
   if (s.length >= 1 && !/^[12]/.test(s)) return { ok: false, reason: "Must start with 1 or 2." };
+  
+  // ✅ رسالة خطأ فقط إذا أقل من 10
+  if (s.length > 0 && s.length < 10) {
+    return { ok: false, reason: "National ID must be exactly 10 digits." };
+  }
   if (s.length > 10) return { ok: false, reason: "Exactly 10 digits." };
+  
   return { ok: true, reason: "" };
 }
 
@@ -181,12 +202,14 @@ const inputBase = {
   boxShadow: "0 3px 14px rgba(0,0,0,.04)",
   fontSize: 14,
 };
+
 const inputFocus = (hasError = false) => ({
   borderColor: hasError ? TD.err : TD.primary,
   boxShadow: hasError
     ? "0 0 0 4px rgba(220,38,38,.08)"
     : "0 0 0 4px rgba(176,140,193,.12)",
 });
+
 const buttonStyle = {
   width: "100%",
   padding: 12,
@@ -201,6 +224,7 @@ const buttonStyle = {
   boxShadow: "0 8px 20px rgba(82,185,196,.25)",
   transition: "transform .08s ease, filter .08s ease",
 };
+
 const linkStyle = {
   color: TD.teal,
   fontWeight: 600,
@@ -288,7 +312,6 @@ export default function TrustDoseAuth() {
   const [phoneChecking, setPhoneChecking] = useState(false);
   const [phoneTaken, setPhoneTaken] = useState(false);
 
-  // [ADMIN: MetaMask] - state for admin wallet login
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminMsg, setAdminMsg] = useState("");
 
@@ -367,7 +390,6 @@ export default function TrustDoseAuth() {
     return { coll: "logistics", idFields: ["companyName"], role: "logistics" };
   }
 
-  // [ADMIN: MetaMask] — login without password (wallet only)
   async function handleAdminMetaMaskLogin() {
     try {
       setAdminMsg("");
@@ -388,7 +410,6 @@ export default function TrustDoseAuth() {
 
       setAdminMsg("Checking administrator privileges...");
 
-      // التحقق من Firestore: admins/{walletLower}
       const ref = doc(db, "admins", address);
       const snap = await getDoc(ref);
 
@@ -397,18 +418,12 @@ export default function TrustDoseAuth() {
         return;
       }
 
-      // (اختياري) توقيع رسالة بسيطة
       try {
         const signer = await provider.getSigner();
-        const msg = `TrustDose Admin Login
-Address: ${address}
-Nonce: ${Date.now()}`;
+        const msg = `TrustDose Admin Login\nAddress: ${address}\nNonce: ${Date.now()}`;
         await signer.signMessage(msg);
-      } catch {
-        // تجاهل إذا ألغى التوقيع
-      }
+      } catch {}
 
-      // تخزين الجلسة (ليعمل RequireAuth)
       localStorage.setItem("userRole", "admin");
       localStorage.setItem("wallet", address);
       localStorage.setItem("userId", address);
@@ -522,7 +537,6 @@ Nonce: ${Date.now()}`;
     }
   }
 
-  // ===== Sign in =====
   async function handleSignIn(e) {
     e.preventDefault();
     setMsg("");
@@ -577,59 +591,51 @@ Nonce: ${Date.now()}`;
 
       console.log('🔐 Verifying password for role:', role);
 
-// أولوية: tempPassword (إن وجدت وكانت مطابقة)
-let verified = false;
-if (user?.tempPassword?.valid && user?.tempPassword?.value) {
-  if (!pass) { setMsg("Please enter your password."); return; }
-  if (String(pass) === String(user.tempPassword.value)) {
-    verified = true; // سماح بالدخول حتى لو لسه ما فعّل كلمة دائمة
-  }
-}
+      let verified = false;
+      if (user?.tempPassword?.valid && user?.tempPassword?.value) {
+        if (!pass) { setMsg("Please enter your password."); return; }
+        if (String(pass) === String(user.tempPassword.value)) {
+          verified = true;
+        }
+      }
 
-// PBKDF2 حديث: موجود الحقلان passwordHash + passwordSalt
-if (!verified && ("passwordHash" in user) && ("passwordSalt" in user)) {
-  if (!pass) { setMsg("Please enter your password."); return; }
+      if (!verified && ("passwordHash" in user) && ("passwordSalt" in user)) {
+        if (!pass) { setMsg("Please enter your password."); return; }
 
-  const stored = String(user.passwordHash);
-  const iter = Number(user.passwordIter) || 100_000;
+        const stored = String(user.passwordHash);
+        const iter = Number(user.passwordIter) || 100_000;
 
-  // إذا الهاش Hex-64 → اشتقاق Hex
-  if (/^[a-f0-9]{64}$/i.test(stored)) {
-    const derivedHex = await pbkdf2Hex(pass, user.passwordSalt, iter);
-    verified = (derivedHex === stored);
-  }
-  // إذا Base64 → اشتقاق Base64
-  else if (/^[A-Za-z0-9+/=]+$/.test(stored)) {
-    const derivedB64 = await pbkdf2Hash(pass, user.passwordSalt, iter);
-    verified = (derivedB64 === stored);
-  }
+        if (/^[a-f0-9]{64}$/i.test(stored)) {
+          const derivedHex = await pbkdf2Hex(pass, user.passwordSalt, iter);
+          verified = (derivedHex === stored);
+        } else if (/^[A-Za-z0-9+/=]+$/.test(stored)) {
+          const derivedB64 = await pbkdf2Hash(pass, user.passwordSalt, iter);
+          verified = (derivedB64 === stored);
+        }
 
-  if (!verified) {
-    setMsg("❌ ID or password incorrect.");
-    return;
-  }
-}
-// قديم: حقل password (SHA-256 hex أو نص عادي)
-else if (!verified && ("password" in user)) {
-  if (!pass) { setMsg("Please enter your password."); return; }
+        if (!verified) {
+          setMsg("❌ ID or password incorrect.");
+          return;
+        }
+      } else if (!verified && ("password" in user)) {
+        if (!pass) { setMsg("Please enter your password."); return; }
 
-  const storedPassword = String(user.password);
-  const isHashed = storedPassword.length === 64 && /^[a-f0-9]+$/i.test(storedPassword);
+        const storedPassword = String(user.password);
+        const isHashed = storedPassword.length === 64 && /^[a-f0-9]+$/i.test(storedPassword);
 
-  if (isHashed) {
-    verified = await verifyPasswordSHA256(pass, storedPassword);
-  } else {
-    verified = (pass === storedPassword);
-  }
+        if (isHashed) {
+          verified = await verifyPasswordSHA256(pass, storedPassword);
+        } else {
+          verified = (pass === storedPassword);
+        }
 
-  if (!verified) {
-    setMsg("❌ ID or password incorrect.");
-    return;
-  }
-} else if (!verified) {
-  console.warn("[Auth] user has no password fields.");
-}
-
+        if (!verified) {
+          setMsg("❌ ID or password incorrect.");
+          return;
+        }
+      } else if (!verified) {
+        console.warn("[Auth] user has no password fields.");
+      }
 
       const displayName = user.name || user.companyName || id;
 
@@ -669,7 +675,6 @@ else if (!verified && ("password" in user)) {
     }
   }
 
-  // ===== Patient Sign up =====
   async function handleSignUp(e) {
     e.preventDefault();
     setMsg("");
@@ -678,7 +683,7 @@ else if (!verified && ("password" in user)) {
     try {
       const nidAscii = toEnglishDigits(String(nationalId ?? "")).trim();
       if (!isValidNationalIdStrict(nidAscii)) {
-        throw new Error("National ID must be 10 digits starting with 1 or 2.");
+        throw new Error("National ID must be exactly 10 digits starting with 1 or 2.");
       }
 
       const phoneRaw = String(phone ?? "");
@@ -832,7 +837,18 @@ else if (!verified && ("password" in user)) {
             <Label>ID</Label>
             <input
               value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (hasArabic(val)) return;
+                setAccountId(val);
+              }}
+              onPaste={(e) => {
+                const paste = e.clipboardData.getData('text');
+                if (hasArabic(paste)) {
+                  e.preventDefault();
+                  return;
+                }
+              }}
               placeholder="DoctorID / PharmacyID / NationalID"
               style={inputBase}
               onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
@@ -850,7 +866,18 @@ else if (!verified && ("password" in user)) {
               <input
                 type={showPw ? "text" : "password"}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (hasArabic(val)) return;
+                  setPassword(val);
+                }}
+                onPaste={(e) => {
+                  const paste = e.clipboardData.getData('text');
+                  if (hasArabic(paste)) {
+                    e.preventDefault();
+                    return;
+                  }
+                }}
                 placeholder="••••••••"
                 style={{ ...inputBase, paddingRight: 44 }}
                 onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
@@ -917,14 +944,12 @@ else if (!verified && ("password" in user)) {
               {loading ? "Signing in..." : "Sign in"}
             </button>
 
-            {/* [ADMIN: MetaMask] Divider */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8, margin: "14px 0 10px" }}>
               <span style={{ height: 1, background: "#eee" }} />
               <span style={{ color: "#888", fontSize: 12 }}>or</span>
               <span style={{ height: 1, background: "#eee" }} />
             </div>
 
-            {/* [ADMIN: MetaMask] Login button */}
             <button
               type="button"
               onClick={handleAdminMetaMaskLogin}
@@ -995,9 +1020,17 @@ else if (!verified && ("password" in user)) {
               value={nationalId}
               onChange={(e) => {
                 const v = e.target.value;
+                if (hasArabic(v)) return;
                 const live = isValidNationalIdLive(v);
                 setNationalId(v);
                 setNationalIdErr(live.ok ? "" : live.reason);
+              }}
+              onPaste={(e) => {
+                const paste = e.clipboardData.getData('text');
+                if (hasArabic(paste)) {
+                  e.preventDefault();
+                  return;
+                }
               }}
               placeholder="1xxxxxxxxx or 2xxxxxxxxx"
               style={{
@@ -1013,10 +1046,10 @@ else if (!verified && ("password" in user)) {
                 })
               }
               required
-              maxLength={11}
+              maxLength={10}
               inputMode="numeric"
               pattern="[12][0-9]{9}"
-              title="10 ASCII digits starting with 1 or 2"
+              title="Exactly 10 digits starting with 1 or 2"
               onKeyDown={(e) => {
                 const allowedControl = ["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"];
                 if (e.key === " ") { e.preventDefault(); return; }
@@ -1034,7 +1067,18 @@ else if (!verified && ("password" in user)) {
             <Label>Phone</Label>
             <input
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (hasArabic(val)) return;
+                setPhone(val);
+              }}
+              onPaste={(e) => {
+                const paste = e.clipboardData.getData('text');
+                if (hasArabic(paste)) {
+                  e.preventDefault();
+                  return;
+                }
+              }}
               placeholder="05xxxxxxxx or +9665xxxxxxxx (no spaces)"
               style={{ ...inputBase, ...inputCompact }}
               onFocus={(e) =>
@@ -1063,11 +1107,15 @@ else if (!verified && ("password" in user)) {
               {phone && !phoneInfo.ok && (
                 <span style={{ color: "#b91c1c" }}>{phoneInfo.reason}</span>
               )}
-              {phone && phoneInfo.ok && (
+              {phone && phoneInfo.ok && !phoneTaken && (
                 <span style={{ color: "#065f46" }}>
-                  Normalized: {phoneInfo.normalized}{" "}
-                  {phoneChecking ? " • checking..." : ""}
-                  {phoneTaken ? " • already registered" : ""}
+                  ✓ Valid phone number
+                  {phoneChecking && " • checking..."}
+                </span>
+              )}
+              {phone && phoneInfo.ok && phoneTaken && (
+                <span style={{ color: "#b91c1c" }}>
+                  Already registered
                 </span>
               )}
             </div>
@@ -1075,7 +1123,18 @@ else if (!verified && ("password" in user)) {
             <Label>Full name</Label>
             <input
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (hasArabic(val)) return;
+                setName(val);
+              }}
+              onPaste={(e) => {
+                const paste = e.clipboardData.getData('text');
+                if (hasArabic(paste)) {
+                  e.preventDefault();
+                  return;
+                }
+              }}
               placeholder="Full name"
               style={{ ...inputBase, ...inputCompact }}
               onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
@@ -1183,8 +1242,21 @@ else if (!verified && ("password" in user)) {
                 <Label>District (Other)</Label>
                 <input
                   value={districtOther}
-                  onChange={(e) => setDistrictOther(e.target.value)}
-                  placeholder="Type district name"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (hasArabic(val)) return;
+                    if (val.length <= 15) {
+                      setDistrictOther(val);
+                    }
+                  }}
+                  onPaste={(e) => {
+                    const paste = e.clipboardData.getData('text');
+                    if (hasArabic(paste)) {
+                      e.preventDefault();
+                      return;
+                    }
+                  }}
+                  placeholder="Type district name (max 15 characters)"
                   style={{ ...inputBase, ...inputCompact }}
                   onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
                   onBlur={(e) =>
@@ -1194,7 +1266,11 @@ else if (!verified && ("password" in user)) {
                     })
                   }
                   required
+                  maxLength={15}
                 />
+                <div style={{ marginTop: -6, marginBottom: 8, fontSize: 11, color: "#888", textAlign: "right" }}>
+                  {districtOther.length}/15 characters
+                </div>
               </div>
             )}
 
@@ -1203,7 +1279,18 @@ else if (!verified && ("password" in user)) {
               <input
                 type={showPw ? "text" : "password"}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (hasArabic(val)) return;
+                  setPassword(val);
+                }}
+                onPaste={(e) => {
+                  const paste = e.clipboardData.getData('text');
+                  if (hasArabic(paste)) {
+                    e.preventDefault();
+                    return;
+                  }
+                }}
                 placeholder="••••••••"
                 style={{ ...inputBase, ...inputCompact, paddingRight: 44 }}
                 onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
@@ -1279,7 +1366,18 @@ else if (!verified && ("password" in user)) {
               <input
                 type={showPwConfirm ? "text" : "password"}
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (hasArabic(val)) return;
+                  setConfirmPassword(val);
+                }}
+                onPaste={(e) => {
+                  const paste = e.clipboardData.getData('text');
+                  if (hasArabic(paste)) {
+                    e.preventDefault();
+                    return;
+                  }
+                }}
                 placeholder="••••••••"
                 style={{ ...inputBase, ...inputCompact, paddingRight: 44 }}
                 onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
@@ -1424,7 +1522,18 @@ else if (!verified && ("password" in user)) {
                 <Label>Your ID</Label>
                 <input
                   value={forgotId}
-                  onChange={(e) => setForgotId(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (hasArabic(val)) return;
+                    setForgotId(val);
+                  }}
+                  onPaste={(e) => {
+                    const paste = e.clipboardData.getData('text');
+                    if (hasArabic(paste)) {
+                      e.preventDefault();
+                      return;
+                    }
+                  }}
                   placeholder="DoctorID / PharmacyID / NationalID"
                   style={inputBase}
                   onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
