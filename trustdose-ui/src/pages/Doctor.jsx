@@ -2,27 +2,18 @@
 "use client";
 
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { db } from "../firebase";
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-  addDoc,
-  serverTimestamp,
-  orderBy,
-  limit,
+  collection, doc, getDoc, getDocs,
+  query, where, addDoc, serverTimestamp,
+  orderBy, limit
 } from "firebase/firestore";
 import { ethers } from "ethers";
 import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "lucide-react";
 import PRESCRIPTION from "../contracts/Prescription.json";
 
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
-
-//contract
 const CONTRACT_ADDRESS = "0x34CDE4d61e20eBe12fA3D13FB892573E55408fF8";
 
 const LIMITS = Object.freeze({
@@ -43,7 +34,6 @@ const DOSAGE_BY_FORM = {
 const OTHER_VALUE = "__OTHER__";
 function getDoseOptions(form) { return form ? DOSAGE_BY_FORM[form] || [] : []; }
 
-//data base
 const F = Object.freeze({
   createdAt: "createdAt",
   doctorId: "doctorId",
@@ -64,7 +54,6 @@ const F = Object.freeze({
   medicalCondition: "medicalCondition",
 });
 
-//welcomw
 function readWelcomeSync() {
   try {
     const raw = localStorage.getItem("welcome_doctor");
@@ -79,87 +68,59 @@ async function sha256Hex(input) {
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-//metamask
 async function getSignerEnsured() {
-  //install
   if (!window.ethereum) throw new Error("MetaMask not detected. Please install/enable it.");
-  //request access
   await window.ethereum.request({ method: "eth_requestAccounts" });
-
   const provider = new ethers.BrowserProvider(window.ethereum);
   return provider.getSigner();
 }
 
-//prescription ID
 const START_NUMBER = 1000;
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
-
 export async function generateSequentialPrescriptionId() {
-  // last prescription
-  const q = query(
-    collection(db, "prescriptions"),
-    orderBy("prescriptionID", "desc"),//descending order
-    limit(1)//last one only
-  );
+  const q = query(collection(db, "prescriptions"), orderBy("prescriptionID", "desc"), limit(1));
   const snap = await getDocs(q);
-
   let nextNumber = START_NUMBER;
-
   if (!snap.empty) {
     const lastId = snap.docs[0].data().prescriptionID;
     const numericPart = parseInt(lastId.slice(1));
-    if (!isNaN(numericPart)) {
-      nextNumber = numericPart + 1;
-    }
+    if (!isNaN(numericPart)) nextNumber = numericPart + 1;
   }
   const randomLetter = LETTERS[Math.floor(Math.random() * LETTERS.length)];
-
   return `${randomLetter}${nextNumber}`;
 }
-// 
-
-
-
 
 export default function Doctor() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const role = localStorage.getItem("userRole");
     const wd = localStorage.getItem("welcome_doctor");
-    if (role !== "doctor" || !wd) {
-      navigate("/auth", { replace: true });
-    }
+    if (role !== "doctor" || !wd) navigate("/auth", { replace: true });
   }, [navigate]);
 
   const [welcome] = useState(() => readWelcomeSync());
-
-  // patient search
   const [q, setQ] = useState("");
   const [searchMsg, setSearchMsg] = useState("");
   const [searched, setSearched] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
 
-  // medicines
   const [medList, setMedList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // form fields
+  // ✅ fixed: include timesPerDay definition
   const [selectedMed, setSelectedMed] = useState(null);
   const [dose, setDose] = useState("");
-  const [timesPerDay, setTimesPerDay] = useState("");
+  const [timesPerDay, setTimesPerDay] = useState("");   // ✅ added
   const [durationDays, setDurationDays] = useState("");
   const [medicalCondition, setMedicalCondition] = useState("");
   const [notes, setNotes] = useState("");
 
-  //created prescription message
   const [rxMsg, setRxMsg] = useState("");
-
-  
   const mcRef = useRef(null);
   const [mcTouched, setMcTouched] = useState(false);
 
-//medicines load
   useEffect(() => {
     (async () => {
       const snap = await getDocs(collection(db, "medicines"));
@@ -167,52 +128,67 @@ export default function Doctor() {
     })();
   }, []);
 
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const raw = sp.get("pid") || sessionStorage.getItem("td_last_patient") || "";
+    const pid = String(raw).replace(/\D/g, "");
+    if (!pid) return;
+    setQ(pid);
+    setSearchMsg("");
+    runSearch(pid, { silent: true });
+  }, [location.search]);
+
   function clearSearch() {
     setQ("");
     setSelectedPatient(null);
     setSearched(false);
     setSearchMsg("");
   }
-async function runSearch() {
-  const id = q.trim();
 
-  // يسمح بأي رقم، لكن يتحقق عند الضغط
-  const natDigits = id.replace(/\D/g, "");
-  const firstOk = natDigits.length > 0 && (natDigits[0] === "1" || natDigits[0] === "2");
-  const lenOk = natDigits.length === 10;
+  async function runSearch(idOverride, opts = {}) {
+    const { silent = false } = opts;
+    const raw = (idOverride ?? q) ?? "";
+    const natDigits = String(raw).replace(/\D/g, "");
+    const firstOk = natDigits.length > 0 && (natDigits[0] === "1" || natDigits[0] === "2");
+    const lenOk = natDigits.length === 10;
 
-  if (!firstOk || !lenOk) {
-    setSearchMsg(!firstOk ? "National ID must start with 1 or 2." : "National ID must be 10 digits.");
-    setSelectedPatient(null);
-    setSearched(false);
-    return;
-  }
-
-  setIsLoading(true);
-  setSearchMsg("");
-  try {
-    const rec = await fetchPatientByNationalId(id);
-    if (rec) {
-      const patient = mapPatient(rec, id);
-      setSelectedPatient(patient);
-      setSearched(true);
-    } else {
-      setSelectedPatient(null);
-      setSearched(true);
-      setSearchMsg("The national ID you entered isn’t registered in our system.");
+    if (!firstOk || !lenOk) {
+      if (!silent) {
+        setSearchMsg(!firstOk ? "National ID must start with 1 or 2." : "National ID must be 10 digits.");
+        setSelectedPatient(null);
+        setSearched(false);
+      }
+      return;
     }
-  } catch (e) {
-    console.error(e);
-    setSelectedPatient(null);
-    setSearched(false);
-    setSearchMsg("Error fetching from database. Please try again.");
-  } finally {
-    setIsLoading(false);
+
+    if (!idOverride) setQ(natDigits);
+    setIsLoading(true);
+    setSearchMsg("");
+
+    try {
+      const rec = await fetchPatientByNationalId(natDigits);
+      if (rec) {
+        const patient = mapPatient(rec, natDigits);
+        setSelectedPatient(patient);
+        setSearched(true);
+        sessionStorage.setItem("td_last_patient", natDigits);
+        const currentPid = new URLSearchParams(window.location.search).get("pid");
+        if (currentPid !== natDigits) navigate(`/doctor?pid=${natDigits}`, { replace: true });
+      } else {
+        setSelectedPatient(null);
+        setSearched(true);
+        setSearchMsg("The national ID you entered isn’t registered in our system.");
+      }
+    } catch (e) {
+      console.error(e);
+      setSelectedPatient(null);
+      setSearched(false);
+      setSearchMsg("Error fetching from database. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   }
-}
-
-
-//blockchain then saving 
+  //blockchain then saving 
   async function confirmAndSave() {
     if (!selectedPatient) return setRxMsg("Please search for a patient first.");
     if (!selectedMed) return setRxMsg("Please choose a medicine from the list.");
@@ -224,7 +200,6 @@ async function runSearch() {
     if (!finalDose) return setRxMsg("Please enter/select a dosage.");
     if (!finalFreq) return setRxMsg("Please enter/select a frequency.");
     if (!finalDuration) return setRxMsg("Please enter/select a duration.");
-
 
     const mc = medicalCondition.trim();
     if (mc.length < LIMITS.medicalCondition.min) {
@@ -265,12 +240,7 @@ async function runSearch() {
         finalDuration
       );
 
-      // wait for confirmation
       const receipt = await tx.wait();
-      console.log("Transaction Receipt:", receipt);
-      console.log(" Status:", receipt.status);
-      console.log(" Hash:", receipt.transactionHash || tx.hash);
-
       if (receipt?.status !== 1) throw new Error("Transaction reverted or failed.");
       const txHash = receipt?.hash || receipt?.transactionHash || tx.hash;
 
@@ -289,28 +259,28 @@ async function runSearch() {
       } catch {}
 
       const payload = {
-      [F.createdAt]: serverTimestamp(),
-      [F.doctorId]: doctorAddress,
-      [F.doctorName]: welcome?.name || "",
-      [F.doctorPhone]: welcome?.phone || "",
-      [F.doctorFacility]: welcome?.healthFacility || "",
-      [F.medicineLabel]: selectedMed.label,
-      [F.medicineName]: selectedMed.name,
-      [F.dosageForm]: selectedMed.dosageForm || "",
-      [F.dosage]: finalDose,
-      [F.frequency]: finalFreq,
-      [F.durationDays]: finalDuration,
-      [F.medicalCondition]: mc, // هذا كافي
-      [F.notes]: notes || "",
-      [F.onchainTx]: txHash,
-      [F.patientDisplayId]: natId ? natId.slice(-4) : "",
-      [F.patientNationalIdHash]: "0x" + natIdHashHex,
-      nationalID: natId,
-      patientName: selectedPatient.name,
-      onchainId: onchainId ?? null,
-      prescriptionID: await generateSequentialPrescriptionId(),
-      dispensed: false,
-    };
+        [F.createdAt]: serverTimestamp(),
+        [F.doctorId]: doctorAddress,
+        [F.doctorName]: welcome?.name || "",
+        [F.doctorPhone]: welcome?.phone || "",
+        [F.doctorFacility]: welcome?.healthFacility || "",
+        [F.medicineLabel]: selectedMed.label,
+        [F.medicineName]: selectedMed.name,
+        [F.dosageForm]: selectedMed.dosageForm || "",
+        [F.dosage]: finalDose,
+        [F.frequency]: finalFreq,
+        [F.durationDays]: finalDuration,
+        [F.medicalCondition]: mc,
+        [F.notes]: notes || "",
+        [F.onchainTx]: txHash,
+        [F.patientDisplayId]: natId ? natId.slice(-4) : "",
+        [F.patientNationalIdHash]: "0x" + natIdHashHex,
+        nationalID: natId,
+        patientName: selectedPatient.name,
+        onchainId: onchainId ?? null,
+        prescriptionID: await generateSequentialPrescriptionId(),
+        dispensed: false,
+      };
 
       if (selectedMed?.sensitivity) payload[F.sensitivity] = selectedMed.sensitivity;
 
@@ -371,20 +341,21 @@ async function runSearch() {
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 relative">
               <input
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:border-transparent transition-all"
-              style={{ outlineColor: C.primary }}
-              placeholder="Enter 10-digit National ID"
-              value={q}
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={10}
-              onChange={(e) => {
-                let v = e.target.value.replace(/[^0-9]/g, ""); 
-                v = v.slice(0, 10);
-                setQ(v);
-              }}
-              onKeyDown={(e) => e.key === "Enter" && q.length === 10 && runSearch()}
-            />
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:border-transparent transition-all"
+                style={{ outlineColor: C.primary }}
+                placeholder="Enter 10-digit National ID"
+                value={q}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={10}
+                onChange={(e) => {
+                  let v = e.target.value.replace(/[^0-9]/g, "");
+                  v = v.slice(0, 10);
+                  setQ(v);
+                  setSearchMsg("");
+                }}
+                onKeyDown={(e) => e.key === "Enter" && runSearch()}
+              />
 
               {q && (
                 <button
@@ -401,19 +372,18 @@ async function runSearch() {
               )}
             </div>
 
-        <button
-        onClick={runSearch}
-        disabled={q.length === 0} 
-        className="px-6 py-3 text-white rounded-xl font-medium transition-all flex items-center gap-2"
-        style={{
-          backgroundColor: q.length > 0 ? C.primary : "rgba(176, 140, 193, 0.4)",
-          cursor: q.length > 0 ? "pointer" : "not-allowed",
-          opacity: q.length > 0 ? 1 : 0.6,
-        }}
-      >
-        <Search size={18} /> Search
-      </button>
-
+            <button
+              onClick={() => runSearch()}
+              disabled={q.length === 0}
+              className="px-6 py-3 text-white rounded-xl font-medium transition-all flex items-center gap-2"
+              style={{
+                backgroundColor: q.length > 0 ? C.primary : "rgba(176, 140, 193, 0.4)",
+                cursor: q.length > 0 ? "pointer" : "not-allowed",
+                opacity: q.length > 0 ? 1 : 0.6,
+              }}
+            >
+              <Search size={18} /> Search
+            </button>
           </div>
 
           {(q || selectedPatient) && (
@@ -484,7 +454,7 @@ async function runSearch() {
                 </div>
               )}
 
-                    <div className="mt-4">
+              <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Medical Condition <span className="text-rose-500">*</span>
                 </label>
@@ -582,34 +552,34 @@ async function runSearch() {
               )}
 
               <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Notes (optional)
-                  </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes (optional)
+                </label>
 
-                  <textarea
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all resize-none"
-                    style={{
-                      outlineColor: C.primary,
-                      minHeight: "48px",
-                      maxHeight: "200px",
-                    }}
-                    rows={1} 
-                    placeholder="Special instructions"
-                    value={notes}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value.length <= LIMITS.notes.max) {
-                        setNotes(value);
-                        e.target.style.height = "auto"; 
-                        e.target.style.height = e.target.scrollHeight + "px";
-                      }
-                    }}
-                  />
+                <textarea
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all resize-none"
+                  style={{
+                    outlineColor: C.primary,
+                    minHeight: "48px",
+                    maxHeight: "200px",
+                  }}
+                  rows={1}
+                  placeholder="Special instructions"
+                  value={notes}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value.length <= LIMITS.notes.max) {
+                      setNotes(value);
+                      e.target.style.height = "auto";
+                      e.target.style.height = e.target.scrollHeight + "px";
+                    }
+                  }}
+                />
 
-                  <div className="mt-1 text-xs text-gray-500">
-                    {notes.length}/{LIMITS.notes.max}
-                  </div>
+                <div className="mt-1 text-xs text-gray-500">
+                  {notes.length}/{LIMITS.notes.max}
                 </div>
+              </div>
 
               <div className="flex items-center justify-between pt-4">
                 <button
