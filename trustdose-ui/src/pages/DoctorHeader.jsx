@@ -18,7 +18,6 @@ import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
-/* ===== Helpers ===== */
 function pickStr(obj, keys) {
   for (const k of keys) {
     const v = obj?.[k];
@@ -27,7 +26,6 @@ function pickStr(obj, keys) {
   return "";
 }
 
-/* ===== Crypto helpers (PBKDF2 + SHA-256 legacy) ===== */
 async function sha256Hex(str) {
   const data = new TextEncoder().encode(String(str));
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -61,16 +59,13 @@ function randomSaltB64(len = 16) {
 }
 const isHex64 = (s) => typeof s === "string" && /^[a-f0-9]{64}$/i.test(s);
 
-/* ===== Smart verify against doc (Temp → PBKDF2 → Legacy) ===== */
 async function verifyCurrentPassword(docData, inputPwd) {
   const cur = String(inputPwd ?? "").trim();
 
-  // 1) Temp password
   if (docData?.tempPassword?.valid && docData?.tempPassword?.value) {
     if (cur === String(docData.tempPassword.value)) return { ok: true, mode: "TEMP" };
   }
 
-  // 2) PBKDF2 current scheme
   if (
     docData?.passwordAlgo === "PBKDF2-SHA256" &&
     docData?.passwordSalt &&
@@ -81,13 +76,11 @@ async function verifyCurrentPassword(docData, inputPwd) {
     if (h === String(docData.passwordHash)) return { ok: true, mode: "PBKDF2" };
   }
 
-  // 3) Legacy: passwordHash without salt (treat as SHA-256 hex)
   if (docData?.passwordHash && !docData?.passwordSalt) {
     const h = await sha256Hex(cur);
     if (h === String(docData.passwordHash)) return { ok: true, mode: "SHA256_LEGACY_hashField" };
   }
 
-  // 4) Legacy: `password` field may be plaintext OR SHA-256 hex
   if (docData?.password) {
     const p = String(docData.password);
     if (isHex64(p)) {
@@ -101,7 +94,6 @@ async function verifyCurrentPassword(docData, inputPwd) {
   return { ok: false };
 }
 
-/* ===== Doctor normalize ===== */
 function normalizeDoctor(raw) {
   if (!raw) return null;
   return {
@@ -131,7 +123,6 @@ function validateAndNormalizePhone(raw) {
   return { ok: false, reason: "Must start with 05 or +9665 followed by 8 digits." };
 }
 
-/* ===== Alert style (same as Patient) ===== */
 function AlertBanner({ children }) {
   return (
     <div style={{ margin: "0 24px 16px 24px" }}>
@@ -152,7 +143,6 @@ function AlertBanner({ children }) {
   );
 }
 
-/* ===== Page ===== */
 export default function DoctorHeader() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -303,7 +293,6 @@ export default function DoctorHeader() {
   );
 }
 
-/* ===== DrawerItem ===== */
 function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
   const base = "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
   const styles = active
