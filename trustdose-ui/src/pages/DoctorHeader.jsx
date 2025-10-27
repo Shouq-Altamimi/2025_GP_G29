@@ -349,6 +349,20 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
     }
   }
 
+  // ====== NEW: Email uniqueness check helper ======
+  async function isDoctorEmailTaken(emailLower, selfId) {
+    const q1 = query(
+      collection(db, "doctors"),
+      where("email", "==", emailLower),
+      fsLimit(1)
+    );
+    const snap = await getDocs(q1);
+    if (snap.empty) return false;
+    const doc0 = snap.docs[0];
+    // allow same doc to re-send verify to the same email (if already set on self)
+    return doc0.id !== selfId;
+  }
+
   // Email
   const [emailInput, setEmailInput] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
@@ -362,6 +376,13 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
       if (!ok) {
         setEmailMsg("Please enter a valid email.");
+        return;
+      }
+
+      // ====== NEW: Prevent duplicates within doctors collection ======
+      const taken = await isDoctorEmailTaken(raw, String(doctorDocId || ""));
+      if (taken) {
+        setEmailMsg("This email is already used by another doctor. Please use a different email.");
         return;
       }
 
@@ -460,7 +481,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                   </div>
 
                   {!!emailMsg && (
-                    <div className="mt-2 text-sm" style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534" }}>
+                    <div className="mt-2 text-sm" style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : (emailMsg.includes("already used") ? "#991B1B" : "#166534") }}>
                       {emailMsg}
                     </div>
                   )}

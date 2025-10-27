@@ -42,7 +42,6 @@ export default function PrescriptionsPage() {
     navigate("/doctor", { replace: true });
   };
 
-  /* === إخفاء زر المينيو/الهامبرجر فقط في هذه الصفحة === */
   useEffect(() => {
     const selectors = [
       "header button[aria-label*='menu' i]",
