@@ -13,7 +13,7 @@ import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "luci
 import PRESCRIPTION from "../contracts/Prescription.json";
 
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
-const CONTRACT_ADDRESS = "0x21dB81a0831ED71525Ff138A7B6d86F5C44c192D";
+const CONTRACT_ADDRESS = "0x4440B9E9E2E315BcBAeC783df5Baf4CB7fAe87C5";
 
 const OTHER_MAX = 20; 
 const LIMITS = Object.freeze({
