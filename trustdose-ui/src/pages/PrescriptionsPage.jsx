@@ -23,10 +23,13 @@ function shortAddr(a) {
   return s.length > 10 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s;
 }
 
-export default function PrescriptionsPage() {
+// ✅ يدعم الدور + زر الصرف + حالة التحميل
+export default function PrescriptionsPage({ role = "doctor", onDispense, dispensingId }) {
   const location = useLocation();
   const state = location.state;
   const navigate = useNavigate();
+
+  const pageRole = state?.role || role;
 
   const cached = sessionStorage.getItem("td_patient");
   const fallback = cached ? JSON.parse(cached) : null;
@@ -39,7 +42,7 @@ export default function PrescriptionsPage() {
   const [page, setPage] = useState(0);
 
   const handleBack = () => {
-    navigate("/doctor", { replace: true });
+    navigate(pageRole === "pharmacy" ? "/pharmacy" : "/doctor", { replace: true });
   };
 
   useEffect(() => {
@@ -166,7 +169,8 @@ export default function PrescriptionsPage() {
       <div className="flex items-center gap-4 mb-6">
         <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 56, height: "auto" }} />
         <h1 className="text-2xl font-bold" style={{ color: C.ink }}>
-          Prescriptions {patientName ? `for ${patientName}` : ""}
+          {pageRole === "pharmacy" ? "Prescriptions (Pharmacy)" : "Prescriptions"}{" "}
+          {patientName ? `for ${patientName}` : ""}
         </h1>
       </div>
 
@@ -207,6 +211,7 @@ export default function PrescriptionsPage() {
           <div className="text-gray-500 text-sm">No prescriptions found.</div>
         ) : (
           <>
+            {/* نفس تخطيط الطبيب: عمودين على الشاشات المتوسطة */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {pageItems.map((rx) => {
                 const prescriber = rx.doctorName ? `Dr. ${rx.doctorName}` : shortAddr(rx.doctorId);
@@ -221,12 +226,43 @@ export default function PrescriptionsPage() {
                     })
                   : "—";
 
+                // ✅ أهلية الصرف للصيدلية
+                const eligible =
+                  pageRole === "pharmacy" &&
+                  String(rx.sensitivity || "").toLowerCase() === "nonsensitive" &&
+                  rx.dispensed === false &&
+                  Number.isFinite(rx.onchainId);
+
+                const isThisLoading =
+                  Boolean(dispensingId && (dispensingId === (rx.id || rx._docId)));
+
+                // ✅ قيم إضافية للصيدلية
+                const rxId = rx.prescriptionID || rx.ref || rx.id || "—";
+                const patientLine = `${rx.patientName || "—"}${rx.nationalID ? " — " + String(rx.nationalID) : ""}`;
+                const doctorPhone = rx.doctorPhone || rx.phone || "-";
+
                 return (
                   <div key={rx.id} className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between">
                     <div>
+                      {/* عنوان الدواء */}
                       <div className="text-lg font-bold text-slate-800 truncate">
                         {rx.medicineLabel || rx.medicineName || "—"}
                       </div>
+
+                      {/* ✅ معلومات إضافية للصيدلية */}
+                      {pageRole === "pharmacy" && (
+                        <>
+                          <div className="text-sm text-slate-700 mt-1 font-semibold">
+                            Prescription ID: <span className="font-normal">{rxId}</span>
+                          </div>
+                          <div className="text-sm text-slate-700 mt-1 font-semibold">
+                            Patient: <span className="font-normal">{patientLine}</span>
+                          </div>
+                          <div className="text-sm text-slate-700 mt-1 font-semibold">
+                            Doctor Phone: <span className="font-normal">{doctorPhone}</span>
+                          </div>
+                        </>
+                      )}
 
                       <div className="text-sm text-slate-700 mt-1 font-semibold">
                         Prescribed by <span className="font-normal">{prescriber}{facility}</span>
@@ -249,7 +285,31 @@ export default function PrescriptionsPage() {
                       )}
                     </div>
 
-                    <div className="text-right text-xs text-gray-500 mt-3">{dateTime}</div>
+                    {/* ✅ زر الصرف للصيدلية (بدون سطر Sensitivity) */}
+                    {pageRole === "pharmacy" && (
+                      <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        {/* لا نظهر إلا حالة Dispensed */}
+                        
+
+                        <button
+                          onClick={() => onDispense?.(rx)}
+                          disabled={!eligible || isThisLoading}
+                          className="px-5 py-2 text-white rounded-xl disabled:opacity-50 transition-colors flex items-center gap-2 font-medium shadow-sm"
+                          style={{ backgroundColor: "#B08CC1" }}
+                          title={rx.dispensed ? "Prescription already dispensed" : "Confirm & Dispense"}
+                        >
+                          {isThisLoading
+                            ? "Processing…"
+                            : rx.dispensed
+                            ? "✓ Dispensed"
+                            : "Confirm & Dispense"}
+                        </button>
+                      </div>
+                    )}
+
+<div className="text-right text-xs text-gray-500 mt-3">
+   created at {dateTime}
+</div>
                   </div>
                 );
               })}
@@ -264,10 +324,19 @@ export default function PrescriptionsPage() {
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-500">Page {page + 1} of {pageCount}</span>
           <div className="flex gap-2">
-            <button className="px-4 py-2 rounded-lg border text-sm disabled:opacity-50" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>
+            <button
+              className="px-4 py-2 rounded-lg border text-sm disabled:opacity-50"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+            >
               ← Prev
             </button>
-            <button className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50" style={{ background: C.primary }} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} disabled={page >= pageCount - 1}>
+            <button
+              className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
+              style={{ background: C.primary }}
+              onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+              disabled={page >= pageCount - 1}
+            >
               Next →
             </button>
           </div>

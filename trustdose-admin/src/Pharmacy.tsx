@@ -49,6 +49,43 @@ function getAddressFromArtifact(artifact, chainIdBigInt) {
     return rec?.address || null;
   } catch { return null; }
 }
+// === format Firestore Timestamp exactly-like console ===
+function formatFsCreatedAt(v) {
+  // نعيد "-" لو مافيه قيمة
+  if (!v) return "-";
+
+  // لو هي أصلاً string من الداتابيس نعرضها كما هي
+  if (typeof v === "string") return v;
+
+  // Firestore Timestamp: فيه toDate() أو seconds/nanoseconds
+  let d;
+  try {
+    if (typeof v?.toDate === "function") {
+      d = v.toDate();
+    } else if (typeof v?.seconds === "number") {
+      d = new Date(v.seconds * 1000 + Math.floor((v.nanoseconds || 0) / 1e6));
+    }
+  } catch {}
+
+  // fallback لو قدرناش نطلّع Date
+  if (!(d instanceof Date) || isNaN(d)) return String(v);
+
+  // ننسّق كـ "20 October 2025 at 12:00:13 UTC+3" (توقيت الرياض ثابت +3)
+  const fmt = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Riyadh", // يعطينا الوقت المحلي KSA
+  }).format(d); // مثال: "20 October 2025, 12:00:13"
+
+  // نشيل الفاصلة بعد التاريخ ونضيف لاحقة UTC+3
+  return fmt.replace(",", "") + " UTC+3";
+}
+
 
 export default function PharmacyApp() {
   const [rxs, setRxs] = useState([]);
@@ -110,10 +147,10 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       dose: data.dosage || data.dose || "-",
       timesPerDay: data.timesPerDay ?? "-",
       durationDays: typeof data.durationDays === "number" ? data.durationDays : (data.durationDays || "-"),
-      createdAt: createdAtISO,
+     createdAt: formatFsCreatedAt(data.createdAt) || "-",
       status: data.status || "-",
       dispensed: !!data.dispensed,
-      dispensedAt: data.dispensedAt?.toDate?.()?.toISOString(),
+      dispensedAt: data.dispensedAt ? formatFsCreatedAt(data.dispensedAt) : undefined,
       sensitivity: data.sensitivity || "-",
       _docId: docId,
     };

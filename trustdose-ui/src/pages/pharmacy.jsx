@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useMemo, useState } from "react";
-import { Search, FileText, Loader2 } from "lucide-react"; 
+import { Search, FileText, Loader2 } from "lucide-react";
 
 import { db } from "../firebase";
 import {
@@ -12,22 +12,24 @@ import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
-const PRESCRIPTION_ADDRESS = "0x4440B9E9E2E315BcBAeC783df5Baf4CB7fAe87C5"; // Prescription
-const DISPENSE_ADDRESS     = "0x4eF133f3229e6b6267D3F7fac74d7d7C4feE1AEA"; // Dispense
+const PRESCRIPTION_ADDRESS = "0x0B1729c693bF73134ceF68bB1Fe70B94e76a3075";
+const DISPENSE_ADDRESS     = "0xB8BAd3518d33AE4A9e4781d1331d2Ba7DAF190F4";
+
+// ===== Pagination size =====
+const PAGE_SIZE = 6;
 
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected.");
   await window.ethereum.request({ method: "eth_requestAccounts" });
-  const provider = new ethers.BrowserProvider(window.ethereum); 
+  const provider = new ethers.BrowserProvider(window.ethereum);
   const network = await provider.getNetwork();
-  const allowed = [1337n, 5777n, 31337n]; 
+  const allowed = [1337n, 5777n, 31337n];
   if (!allowed.includes(network.chainId)) {
     console.warn("⚠ Unexpected chainId =", network.chainId.toString());
   }
   return provider.getSigner();
 }
 
-/** utils */
 function nowISO() { return new Date().toISOString(); }
 function fmt(dateISO) {
   if (!dateISO) return "-";
@@ -44,14 +46,6 @@ function toEnglishDigits(s) {
     else if (code >= 48 && code <= 57) out += ch;
   }
   return out;
-}
-function toMaybeISO(val) {
-  if (!val) return undefined;
-  if (val && typeof val === "object" && typeof val.toDate === "function") {
-    try { return val.toDate().toISOString(); } catch { return undefined; }
-  }
-  if (typeof val === "string") return val;
-  return undefined;
 }
 function niceErr(e, fallback = "On-chain dispense failed.") {
   return (
@@ -78,13 +72,12 @@ const card = {
 export default function PharmacyApp() {
   const [rxs, setRxs] = useState([
     { ref: "RX-001", patientId: "1001", patientName: "Salem",   medicine: "Insulin",   dose: "10u",   timesPerDay: 2, durationDays: 30, createdAt: nowISO(), dispensed: false, accepted: false },
-    { ref: "RX-002", patientId: "1002", patientName: "Maha",   medicine: "Panadol",   dose: "500mg", timesPerDay: 3, durationDays: 5,   createdAt: nowISO(), dispensed: false, accepted: false },
-    { ref: "RX-003", patientId: "1003", patientName: "Hassan", medicine: "Metformin", dose: "850mg", timesPerDay: 1, durationDays: 14, createdAt: nowISO(), dispensed: false, accepted: false }
+    { ref: "RX-002", patientId: "1002", patientName: "Maha",    medicine: "Panadol",   dose: "500mg", timesPerDay: 3, durationDays: 5, createdAt: nowISO(), dispensed: false, accepted: false },
+    { ref: "RX-003", patientId: "1003", patientName: "Hassan",  medicine: "Metformin", dose: "850mg", timesPerDay: 1, durationDays: 14, createdAt: nowISO(), dispensed: false, accepted: false }
   ]);
 
   const [route] = useState("Pick Up Orders");
-  
-  const [q, setQ] = useState(""); 
+  const [q, setQ] = useState("");
 
   const rowsDelivery = useMemo(() => rxs.filter(r => !r.dispensed && !r.accepted), [rxs]);
   const rowsPending  = useMemo(() => rxs.filter(r => !r.dispensed && r.accepted), [rxs]);
@@ -95,7 +88,6 @@ export default function PharmacyApp() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", color: brand.ink, fontFamily: "Arial, sans-serif" }}>
-      
       <main style={{ padding: 24 }}>
         <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
           {route === "Pick Up Orders" && (
@@ -112,6 +104,7 @@ export default function PharmacyApp() {
     </div>
   );
 }
+
 function formatFsCreatedAt(v) {
   if (!v) return "-";
   if (typeof v === "string") return v;
@@ -134,21 +127,9 @@ function formatFsCreatedAt(v) {
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-  }).format(d); 
+  }).format(d);
 
   return base.replace(",", "") + " UTC+3";
-}
-
-function fmtUTC(ts) {
-  if (!ts) return "-";
-  const d = ts?.toDate ? ts.toDate() : new Date(ts);
-  if (isNaN(d)) return "-";
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "UTC",
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-    hour12: false
-  }).format(d) + " UTC";
 }
 
 function PickUpSection({ setRxs, q, setQ, addNotification }) {
@@ -156,17 +137,20 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [results, setResults] = useState([]); 
+  const [results, setResults] = useState([]);
   const [infoMsg, setInfoMsg] = useState("");
   const [validationMsg, setValidationMsg] = useState("");
 
-  const [dispensingId, setDispensingId] = useState(null); 
+  // ===== Pagination state
+  const [page, setPage] = useState(0);
+
+  const [dispensingId, setDispensingId] = useState(null);
   const raw = String(q || "").trim();
-  const isPatientIdMode = /^\d/.test(raw); 
+  const isPatientIdMode = /^\d/.test(raw);
   const natDigitsAll = toEnglishDigits(raw).replace(/\D/g, "");
-  const natDigits = isPatientIdMode ? natDigitsAll.slice(0, 10) : ""; 
-  const rxID = !isPatientIdMode ? raw : ""; // Prescription ID
-  
+  const natDigits = isPatientIdMode ? natDigitsAll.slice(0, 10) : "";
+  const rxID = !isPatientIdMode ? raw : "";
+
   const safeInt = (v) => {
     const n = Number(v);
     return Number.isFinite(n) ? n : undefined;
@@ -195,19 +179,26 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       patientId: pid,
       patientName: data.patientName || "-",
       medicine: data.medicineName || data.medicine || "-",
+      medicineLabel: data.medicineLabel || undefined,
+      dosageForm: data.dosageForm || undefined,
       dose: data.dosage || data.dose || "-",
       timesPerDay: showOrDash(data.timesPerDay),
       durationDays: showOrDash(data.durationDays),
       createdAt: formatFsCreatedAt(data.createdAt),
+      createdAtTS: data?.createdAt?.toDate?.() || undefined,
 
       status: data.status || "-",
       dispensed: !!data.dispensed,
       dispensedAt: data.dispensedAt ? formatFsCreatedAt(data.dispensedAt) : undefined,
       dispensedBy: data.dispensedBy || undefined,
       sensitivity: data.sensitivity || "-",
-      // (ADD-ONLY)
+      medicalCondition: data.medicalCondition || data.reason || "",
+      notes: data.notes || "",
+
       doctorName: docName,
       doctorPhone: docPhone,
+      doctorFacility: data.doctorFacility || "",
+
       frequency: freq,
 
       _docId: docId,
@@ -216,23 +207,22 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
 
   function handleChange(v) {
     const s = String(v).replace(ARABIC_LETTERS_RE, "");
-    const rxFormatRe = /^[a-zA-Z]\d{4,}$/; 
+    const rxFormatRe = /^[a-zA-Z]\d{4,}$/;
 
     if (/^\d/.test(s)) {
       const digits = toEnglishDigits(s).replace(/\D/g, "").slice(0, 10);
       setQ(digits);
       if (digits.length && digits[0] !== "1" && digits[0] !== "2") {
         setValidationMsg("National ID must start with 1 or 2.");
-      } else if (digits.length > 0 && digits.length < 10) { 
+      } else if (digits.length > 0 && digits.length < 10) {
         setValidationMsg("National ID must be 10 digits.");
       } else {
         setValidationMsg("");
       }
     } else {
       setQ(s);
-      
       if (s.length > 0 && !rxFormatRe.test(s)) {
-        setValidationMsg("Prescription ID must be 1 letter followed by 4 or more digits."); 
+        setValidationMsg("Prescription ID must be 1 letter followed by 4 or more digits.");
       } else {
         setValidationMsg("");
       }
@@ -241,6 +231,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     setResults([]);
     setError("");
     setInfoMsg("");
+    setPage(0); // reset pagination on input change
   }
 
   async function runSearch() {
@@ -249,8 +240,9 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     setError("");
     setResults([]);
     setInfoMsg("");
+    setPage(0); // reset to first page on new search
 
-    if (validationMsg) { 
+    if (validationMsg) {
       setLoading(false);
       return;
     }
@@ -268,7 +260,8 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     try {
       const col = collection(db, "prescriptions");
 
-      if (rxID) { 
+      // Prescription ID lookup
+      if (rxID) {
         const snap = await getDocs(query(col, where("prescriptionID", "==", rxID)));
         if (!snap.empty) {
           const d = snap.docs[0];
@@ -290,6 +283,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
         return;
       }
 
+      // National ID lookup
       const tasks = [
         getDocs(query(
           col,
@@ -329,14 +323,15 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
         if (!Number.isNaN(nNum)) fbTasks.push(getDocs(query(col, where("nationalID", "==", nNum))));
         const fbSnaps = await Promise.all(fbTasks);
         const haveAny = fbSnaps.some(s => s && !s.empty);
-        
+
         if (haveAny) {
           setInfoMsg("No eligible pickup prescriptions. They may be sensitive, already dispensed, or missing on-chain id.");
         } else {
-          setError("The national ID you entered isn't registered in our system."); 
+          setError("The national ID you entered isn't registered in our system.");
         }
       }
 
+      list.sort((a, b) => (b.createdAtTS?.getTime?.() || 0) - (a.createdAtTS?.getTime?.() || 0));
       setResults(list);
     } catch (e) {
       console.error(e);
@@ -354,6 +349,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     setError("");
     setInfoMsg("");
     setValidationMsg("");
+    setPage(0);
   }
 
   async function markDispensed(item) {
@@ -370,10 +366,8 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       return;
     }
 
-  
-
     try {
-      setDispensingId(item._docId); 
+      setDispensingId(item._docId);
       setLoading(true);
       setError("");
       setInfoMsg("");
@@ -436,8 +430,19 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     }
   }
 
+  // ===== Derived pagination values
+  const total = results.length;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const start = page * PAGE_SIZE;
+  const end = Math.min(start + PAGE_SIZE, total);
+  const pageItems = results.slice(start, end);
+
+  // لو تغيّرت النتائج (بحث جديد)، نضمن الصفحة الأولى
+  React.useEffect(() => setPage(0), [JSON.stringify(results)]);
+
   return (
     <section style={{ display: "grid", gap: 20 }}>
+      {/* Search */}
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
           <Search size={20} style={{ color: brand.purple }} />
@@ -476,7 +481,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
             style={{ backgroundColor: brand.purple }}
             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = brand.purpleDark)}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = brand.purple)}
-            disabled={loading || !q.trim() || !!validationMsg} 
+            disabled={loading || !q.trim() || !!validationMsg}
           >
             {loading ? "Searching..." : (<><Search size={18} /> Search</>)}
           </button>
@@ -495,93 +500,170 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
         )}
 
         {(!!error || !!infoMsg || !!validationMsg) && (
-          <div className="mt-3 text-red-600 font-medium">
+          <div className="mt-3 font-medium" style={{ color: error ? "#DC2626" : "#374151" }}>
             {validationMsg || infoMsg || error}
           </div>
         )}
       </section>
 
-      {searched && !loading && results.length === 0 && !error && !infoMsg && !validationMsg && ( 
+      {searched && !loading && results.length === 0 && !error && !infoMsg && !validationMsg && (
         <div className="text-gray-600">No matching prescriptions found.</div>
       )}
 
+      {/* Grid with pagination: 1 col mobile / 2 cols desktop */}
       {results.length > 0 && (
-        <section style={{ display: "grid", gap: 12 }}>
-          {results.map((r) => {
-            const eligible =
-              r.sensitivity === "NonSensitive" &&
-              r.dispensed === false &&
-              Number.isFinite(r.onchainId);
+        <>
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {pageItems.map((r) => {
+              const eligible =
+                String(r.sensitivity || "").toLowerCase() === "nonsensitive" &&
+                r.dispensed === false &&
+                Number.isFinite(r.onchainId);
 
-            const isThisLoading = dispensingId === r._docId; 
-            return (
-              <div key={r._docId} style={card}>
-                <div><b>Prescription:</b> {r.ref}</div>
-                <div><b>National ID:</b> {r.patientId}</div>
-                <div><b>Patient:</b> {r.patientName}</div>
-                {/* ADD-ONLY: Doctor info & frequency */}
-                <div><b>Doctor:</b> {r.doctorName || "-"}</div>
-                <div><b>Phone:</b> {r.doctorPhone || "-"}</div>
-                <div><b>Frequency:</b> {r.frequency || "-"}</div>
+              const isThisLoading = dispensingId === r._docId;
 
-                <div><b>Medicine:</b> {r.medicine}</div>
-                <div><b>Dosage:</b> {r.dose}</div>
-                <div><b>Duration:</b> {r.durationDays}</div>
-                <div><b>Created:</b> {r.createdAt}</div>
-                <div><b>Sensitivity:</b> {r.sensitivity}</div>
+              const dateTime = r.createdAtTS
+                ? r.createdAtTS.toLocaleString("en-GB", {
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : r.createdAt || "-";
+              const prescriber = r.doctorName ? `Dr. ${r.doctorName}` : (r.dispensedBy || "-");
+              const facility = r.doctorFacility ? ` — ${r.doctorFacility}` : "";
+              const medTitle = r.medicineLabel || r.medicine || "—";
 
-                <div style={{ marginTop: 8 }}>
-                  {/* ===== زر بنفس شكل الدكتور ===== */}
-                  <button
-                    onClick={() => markDispensed(r)}
-                    disabled={!eligible || r.dispensed || isThisLoading}
-                    className="px-6 py-3 text-white rounded-xl transition-colors flex items-center gap-2 font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ backgroundColor: isThisLoading ? "rgba(176,140,193,0.6)" : brand.purple }}
-                    onMouseEnter={(e) => {
-                      if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = brand.purpleDark;
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = brand.purple;
-                    }}
-                    title={
-                      r.dispensed
-                        ? "Prescription already dispensed"
-                        : (!Number.isFinite(r.onchainId)
-                            ? "Missing on-chain id"
-                            : (r.sensitivity !== "NonSensitive" ? "Sensitive: pickup not allowed" : "")
-                          )
-                    }
-                  >
-                    {isThisLoading ? (
-                      <>
-                        <Loader2 size={18} className="animate-spin" />
-                        <span>Processing…</span>
-                      </>
-                    ) : (
-                      <>
-                        <FileText size={18} />
-                        <span>
-                          {r.dispensed
-                            ? "✓ Dispensed"
-                            : (eligible ? "Confirm & Dispense" : "Not eligible")}
-                        </span>
-                      </>
+              return (
+                <div key={r._docId} className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between">
+                  <div>
+                    {/* Title */}
+                    <div className="text-lg font-bold text-slate-800 truncate">{medTitle}</div>
+
+                    {/* Pharmacy extras */}
+                    <div className="text-sm text-slate-700 mt-1 font-semibold">
+                      Prescription ID: <span className="font-normal">{String(r.ref || r.prescriptionID || r.prescriptionId || r._docId || "—")}</span>
+                    </div>
+                    <div className="text-sm text-slate-700 mt-1 font-semibold">
+                      Patient:{" "}
+                      <span className="font-normal">
+                        {r.patientName || "—"}
+                        {r.patientId ? ` — ${String(r.patientId)}` : ""}
+                      </span>
+                    </div>
+                    <div className="text-sm text-slate-700 mt-1 font-semibold">
+                      Doctor Phone: <span className="font-normal">{String(r.doctorPhone || "—")}</span>
+                    </div>
+
+                    {/* Details */}
+                    <div className="text-sm text-slate-700 mt-1 font-semibold">
+                      Prescribed by <span className="font-normal">{prescriber}{facility}</span>
+                    </div>
+
+                    <div className="text-sm text-slate-700 mt-1 font-semibold">
+                      Dosage:{" "}
+                      <span className="font-normal">
+                        {(r.dose || r.dosage || "—")} • {(r.frequency || "—")} • {(r.durationDays || r.duration || "—")}
+                      </span>
+                    </div>
+
+                    <div className="text-sm text-slate-700 mt-2 font-semibold">
+                      Medical Condition: <span className="font-normal">{r.medicalCondition || "—"}</span>
+                    </div>
+
+                    {!!r.notes && (
+                      <div className="text-sm text-slate-700 mt-2 font-semibold">
+                        Notes: <span className="font-normal">{r.notes}</span>
+                      </div>
                     )}
-                  </button>
+
+                    {/* Only status when dispensed */}
+                 
+                    {/* Button: left/bottom, small, white text */}
+                    <div className="mt-2 flex justify-start">
+                      <button
+                        onClick={() => markDispensed(r)}
+                        disabled={!eligible || r.dispensed || isThisLoading}
+                        className="w-max px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-1.5 font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                        style={{ backgroundColor: isThisLoading ? "rgba(176,140,193,0.6)" : brand.purple }}
+                        onMouseEnter={(e) => {
+                          if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = brand.purpleDark;
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = brand.purple;
+                        }}
+                        title={
+                          r.dispensed
+                            ? "Prescription already dispensed"
+                            : (!Number.isFinite(r.onchainId)
+                                ? "Missing on-chain id"
+                                : "Confirm & Dispense")
+                        }
+                      >
+                        {isThisLoading ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin text-white" />
+                            <span className="text-white">Processing…</span>
+                          </>
+                        ) : (
+                          <>
+                            <FileText size={16} className="text-white" />
+                            <span className="text-white">
+                              {r.dispensed ? "✓ Dispensed" : (eligible ? "Confirm & Dispense" : "Not eligible")}
+                            </span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="text-right text-xs text-gray-500 mt-3">
+                    Prescription created on {dateTime}
+                  </div>
                 </div>
+              );
+            })}
+          </section>
+
+          {/* Pagination footer (like Doctor page) */}
+          <div className="mt-auto pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-sm text-gray-700">
+              Showing {end} out of {total} prescriptions
+            </div>
+
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500">Page {page + 1} of {pageCount}</span>
+              <div className="flex gap-2">
+                <button
+                  className="px-4 py-2 rounded-lg border text-sm disabled:opacity-50"
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                >
+                  ← Prev
+                </button>
+                <button
+                  className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
+                  style={{ background: brand.purple }}
+                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                  disabled={page >= pageCount - 1}
+                >
+                  Next →
+                </button>
               </div>
-            );
-          })}
-        </section>
+            </div>
+          </div>
+        </>
       )}
     </section>
   );
 }
 
+/* Delivery & Pending (unchanged visuals) */
 function DeliverySection({ rows = [], setRxs, addNotification }) {
-  function acceptOrder(ref) {
-    setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, accepted: true, acceptedAt: nowISO() } : rx));
-    addNotification(`Prescription ${ref} accepted for delivery`);
+  function acceptOrder(rxRef) {
+    setRxs(prev => prev.map(rx => rx.ref === rxRef ? { ...rx, accepted: true, acceptedAt: nowISO() } : rx));
+    addNotification(`Prescription ${rxRef} accepted for delivery`);
   }
   return (
     <section style={{ display: "grid", gap: 12 }}>
@@ -608,13 +690,13 @@ function DeliverySection({ rows = [], setRxs, addNotification }) {
 }
 
 function PendingSection({ rows = [], setRxs, addNotification }) {
-  function cancel(ref) {
-    setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, accepted: false, acceptedAt: undefined } : rx));
-    addNotification({ type: 'cancel', ref, text: `Prescription ${ref} cancelled` });
+  function cancel(rxRef) {
+    setRxs(prev => prev.map(rx => rx.ref === rxRef ? { ...rx, accepted: false, acceptedAt: undefined } : rx));
+    addNotification({ type: 'cancel', ref: rxRef, text: `Prescription ${rxRef} cancelled` });
   }
-  function contact(ref) {
-    setRxs(prev => prev.map(rx => rx.ref === ref ? { ...rx, contactedAt: nowISO() } : rx));
-    addNotification(`Prescription ${ref} contacted logistics`);
+  function contact(rxRef) {
+    setRxs(prev => prev.map(rx => rx.ref === rxRef ? { ...rx, contactedAt: nowISO() } : rx));
+    addNotification(`Prescription ${rxRef} contacted logistics`);
   }
   return (
     <section style={{ display: "grid", gap: 12 }}>
