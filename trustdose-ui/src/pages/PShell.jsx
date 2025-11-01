@@ -120,8 +120,8 @@ async function buildPBKDF2Update(newPassword, iterations = 100_000) {
   return {
     passwordAlgo: `PBKDF2-SHA256-${Math.round(iters / 1000)}k`,
     passwordIter: iters,
-    passwordSalt: bytesToBase64(salt), 
-    passwordHash: hashB64,             
+    passwordSalt: bytesToBase64(salt),
+    passwordHash: hashB64,
     passwordUpdatedAt: new Date(),
   };
 }
@@ -186,7 +186,7 @@ export default function PShell() {
 
   useEffect(() => {
     (async () => {
-      await ensureAuthReady(); 
+      await ensureAuthReady();
 
       const pid = resolvePatientId();
       if (!pid) return;
@@ -354,6 +354,20 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
 
   const hasEmail = !!P.email;
 
+  // ===== Email uniqueness check (patients collection) =====
+  async function isPatientEmailTaken(emailLower, selfId) {
+    const q1 = query(
+      collection(db, "patients"),
+      where("email", "==", emailLower),
+      fsLimit(1)
+    );
+    const snap = await getDocs(q1);
+    if (snap.empty) return false;
+    const doc0 = snap.docs[0];
+    // allow if it's the same patient re-sending to the same email
+    return doc0.id !== selfId;
+  }
+
   async function sendVerifyLink() {
     try {
       setEmailMsg("");
@@ -364,7 +378,14 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
         return;
       }
 
-      const auth = await ensureAuthReady(); 
+      // prevent duplicates in patients
+      const taken = await isPatientEmailTaken(raw, String(patientDocId || ""));
+      if (taken) {
+        setEmailMsg("This email is already used by another patient. Please use a different email.");
+        return;
+      }
+
+      const auth = await ensureAuthReady();
 
       const BASE = window.location.origin;
       const params = new URLSearchParams({
@@ -454,7 +475,12 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
                 </div>
 
                 {!!emailMsg && (
-                  <div className="mt-2 text-sm" style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534" }}>
+                  <div
+                    className="mt-2 text-sm"
+                    style={{
+                      color: emailMsg.includes("Firebase") || emailMsg.includes("already used") ? "#991B1B" : "#166534",
+                    }}
+                  >
                     {emailMsg}
                   </div>
                 )}
@@ -570,8 +596,8 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
         parseItersFromAlgo(data?.passwordAlgo) ||
         100_000;
 
-      const payload = await buildPBKDF2Update(newPass, baseIter); 
-      if (data?.password) payload.password = deleteField(); 
+      const payload = await buildPBKDF2Update(newPass, baseIter);
+      if (data?.password) payload.password = deleteField();
 
       await updateDoc(ref, payload);
 
@@ -629,7 +655,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
             <input
               type={showNew ? "text" : "password"}
               value={newPass}
-              onChange={(e) => setNewPass(e.target.value)} 
+              onChange={(e) => setNewPass(e.target.value)}
               className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:border-transparent"
               style={{ outlineColor: C.primary }}
               placeholder="Enter new password"

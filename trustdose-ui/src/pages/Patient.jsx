@@ -45,9 +45,7 @@ async function sha256HexPrefixed(input) {
   const enc = new TextEncoder();
   const bytes = enc.encode(String(input ?? ""));
   const hash = await crypto.subtle.digest("SHA-256", bytes);
-  const hex = [...new Uint8Array(hash)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  const hex = [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
   return "0x" + hex;
 }
 
@@ -127,7 +125,7 @@ async function fetchPrescriptionsSmart(foundDocId, nid) {
 }
 
 /* =========================
-   Hydrate doctor info 
+   Hydrate doctor & pharmacist info 
    ========================= */
 async function hydrateNames(items) {
   const out = [];
@@ -143,7 +141,7 @@ async function hydrateNames(items) {
       "";
 
     const facilityName =
-      p.doctorFacility || 
+      p.doctorFacility ||
       p.facilityName ||
       p.facility ||
       p.healthFacility ||
@@ -156,10 +154,27 @@ async function hydrateNames(items) {
       (p.hospital && p.hospital.name) ||
       "";
 
+    // Pharmacist + Pharmacy fallbacks
+    const pharmacistName =
+      p.pharmacistName ||
+      p.dispensedBy ||
+      p.verifiedBy ||
+      (p.pharmacist && p.pharmacist.name) ||
+      "";
+
+    const pharmacyName =
+      p.pharmacyName ||
+      p.pharmacyFacility ||
+      p.pharmacy ||
+      p.dispenseLocation ||
+      "";
+
     out.push({
       ...p,
       _doctorName: doctorName || "—",
       _facilityName: facilityName || "—",
+      _pharmacistName: pharmacistName || "—",
+      _pharmacyName: pharmacyName || "—",
     });
   }
   return out;
@@ -266,6 +281,10 @@ export default function PatientPage() {
   const [openIds, setOpenIds] = useState({});
   const [showEmailAlert, setShowEmailAlert] = useState(false);
 
+  // Pagination
+  const [page, setPage] = useState(1);
+  const PER_PAGE = 6;
+
   useEffect(() => {
     const id = resolveNidFromAnywhere();
     if (!id) {
@@ -292,6 +311,7 @@ export default function PatientPage() {
         setShowEmailAlert(!found.data.email);
 
         setRx(pres);
+        setPage(1); // reset page when data changes
       } catch (e) {
         setErr(e?.message || String(e));
       } finally {
@@ -303,43 +323,141 @@ export default function PatientPage() {
   const fullName = useMemo(() => patient?.name || "-", [patient]);
   const toggleOpen = (id) => setOpenIds((s) => ({ ...s, [id]: !s[id] }));
 
-  return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
-      {showEmailAlert && (
-  <div
-    style={{
-      display: "flex",
-      justifyContent: "center",
-      background: "transparent",
-      marginTop: 0, 
-      paddingTop: 0,
-    }}
-  >
+  // ✅ زر My Profile يفتح مودال PShell عن طريق حدث Window
+  const openProfile = () => window.dispatchEvent(new Event("openPatientProfile"));
+
+  // Pagination derived values
+  const total = rx.items.length;
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const startIdx = (safePage - 1) * PER_PAGE;
+  const endIdx = Math.min(startIdx + PER_PAGE, total);
+  const pageItems = rx.items.slice(startIdx, endIdx);
+
+  // Pagination bar (will be pinned to bottom via flex)
+  const PaginationBar = () => (
     <div
       style={{
-        background: "#fff5cc",
-        color: "#8a6d3b",
-        border: "1px solid #ffe8a1",
-        borderRadius: 12, 
-        padding: "12px 24px",
-        marginTop: 12,
-        maxWidth: 1000,
-        width: "90%", 
-        textAlign: "center",
-        fontWeight: 500,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        marginTop: 28,
       }}
     >
-      ⚠️ You haven’t added an email address yet. <br />
-      Please add your email from{" "}
-      <span style={{ fontWeight: 700, color: TD.brand.primary }}>My Profile</span>{" "}
-      to activate your account and receive notifications.
+      <div style={{ color: TD.brand.ink }}>
+        Showing <b>{pageItems.length}</b> out of <b>{total}</b> prescriptions
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ color: TD.brand.sub }}>
+          Page <b>{safePage}</b> of <b>{totalPages}</b>
+        </div>
+
+        <button
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={safePage <= 1}
+          style={{
+            border: "1px solid #e5e7eb",
+            background: safePage <= 1 ? "#f3f4f6" : "#ffffff",
+            color: safePage <= 1 ? "#9ca3af" : "#374151",
+            padding: "8px 14px",
+            borderRadius: 12,
+            cursor: safePage <= 1 ? "not-allowed" : "pointer",
+          }}
+        >
+          ← Prev
+        </button>
+
+        <button
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          disabled={safePage >= totalPages}
+          style={{
+            background: TD.brand.primary,
+            color: "white",
+            border: "none",
+            padding: "8px 16px",
+            borderRadius: 12,
+            cursor: safePage >= totalPages ? "not-allowed" : "pointer",
+            opacity: safePage >= totalPages ? 0.6 : 1,
+            fontWeight: 700,
+          }}
+        >
+          Next →
+        </button>
+      </div>
     </div>
-  </div>
-)}
+  );
 
+  return (
+    // ===== Page wrapper as flex column to pin pagination to bottom =====
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#f8fafc",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {/* Email alert (optional) */}
+      {showEmailAlert && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            background: "transparent",
+            marginTop: 0,
+            paddingTop: 0,
+          }}
+        >
+          <div
+            style={{
+              background: "#fff5cc",
+              color: "#8a6d3b",
+              border: "1px solid #ffe8a1",
+              borderRadius: 12,
+              padding: "12px 24px",
+              marginTop: 12,
+              maxWidth: 1000,
+              width: "90%",
+              textAlign: "center",
+              fontWeight: 500,
+            }}
+          >
+            ⚠️ You haven’t added an email address yet. <br />
+            Please add your email from{" "}
+            <button
+              type="button"
+              onClick={openProfile}
+              style={{
+                fontWeight: 800,
+                color: TD.brand.primary,
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
+              aria-label="Open My Profile"
+            >
+              My Profile
+            </button>{" "}
+            to activate your account and receive notifications.
+          </div>
+        </div>
+      )}
 
-
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: 20 }}>
+      {/* ===== Main content container grows, pagination sits at bottom ===== */}
+      <div
+        style={{
+            maxWidth: 1120,
+            margin: "0 auto",
+            padding: "28px 24px",
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            flex: 1, // take remaining height
+          }}
+      >
         {loading && <div>Loading...</div>}
         {!loading && err && <div style={{ color: "red" }}>{err}</div>}
 
@@ -348,191 +466,180 @@ export default function PatientPage() {
             <WelcomeHeader name={fullName} />
             <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Prescriptions</h2>
 
-            {!rx.items.length && (
-              <div style={{ color: "#6b7280", fontSize: 14, marginBottom: 8 }}>
-                No prescriptions found for this patient.
-                {rx.error ? ` (${rx.error})` : ""}
-              </div>
-            )}
+            {/* Grid: two relaxed columns */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(460px, 1fr))",
+                columnGap: 28,
+                rowGap: 28,
+                alignItems: "start",
+                justifyItems: "stretch",
+              }}
+            >
+              {pageItems.map((p) => {
+                const status = computeStatus(p);
+                const createdDate = fmtDate(p.createdAt);
+                const createdFull = fmtDateTime(p.createdAt);
+                const dispensedAt = p.dispensedAt || p.dispensedOn || p.fulfilledAt || null;
+                const isOpen = !!openIds[p.id];
 
-            {rx.items.map((p) => {
-              const status = computeStatus(p);
-              const createdDate = fmtDate(p.createdAt);
-              const createdFull = fmtDateTime(p.createdAt);
-              const isOpen = !!openIds[p.id];
+                const facility = p._facilityName || "—";
+                const doctor = p._doctorName || "—";
+                const pharmacist = p._pharmacistName || "—";
+                const pharmacy = p._pharmacyName || "—";
 
-              const facility = p._facilityName || "—";
-              const doctor = p._doctorName || "—";
+                const medTitle = p.medicineLabel || p.micineName || p.medicineName || "Prescription";
+                const rxNumber =
+                  p.prescriptionID ||
+                  p.prescriptionId ||
+                  p.rxNumber ||
+                  p.prescriptionNumber ||
+                  p.id;
 
-              const medTitle = p.medicineLabel || p.micineName || p.medicineName || "Prescription";
-              const rxNumber =
-                p.prescriptionID ||
-                p.prescriptionId ||
-                p.rxNumber ||
-                p.prescriptionNumber ||
-                p.id;
+                const statusStyles =
+                  status === "Dispensed"
+                    ? { bg: TD.brand.successBg, text: TD.brand.successText, border: TD.brand.successBorder }
+                    : { bg: TD.brand.dangerBg, text: TD.brand.dangerText, border: TD.brand.dangerBorder };
 
-              const statusStyles =
-                status === "Dispensed"
-                  ? { bg: TD.brand.successBg, text: TD.brand.successText, border: TD.brand.successBorder }
-                  : { bg: TD.brand.dangerBg, text: TD.brand.dangerText, border: TD.brand.dangerBorder };
-
-              return (
-                <div
-                  key={p.id}
-                  style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 16,
-                    overflow: "hidden",
-                    background: "#fff",
-                    marginBottom: 18,
-                  }}
-                >
-                  {/* Header */}
+                return (
                   <div
+                    key={p.id}
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "10px 16px",
-                      background: "#ffffff",
-                      borderBottom: "1px solid #e5e7eb",
-                      borderTopLeftRadius: 16,
-                      borderTopRightRadius: 16,
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 16,
+                      background: "#fff",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                      overflow: "hidden",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <img
-                        src="/Images/TrustDose_logo.png"
-                        alt="TrustDose Logo"
-                        style={{ height: 100, objectFit: "contain" }}
-                      />
-                      <div
-                        style={{
-                          color: "#000",
-                          borderRadius: 999,
-                          padding: "10px 16px",
-                          fontWeight: 700,
-                        }}
-                      >
-                        Medical Prescription
-                      </div>
-                    </div>
-
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#000" }}>
-                      Date issued: <span>{createdDate}</span>
-                    </div>
-                  </div>
-
-                  {/* Summary */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto",
-                      gap: 12,
-                      padding: 16,
-                      alignItems: "center",
-                      borderBottom: isOpen ? "1px solid #e5e7eb" : "none",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                      <div
-                        style={{
-                          background: statusStyles.bg,
-                          color: statusStyles.text,
-                          border: `1px solid ${statusStyles.border}`,
-                          padding: "4px 10px",
-                          borderRadius: 999,
-                          fontSize: 12,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {status}
-                      </div>
-
-                      <div style={{ color: TD.brand.sub, fontSize: 14 }}>
-                        Prescription No.:{" "}
-                        <span style={{ color: TD.brand.ink, fontWeight: 700 }}>{rxNumber}</span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => toggleOpen(p.id)}
+                    {/* Header */}
+                    <div
                       style={{
-                        background: TD.brand.primary,
-                        color: "white",
-                        border: "none",
-                        padding: "8px 14px",
-                        borderRadius: 10,
-                        fontWeight: 700,
-                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "10px 16px",
+                        borderBottom: "1px solid #e5e7eb",
                       }}
                     >
-                      {isOpen ? "Hide details" : "View details"}
-                    </button>
-                  </div>
-
-                  {/* Details */}
-                  {isOpen && (
-                    <div style={{ display: "grid", gap: 12, padding: 16, background: "#fff" }}>
-                      <div style={{ fontWeight: 700, color: "#374151", marginBottom: 4 }}>
-                        Prescription Details
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <img src="/Images/TrustDose_logo.png" alt="TrustDose Logo" style={{ height: 28 }} />
+                        <div style={{ fontWeight: 700, color: "#000" }}>Medical Prescription</div>
                       </div>
-
-                      <Row label="Patient Name" value={fullName} />
-                      <Row label="National ID" value={maskNid(p.patientNationalID || p.nationalID || p.nid)} />
-                      <Row label="Healthcare Facility" value={facility} />
-                      <Row label="Doctor Name" value={doctor} />
-                      <Row label="Date & Time Consultation" value={createdFull} />
-
-                      <div
-                        style={{
-                          marginTop: 10,
-                          paddingTop: 10,
-                          borderTop: "1px dashed #e5e7eb",
-                          display: "grid",
-                          gap: 6,
-                        }}
-                      >
-                        <div style={{ fontWeight: 600, color: "#374151", marginBottom: 6 }}>
-                          Medicine Name: <span style={{ fontWeight: 700 }}>{medTitle}</span>
-                        </div>
-                        <Row label="Dosage" value={p.dosage || p.dose || "—"} />
-                        <Row label="Frequency" value={p.frequency || p.timesPerDay || "—"} />
-                        <Row label="Duration" value={p.durationDays ?? "—"} />
-
-                        {p.sensitivity && (
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <div style={{ color: "#6b7280", width: 220 }}>Sensitivity</div>
-                            <div
-                              style={{
-                                fontSize: 13,
-                                padding: "4px 10px",
-                                borderRadius: 999,
-                                fontWeight: 700,
-                                border: "1px solid",
-                                borderColor:
-                                  p.sensitivity === "Sensitive" ? TD.brand.dangerBorder : TD.brand.successBorder,
-                                background:
-                                  p.sensitivity === "Sensitive" ? TD.brand.dangerBg : TD.brand.successBg,
-                                color:
-                                  p.sensitivity === "Sensitive" ? TD.brand.dangerText : TD.brand.successText,
-                              }}
-                            >
-                              {p.sensitivity === "Sensitive"
-                                ? "Sensitive — (Delivery)"
-                                : "Non-Sensitive — (Pickup)"}
-                            </div>
-                          </div>
-                        )}
-
-                        {p.notes && <Row label="Notes" value={p.notes} />}
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#000" }}>
+                        Date issued: <span>{createdDate}</span>
                       </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+
+                    {/* Summary */}
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr auto",
+                        gap: 12,
+                        padding: "14px 16px",
+                        alignItems: "center",
+                        borderBottom: isOpen ? "1px solid #e5e7eb" : "none",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <div
+                          style={{
+                            background: statusStyles.bg,
+                            color: statusStyles.text,
+                            border: `1px solid ${statusStyles.border}`,
+                            padding: "3px 9px",
+                            borderRadius: 999,
+                            fontSize: 12,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {status}
+                        </div>
+                        <div style={{ color: TD.brand.sub, fontSize: 14 }}>
+                          Prescription No.:{" "}
+                          <span style={{ color: TD.brand.ink, fontWeight: 700 }}>{rxNumber}</span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => toggleOpen(p.id)}
+                        style={{
+                          background: TD.brand.primary,
+                          color: "white",
+                          border: "none",
+                          padding: "7px 12px",
+                          borderRadius: 10,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {isOpen ? "Hide details" : "View details"}
+                      </button>
+                    </div>
+
+                    {/* Details */}
+                    {isOpen && (
+                      <div style={{ display: "grid", gap: 12, padding: 16 }}>
+                        <div style={{ fontWeight: 700, color: "#374151" }}>Prescription Details</div>
+
+                        <Row label="Patient Name" value={fullName} />
+                        <Row label="National ID" value={maskNid(p.patientNationalID || p.nationalID || p.nid)} />
+                        <Row label="Healthcare Facility" value={facility} />
+                        <Row label="Doctor Name" value={doctor} />
+                        <Row label="Pharmacist Name" value={pharmacist} />
+                        <Row label="Pharmacy Name" value={pharmacy} />
+                        <Row label="Dispensed At" value={dispensedAt ? fmtDateTime(dispensedAt) : "—"} />
+                        <Row label="Date & Time Consultation" value={createdFull} />
+
+                        <div style={{ borderTop: "1px dashed #e5e7eb", paddingTop: 10 }}>
+                          <div style={{ fontWeight: 600, color: "#374151", marginBottom: 6 }}>
+                            Medicine Name: <span style={{ fontWeight: 700 }}>{medTitle}</span>
+                          </div>
+                          <Row label="Dosage" value={p.dosage || p.dose || "—"} />
+                          <Row label="Frequency" value={p.frequency || p.timesPerDay || "—"} />
+                          <Row label="Duration" value={p.durationDays ?? "—"} />
+
+                          {p.sensitivity && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div style={{ color: "#6b7280", width: 220 }}>Sensitivity</div>
+                              <div
+                                style={{
+                                  fontSize: 13,
+                                  padding: "4px 10px",
+                                  borderRadius: 999,
+                                  fontWeight: 700,
+                                  border: "1px solid",
+                                  borderColor:
+                                    p.sensitivity === "Sensitive" ? TD.brand.dangerBorder : TD.brand.successBorder,
+                                  background:
+                                    p.sensitivity === "Sensitive" ? TD.brand.dangerBg : TD.brand.successBg,
+                                  color:
+                                    p.sensitivity === "Sensitive" ? TD.brand.dangerText : TD.brand.successText,
+                                }}
+                              >
+                                {p.sensitivity === "Sensitive"
+                                  ? "Sensitive — (Delivery)"
+                                  : "Non-Sensitive — (Pickup)"}
+                              </div>
+                            </div>
+                          )}
+
+                          {p.notes && <Row label="Notes" value={p.notes} />}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Spacer pushes pagination to the very bottom when content is short */}
+            <div style={{ flex: 1 }} />
+
+            {/* Bottom pagination (always at page end) */}
+            <PaginationBar />
           </>
         )}
       </div>
