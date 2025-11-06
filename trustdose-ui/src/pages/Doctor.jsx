@@ -13,7 +13,7 @@ import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "luci
 import PRESCRIPTION from "../contracts/Prescription.json";
 
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
-const CONTRACT_ADDRESS = "0x0B1729c693bF73134ceF68bB1Fe70B94e76a3075";
+const CONTRACT_ADDRESS = "0x3D6d8545F5bfd8d3D85C2EaEcC12036bb63f8E21";
 
 const OTHER_MAX = 20; 
 const LIMITS = Object.freeze({
@@ -526,11 +526,12 @@ export default function Doctor() {
                   onBlur={() => setMcTouched(true)}
                 />
                 <div className="mt-1 flex items-center justify-between text-xs">
-                  <span className="text-gray-500">{`${medicalCondition.length}/${LIMITS.medicalCondition.max}`}</span>
-                  {mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min && (
-                    <span className="text-rose-600">Please enter at least {LIMITS.medicalCondition.min} characters.</span>
-                  )}
-                </div>
+                {mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min && (
+                  <span className="text-rose-600">Please enter at least {LIMITS.medicalCondition.min} characters.</span>
+                )}
+                <span className="text-gray-500">{`${medicalCondition.length}/${LIMITS.medicalCondition.max}`}</span>
+              </div>
+
               </div>
 
               <div className="mb-4">

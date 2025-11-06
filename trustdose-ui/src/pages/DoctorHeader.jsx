@@ -1,6 +1,6 @@
 // src/pages/DoctorHeader.jsx
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
@@ -146,7 +146,9 @@ function AlertBanner({ children }) {
 export default function DoctorHeader() {
   const location = useLocation();
   const navigate = useNavigate();
-  const isDoctorPage = location.pathname.startsWith("/doctor");
+  const isDoctorPage =
+    location.pathname.startsWith("/doctor") ||
+    location.pathname.startsWith("/prescriptions");
 
   const [open, setOpen] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
@@ -198,29 +200,25 @@ export default function DoctorHeader() {
       {/* Alerts */}
       {showEmailAlert && (
         <AlertBanner>
-          ⚠️ You haven’t added an email address yet. <br />
-          Please add your email from{" "}
+          ⚠️ Verify your email now — your temporary doctor password expires in 24h.{" "}
           <button
             onClick={() => setShowAccount(true)}
             style={{ fontWeight: 700, color: C.primary }}
           >
-            My Profile
-          </button>{" "}
-          to activate your account.
+            Open My Profile
+          </button>
         </AlertBanner>
       )}
 
       {showResetAlert && (
         <AlertBanner>
-          ⚠️ You need to set your password. <br />
-          Please open{" "}
+          ⚠️ Set your password now to keep access — temporary access ends in 24h.{" "}
           <button
             onClick={() => setShowAccount(true)}
             style={{ fontWeight: 700, color: C.primary }}
           >
-            My Profile
-          </button>{" "}
-          and change your password to continue.
+            Open My Profile
+          </button>
         </AlertBanner>
       )}
 
@@ -306,64 +304,75 @@ function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
 function Row({ label, value }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-gray-500">{label}</span>
+      <span className="text-gray-500 font-medium">{label}</span>
       <span className="font-medium text-gray-800 text-right">{value}</span>
     </div>
   );
 }
 
 /* =========================
-   Account modal
+   Account modal (EN + tidy layout)
    ========================= */
 function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   const [phone, setPhone] = useState(doctor?.phone || "");
+  const [initialPhone, setInitialPhone] = useState(doctor?.phone || "");
   const [phoneInfo, setPhoneInfo] = useState({ ok: false, reason: "", normalized: "" });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [msgType, setMsgType] = useState(""); // success | error | ""
+
+  // NEW: edit toggle + autofocus
+  const [editingPhone, setEditingPhone] = useState(false);
+  const phoneRef = useRef(null);
+  useEffect(() => { if (editingPhone) setTimeout(() => phoneRef.current?.focus(), 0); }, [editingPhone]);
+
+  useEffect(() => {
+    setPhone(doctor?.phone || "");
+    setInitialPhone(doctor?.phone || "");
+  }, [doctor?.phone]);
 
   useEffect(() => setPhoneInfo(validateAndNormalizePhone(phone)), [phone]);
+
   const canSave = phoneInfo.ok && !saving;
+  const changed = phone !== initialPhone;
+
+  // ESC closes modal
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose?.(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function save() {
     const pInfo = validateAndNormalizePhone(phone);
-    if (!pInfo.ok) {
-      setMsg(pInfo.reason || "Invalid phone.");
-      return;
-    }
-    if (!doctorDocId) {
-      setMsg("Doctor record not found.");
-      return;
-    }
+    if (!pInfo.ok) { setMsgType("error"); setMsg(pInfo.reason || "Invalid phone."); return; }
+    if (!doctorDocId) { setMsgType("error"); setMsg("Doctor record not found."); return; }
     try {
-      setSaving(true);
-      setMsg("");
-      const payload = { phone: pInfo.normalized, updatedAt: new Date(), phoneLocal: deleteField() };
+      setSaving(true); setMsg(""); setMsgType("");
+      const payload = { phone: pInfo.normalized, updatedAt: serverTimestamp(), phoneLocal: deleteField() };
       await updateDoc(doc(db, "doctors", doctorDocId), payload);
+      setInitialPhone(payload.phone);
       onSaved?.({ phone: payload.phone });
-      setMsg("Saved ✓");
-      setTimeout(() => onClose?.(), 600);
+      setMsgType("success"); setMsg("Saved ✓");
+      setEditingPhone(false); // hide input after success
+      setTimeout(() => { setMsg(""); setMsgType(""); }, 1500);
     } catch (e) {
-      setMsg(e?.message || "Failed to save.");
+      setMsgType("error"); setMsg(e?.message || "Failed to save.");
     } finally {
       setSaving(false);
     }
   }
 
-  // ====== NEW: Email uniqueness check helper ======
+  // Email helper
   async function isDoctorEmailTaken(emailLower, selfId) {
-    const q1 = query(
-      collection(db, "doctors"),
-      where("email", "==", emailLower),
-      fsLimit(1)
-    );
+    const q1 = query(collection(db, "doctors"), where("email", "==", emailLower), fsLimit(1));
     const snap = await getDocs(q1);
     if (snap.empty) return false;
     const doc0 = snap.docs[0];
-    // allow same doc to re-send verify to the same email (if already set on self)
     return doc0.id !== selfId;
   }
 
-  // Email
+  // Email state
   const [emailInput, setEmailInput] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
@@ -374,17 +383,10 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       setEmailMsg("");
       const raw = String(emailInput || "").trim().toLowerCase();
       const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
-      if (!ok) {
-        setEmailMsg("Please enter a valid email.");
-        return;
-      }
+      if (!ok) { setEmailMsg("Please enter a valid email."); return; }
 
-      // ====== NEW: Prevent duplicates within doctors collection ======
       const taken = await isDoctorEmailTaken(raw, String(doctorDocId || ""));
-      if (taken) {
-        setEmailMsg("This email is already used by another doctor. Please use a different email.");
-        return;
-      }
+      if (taken) { setEmailMsg("This email is already used by another doctor. Please use a different email."); return; }
 
       const BASE = window.location.origin;
       const params = new URLSearchParams({
@@ -399,7 +401,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       await sendSignInLinkToEmail(getAuth(), raw, settings);
 
       localStorage.setItem("td_email_pending", JSON.stringify({ email: raw, ts: Date.now() }));
-      setEmailMsg("A verification link has been sent to your email. Open it, then return to the app.");
+      setEmailMsg("Verification link sent! Check your email.");
     } catch (e) {
       setEmailMsg(`Firebase: ${e?.code || e?.message || "Unable to send verification link."}`);
     } finally {
@@ -412,81 +414,120 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       <div className="fixed inset-0 bg-black/40 z-50" onClick={onClose} />
       <div className="fixed inset-0 z-50 grid place-items-center px-4 overflow-y-auto py-8">
         <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border p-5">
+          {/* Title */}
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-semibold" style={{ color: C.ink }}>My Profile</h3>
             <button onClick={onClose} className="h-8 w-8 grid place-items-center rounded-lg hover:bg-gray-100" aria-label="Close">✕</button>
           </div>
 
-          <div className="space-y-3 text-sm">
-            <Row label="Name" value={doctor?.name || "—"} />
-            <Row label="Health Facility" value={doctor?.healthFacility || "—"} />
-            <Row label="Speciality" value={(doctor?.speciality || "—").trim()} />
-            <Row label="Doctor ID" value={doctor?.DoctorID || "—"} />
-            <Row label="License No." value={doctor?.licenseNumber || "—"} />
-
-            {/* Phone */}
-            <div>
-              <label className="block text-sm text-gray-700 mb-1">
-                Phone <span className="text-rose-600">*</span>
-              </label>
-              <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="05xxxxxxxx or +9665xxxxxxxx (no spaces)"
-                inputMode="tel"
-                pattern="[+0-9]*"
-                dir="ltr"
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
-                style={{ outlineColor: C.primary }}
-                onKeyDown={(e) => {
-                  if (e.key === " " || /[٠-٩۰-۹]/.test(e.key)) e.preventDefault();
-                }}
-              />
-              <div style={{ marginTop: 6, fontSize: 12 }}>
-                {!phone && <span style={{ color: "#888" }}>Enter phone starting with 05 or +9665</span>}
-                {phone && !phoneInfo.ok && <span style={{ color: "#b91c1c" }}>{phoneInfo.reason}</span>}
+          <div className="space-y-5 text-sm" aria-live="polite">
+            {/* Personal Details */}
+            <div className="rounded-xl border bg-white p-4">
+              <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>Personal Info</div>
+              <div className="space-y-2">
+                <Row label="Name" value={doctor?.name || "—"} />
+                <Row label="Health Facility" value={doctor?.healthFacility || "—"} />
+                <Row label="Speciality" value={(doctor?.speciality || "—").trim()} />
+                <Row label="Doctor ID" value={doctor?.DoctorID || "—"} />
+                <Row label="License No." value={doctor?.licenseNumber || "—"} />
               </div>
             </div>
 
-            {/* Email */}
-            <div className="mt-3">
-              <label className="block text-sm text-gray-700 mb-1">Email</label>
+            {/* Contact Info */}
+            <div className="rounded-xl border bg-white p-4">
+              <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>Contact Info</div>
 
-              {hasEmail ? (
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-gray-800">{doctor.email}</span>
-                  <span className="text-[12px] px-2 py-0.5 rounded-full border" style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}>
-                    Verified
-                  </span>
+              {/* Phone block */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-gray-700 font-medium">Phone</span>
+                  {!editingPhone && (
+                    <button
+                      onClick={() => setEditingPhone(true)}
+                      className="px-3 py-1.5 rounded-lg text-white"
+                      style={{ background: C.primary }}
+                    >
+                      Update
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <>
-                  <div className="flex gap-2">
+
+                {!editingPhone ? (
+                  <div className="font-medium text-gray-900">{initialPhone || "—"}</div>
+                ) : (
+                  <div className="flex items-center gap-2">
                     <input
-                      className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
+                      ref={phoneRef}
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="05xxxxxxxx or +9665xxxxxxxx (no spaces)"
+                      inputMode="tel"
+                      pattern="[+0-9]*"
+                      dir="ltr"
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
                       style={{ outlineColor: C.primary }}
-                      placeholder="name@example.com"
-                      value={emailInput}
-                      onChange={(e) => setEmailInput(e.target.value)}
-                      inputMode="email"
+                      onKeyDown={(e) => {
+                        if (e.key === " " || /[٠-٩۰-۹]/.test(e.key)) e.preventDefault();
+                      }}
                     />
                     <button
-                      onClick={sendVerifyLink}
-                      disabled={emailLoading}
+                      onClick={save}
+                      disabled={!canSave}
                       className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
                       style={{ background: C.primary }}
                     >
-                      {emailLoading ? "Sending..." : "Send Verify"}
+                      {saving ? "Saving..." : (changed ? "Save Changes" : "Save")}
                     </button>
                   </div>
+                )}
 
-                  {!!emailMsg && (
-                    <div className="mt-2 text-sm" style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : (emailMsg.includes("already used") ? "#991B1B" : "#166534") }}>
-                      {emailMsg}
+                {/* messages (no 'No changes yet' line anymore) */}
+                {msgType === "success" && !!msg && (
+                  <div className="text-green-700 font-medium mt-2">{msg}</div>
+                )}
+                {msgType === "error" && !!msg && (
+                  <div className="text-rose-700 mt-2">{msg}</div>
+                )}
+              </div>
+
+              {/* Email block */}
+              <div>
+                <div className="mb-1 text-gray-700 font-medium">Email</div>
+                {hasEmail ? (
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-800">{doctor.email}</span>
+                    <span className="text-[12px] px-2 py-0.5 rounded-full border" style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}>
+                      Verified
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
+                        style={{ outlineColor: C.primary }}
+                        placeholder="name@example.com"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        inputMode="email"
+                      />
+                      <button
+                        onClick={sendVerifyLink}
+                        disabled={emailLoading}
+                        className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
+                        style={{ background: C.primary }}
+                      >
+                        {emailLoading ? "Sending..." : "Send Verify"}
+                      </button>
                     </div>
-                  )}
-                </>
-              )}
+                    {!!emailMsg && (
+                      <div className="mt-2 text-sm" style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : (emailMsg.includes("already used") ? "#991B1B" : "#166534") }}>
+                        {emailMsg}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Password (only if email exists) */}
@@ -497,20 +538,6 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                 onSaved={onSaved}
               />
             )}
-
-            {!!msg && <div className="text-sm">{msg}</div>}
-          </div>
-
-          <div className="mt-4 flex items-center justify-end gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg border">Cancel</button>
-            <button
-              onClick={save}
-              disabled={!canSave}
-              className="px-4 py-2 rounded-lg text-white disabled:opacity-50"
-              style={{ background: C.primary }}
-            >
-              {saving ? "Saving..." : "Save"}
-            </button>
           </div>
         </div>
       </div>
@@ -519,7 +546,10 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
 }
 
 /* =========================
-   Password Reset
+   Password Reset (unchanged logic)
+   ========================= */
+/* =========================
+   Password Reset (fixed)
    ========================= */
 function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
   const [showOld, setShowOld] = useState(false);
@@ -562,7 +592,6 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
     return { score, label, color, width, hasLower, hasUpper, hasDigit, hasSymbol, len8 };
   }
   const st = passwordStrength(newPass);
-
   const passOk = st.hasLower && st.hasUpper && st.hasDigit && st.len8;
 
   function Req({ ok, label }) {
@@ -612,7 +641,7 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
 
       const data = snap.data();
 
-      // 1) verify current with smart verifier
+      // 1) verify current
       const v = await verifyCurrentPassword(data, oldPass);
       if (!v.ok) {
         setMsg("Current password is incorrect");
@@ -633,13 +662,9 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
         passwordHash: newHash,
         passwordUpdatedAt: serverTimestamp(),
         requirePasswordChange: false,
-
-        // invalidate tempPassword
         "tempPassword.valid": false,
         "tempPassword.expiresAtMs": 0,
         "tempPassword.value": deleteField(),
-
-        // remove any legacy/plain fields
         password: deleteField(),
       });
 
@@ -660,7 +685,7 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
   };
 
   return (
-    <div className="mt-6 pt-6 border-t border-gray-200">
+    <div className="rounded-xl border bg-white p-4">
       <div className="flex items-center gap-2 mb-4">
         <Lock size={18} style={{ color: C.primary }} />
         <h4 className="font-semibold text-gray-800">Change Password</h4>
@@ -791,7 +816,7 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
             !newPass ||
             !confirmPass ||
             newPass !== confirmPass ||
-            !passOk
+            !(newPass.length >= 8 && /[a-z]/.test(newPass) && /[A-Z]/.test(newPass) && /\d/.test(newPass))
           }
           className="w-full py-2.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-[1.02]"
           style={{ background: C.primary }}

@@ -12,8 +12,8 @@ import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
-const PRESCRIPTION_ADDRESS = "0x0B1729c693bF73134ceF68bB1Fe70B94e76a3075";
-const DISPENSE_ADDRESS     = "0xB8BAd3518d33AE4A9e4781d1331d2Ba7DAF190F4";
+const PRESCRIPTION_ADDRESS = "0x3D6d8545F5bfd8d3D85C2EaEcC12036bb63f8E21";
+const DISPENSE_ADDRESS     = "0x3E00E10Bc1edc20a8e23F1e8ac2963074783dB12";
 
 // ===== Pagination size =====
 const PAGE_SIZE = 6;
@@ -141,7 +141,6 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
   const [infoMsg, setInfoMsg] = useState("");
   const [validationMsg, setValidationMsg] = useState("");
 
-  // ===== Pagination state
   const [page, setPage] = useState(0);
 
   const [dispensingId, setDispensingId] = useState(null);
@@ -437,7 +436,6 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = results.slice(start, end);
 
-  // لو تغيّرت النتائج (بحث جديد)، نضمن الصفحة الأولى
   React.useEffect(() => setPage(0), [JSON.stringify(results)]);
 
   return (

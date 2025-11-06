@@ -23,7 +23,6 @@ function shortAddr(a) {
   return s.length > 10 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s;
 }
 
-// ✅ يدعم الدور + زر الصرف + حالة التحميل
 export default function PrescriptionsPage({ role = "doctor", onDispense, dispensingId }) {
   const location = useLocation();
   const state = location.state;
@@ -41,48 +40,7 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
   const [qText, setQText] = useState("");
   const [page, setPage] = useState(0);
 
-  const handleBack = () => {
-    navigate(pageRole === "pharmacy" ? "/pharmacy" : "/doctor", { replace: true });
-  };
-
-  useEffect(() => {
-    const selectors = [
-      "header button[aria-label*='menu' i]",
-      "header button[aria-label*='sidebar' i]",
-      "header [data-testid='sidebar-toggle']",
-      "header .menu-toggle",
-      "header .hamburger",
-      "header .lucide-menu",
-      "button#menuBtn",
-      "#menuBtn",
-    ];
-
-    const original = new Map();
-
-    const hideHamburger = () => {
-      selectors.forEach((sel) => {
-        document.querySelectorAll(sel).forEach((el) => {
-          const target = el.tagName === "svg" && el.closest("button") ? el.closest("button") : el;
-          if (!original.has(target)) original.set(target, target.style.display);
-          target.style.display = "none";
-        });
-      });
-    };
-
-    hideHamburger();
-    const obs = new MutationObserver(hideHamburger);
-    obs.observe(document.body, { childList: true, subtree: true });
-
-    return () => {
-      obs.disconnect();
-      original.forEach((val, el) => {
-        if (el) el.style.display = val || "";
-      });
-      original.clear();
-    };
-  }, []);
-  /* ===================================================== */
-
+  /* ===================== Resolve patient hash ===================== */
   useEffect(() => {
     (async () => {
       const sp = new URLSearchParams(location.search);
@@ -116,6 +74,7 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
     })();
   }, [location.search]);
 
+  /* ===================== Fetch prescriptions ===================== */
   useEffect(() => {
     if (!natHash) return;
     (async () => {
@@ -164,16 +123,30 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
   useEffect(() => setPage(0), [qText]);
   useEffect(() => setPage((p) => Math.min(p, pageCount - 1)), [pageCount]);
 
+  /* ===================== UI ===================== */
   return (
     <main className="mx-auto w-full max-w-6xl px-3 md:px-5 pt-5 pb-10 min-h-[90vh] flex flex-col">
-      <div className="flex items-center gap-4 mb-6">
-        <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 56, height: "auto" }} />
-        <h1 className="text-2xl font-bold" style={{ color: C.ink }}>
-          {pageRole === "pharmacy" ? "Prescriptions (Pharmacy)" : "Prescriptions"}{" "}
-          {patientName ? `for ${patientName}` : ""}
-        </h1>
+      {/* Back button in header area */}
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center gap-4">
+          <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 56, height: "auto" }} />
+          <h1 className="text-2xl font-bold" style={{ color: C.ink }}>
+            {pageRole === "pharmacy" ? "Prescriptions (Pharmacy)" : "Prescriptions"}{" "}
+            {patientName ? `for ${patientName}` : ""}
+          </h1>
+        </div>
+        <button
+          onClick={() =>
+            navigate(pageRole === "pharmacy" ? "/pharmacy" : "/doctor", { replace: true })
+          }
+          className="px-5 py-2.5 rounded-xl text-white font-medium shadow-sm transition-all hover:scale-[1.03]"
+          style={{ backgroundColor: C.primary }}
+        >
+          ← Back
+        </button>
       </div>
 
+      {/* Search bar */}
       <div className="bg-white border rounded-2xl p-5 mb-6 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke={C.primary} strokeWidth={2}>
@@ -182,28 +155,19 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
           <h2 className="text-lg font-semibold" style={{ color: C.ink }}>Search Prescriptions</h2>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3">
-          <input
-            className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:border-transparent transition-all"
-            style={{ outlineColor: C.primary }}
-            placeholder="Filter by medicine name…"
-            value={qText}
-            onChange={(e) => {
-              const onlyLetters = e.target.value.replace(/[^a-zA-Z]/g, "");
-              setQText(onlyLetters);
-            }}
-          />
-
-          <button
-            className="px-6 py-3 text-white rounded-xl font-medium shadow-sm transition-colors"
-            style={{ backgroundColor: C.primary }}
-            onClick={handleBack}
-          >
-            ← Back
-          </button>
-        </div>
+        <input
+          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:border-transparent transition-all"
+          style={{ outlineColor: C.primary }}
+          placeholder="Filter by medicine name…"
+          value={qText}
+          onChange={(e) => {
+            const onlyLetters = e.target.value.replace(/[^a-zA-Z]/g, "");
+            setQText(onlyLetters);
+          }}
+        />
       </div>
 
+      {/* List */}
       <div className="flex-1">
         {loading ? (
           <div className="text-gray-500 text-sm">Loading…</div>
@@ -211,7 +175,6 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
           <div className="text-gray-500 text-sm">No prescriptions found.</div>
         ) : (
           <>
-            {/* نفس تخطيط الطبيب: عمودين على الشاشات المتوسطة */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {pageItems.map((rx) => {
                 const prescriber = rx.doctorName ? `Dr. ${rx.doctorName}` : shortAddr(rx.doctorId);
@@ -226,7 +189,6 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
                     })
                   : "—";
 
-                // ✅ أهلية الصرف للصيدلية
                 const eligible =
                   pageRole === "pharmacy" &&
                   String(rx.sensitivity || "").toLowerCase() === "nonsensitive" &&
@@ -234,9 +196,8 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
                   Number.isFinite(rx.onchainId);
 
                 const isThisLoading =
-                  Boolean(dispensingId && (dispensingId === (rx.id || rx._docId)));
+                  Boolean(dispensingId && dispensingId === (rx.id || rx._docId));
 
-                // ✅ قيم إضافية للصيدلية
                 const rxId = rx.prescriptionID || rx.ref || rx.id || "—";
                 const patientLine = `${rx.patientName || "—"}${rx.nationalID ? " — " + String(rx.nationalID) : ""}`;
                 const doctorPhone = rx.doctorPhone || rx.phone || "-";
@@ -244,12 +205,10 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
                 return (
                   <div key={rx.id} className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between">
                     <div>
-                      {/* عنوان الدواء */}
                       <div className="text-lg font-bold text-slate-800 truncate">
                         {rx.medicineLabel || rx.medicineName || "—"}
                       </div>
 
-                      {/* ✅ معلومات إضافية للصيدلية */}
                       {pageRole === "pharmacy" && (
                         <>
                           <div className="text-sm text-slate-700 mt-1 font-semibold">
@@ -270,12 +229,12 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
 
                       <div className="text-sm text-slate-700 mt-1 font-semibold">
                         Dosage: <span className="font-normal">
-                          {rx.dosage || "—"} • {rx.frequency || "—"} • {rx.durationDays || rx.duration || "—"}
+                          {rx.dosage || rx.dose || "—"} • {rx.frequency || "—"} • {rx.durationDays || rx.duration || "—"}
                         </span>
                       </div>
 
                       <div className="text-sm text-slate-700 mt-2 font-semibold">
-                        Medical Condition: <span className="font-normal">{rx.medicalCondition || rx.reason || "—"}</span>
+                        Medical Condition: <span className="font-normal">{rx.medicalCondition || "—"}</span>
                       </div>
 
                       {rx.notes && (
@@ -285,12 +244,8 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
                       )}
                     </div>
 
-                    {/* ✅ زر الصرف للصيدلية (بدون سطر Sensitivity) */}
                     {pageRole === "pharmacy" && (
                       <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        {/* لا نظهر إلا حالة Dispensed */}
-                        
-
                         <button
                           onClick={() => onDispense?.(rx)}
                           disabled={!eligible || isThisLoading}
@@ -307,9 +262,10 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
                       </div>
                     )}
 
-<div className="text-right text-xs text-gray-500 mt-3">
-   created at {dateTime}
-</div>
+                 <div className="text-right text-xs text-gray-500 mt-3">
+                    Prescription created on {dateTime}
+                  </div>
+
                   </div>
                 );
               })}
@@ -318,6 +274,7 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
         )}
       </div>
 
+      {/* Pagination */}
       <div className="mt-auto pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-gray-100">
         <div className="text-sm text-gray-700">Showing {end} out of {total} prescriptions</div>
 

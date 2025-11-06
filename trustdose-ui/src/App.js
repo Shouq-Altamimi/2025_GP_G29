@@ -8,7 +8,7 @@ import DoctorHome from "./DoctorHome";
 
 // الطبيب
 import Doctor from "./pages/Doctor";
-import Shell from "./pages/DoctorHeader.jsx"; // يحتوي <Outlet/>
+import Shell from "./pages/DoctorHeader.jsx"; 
 
 // المريض
 import PShell from "./pages/PShell.jsx";
