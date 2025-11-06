@@ -263,7 +263,7 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
                     )}
 
                  <div className="text-right text-xs text-gray-500 mt-3">
-                    Prescription created on {dateTime}
+                    Prescription issued on {dateTime}
                   </div>
 
                   </div>

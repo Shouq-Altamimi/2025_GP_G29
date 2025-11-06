@@ -617,7 +617,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
                   </div>
 
                   <div className="text-right text-xs text-gray-500 mt-3">
-                    Prescription created on {dateTime}
+                    Prescription issued on {dateTime}
                   </div>
                 </div>
               );
