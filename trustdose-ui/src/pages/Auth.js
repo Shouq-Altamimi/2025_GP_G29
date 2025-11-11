@@ -394,12 +394,12 @@ export default function TrustDoseAuth() {
     try {
       setAdminMsg("");
       setAdminLoading(true);
-
+  
       if (!window.ethereum) {
         setAdminMsg("Please install MetaMask first.");
         return;
       }
-
+  
       const provider = new ethers.BrowserProvider(window.ethereum);
       const accounts = await provider.send("eth_requestAccounts", []);
       if (!accounts?.length) {
@@ -407,29 +407,30 @@ export default function TrustDoseAuth() {
         return;
       }
       const address = String(accounts[0]).toLowerCase();
-
+  
       setAdminMsg("Checking administrator privileges...");
-
+  
       const ref = doc(db, "admins", address);
       const snap = await getDoc(ref);
-
+  
       if (!snap.exists()) {
         setAdminMsg("⚠️This address is not registered as an administrator.");
         return;
       }
-
+  
       try {
         const signer = await provider.getSigner();
         const msg = `TrustDose Admin Login\nAddress: ${address}\nNonce: ${Date.now()}`;
         await signer.signMessage(msg);
       } catch {}
-
+  
       localStorage.setItem("userRole", "admin");
       localStorage.setItem("wallet", address);
       localStorage.setItem("userId", address);
-
+  
       setAdminMsg("✅ Logged in as administrator");
-      navigate("/admin", { replace: true });
+      // ⬇️ التوجيه مباشرة لصفحة الداشبورد
+      navigate("/admin/dashboard", { replace: true });
     } catch (e) {
       console.error(e);
       setAdminMsg("An error occurred while connecting to your wallet.");
@@ -437,7 +438,7 @@ export default function TrustDoseAuth() {
       setAdminLoading(false);
     }
   }
-
+  
   async function handleForgotPassword(e) {
     e.preventDefault();
     setForgotMsg("");

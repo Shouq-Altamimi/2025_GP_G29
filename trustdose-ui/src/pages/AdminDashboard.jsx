@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { X, LayoutDashboard, UserPlus, LogOut } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
 
@@ -152,9 +152,13 @@ async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPasswo
 }
 
 /* =========================
-   Sidebar (TrustDose style)
+   Sidebar (TrustDose style) + Active state
    ========================= */
 function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
+  const location = useLocation();
+  const go = (path) => { setOpen(false); onNav?.(path); };
+  const isActive = (path) => location.pathname === path;
+
   return (
     <>
       <div
@@ -184,12 +188,12 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
         </div>
 
         <nav className="px-3">
-          <SidebarItem onClick={() => { setOpen(false); onNav?.("/admin/dashboard"); }}>
+          <SidebarItem active={isActive("/admin/dashboard")} onClick={() => go("/admin/dashboard")}>
             <LayoutDashboard size={18} />
             <span>Dashboard</span>
           </SidebarItem>
 
-        <SidebarItem onClick={() => { setOpen(false); onNav?.("/admin"); }}>
+          <SidebarItem active={isActive("/admin")} onClick={() => go("/admin")}>
             <UserPlus size={18} />
             <span>Add Doctor</span>
           </SidebarItem>
@@ -203,11 +207,17 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
     </>
   );
 }
-function SidebarItem({ children, onClick, variant = "solid" }) {
+function SidebarItem({ children, onClick, variant = "solid", active = false }) {
   const base = "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
-  const styles = variant === "ghost" ? "text-white/90 hover:bg-white/10" : "bg-white/25 text-white hover:bg-white/35";
+  const styles = active
+    ? "bg-white text-[#5B3A70]"
+    : variant === "ghost"
+      ? "text-white/90 hover:bg-white/10"
+      : "bg-white/25 text-white hover:bg-white/35";
   return (
-    <button onClick={onClick} className={`${base} ${styles}`}>{children}</button>
+    <button onClick={onClick} className={`${base} ${styles}`} aria-current={active ? "page" : undefined}>
+      {children}
+    </button>
   );
 }
 
@@ -217,7 +227,6 @@ function SidebarItem({ children, onClick, variant = "solid" }) {
 const NAME_RE = /^[A-Za-z ]{3,}$/;
 const SPEC_RE = /^[A-Za-z ]{3,}$/;
 const LIC_RE  = /^[A-Za-z0-9]{10}$/; // exactly 10 alphanumeric
-const HEX_PARTIAL_RE = /^[0-9a-fA-Fx]*$/; // for typing, then normalized
 
 function validateLic(v) {
   if (!v) return { ok: false, err: "License number is required." };
@@ -275,9 +284,12 @@ function sanitizeHexLike(raw) {
 /* =========================
    UI helpers
    ========================= */
+/* تم تعديلها لإلغاء الأخضر عند النجاح وإبقاء المحايد */
 function fieldClasses(valid, dirty) {
-  if (!dirty) return "border-gray-200 focus:ring-[#B08CC1]";
-  return valid ? "border-green-500 focus:ring-green-300" : "border-rose-500 focus:ring-rose-300";
+  const neutral = "border-gray-200 focus:ring-[#B08CC1]";
+  if (!dirty) return neutral;              // قبل اللمس: محايد
+  if (!valid) return "border-rose-500 focus:ring-rose-300"; // خطأ: أحمر
+  return neutral;                          // صحيح: محايد (لا أخضر)
 }
 function ErrorMsg({ children }) {
   if (!children) return null;
