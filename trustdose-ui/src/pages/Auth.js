@@ -386,8 +386,9 @@ export default function TrustDoseAuth() {
     if (/^\d{10,12}$/.test(clean)) {
       return { coll: "patients", idFields: ["nationalID", "nationalId"], role: "patient" };
     }
-
-    return { coll: "logistics", idFields: ["companyName"], role: "logistics" };
+if (/^LG-\d{3}$/i.test(clean)) {
+  return { coll: "logistics", idFields: ["LogisticsID"], role: "logistics" };
+}
   }
 
   async function handleAdminMetaMaskLogin() {
@@ -471,6 +472,17 @@ export default function TrustDoseAuth() {
         } catch {}
       }
 
+if (!user && /^LG-\d{3}$/i.test(id)) {
+  try {
+    const snap = await getDocs(
+      query(collection(db, "logistics"), where("LogisticsID", "==", id))
+    );
+    if (!snap.empty) {
+      user = snap.docs[0].data();
+      userDocId = snap.docs[0].id;
+    }
+  } catch {}
+}
       if (!user) {
         for (const f of idFields) {
           try {
@@ -593,50 +605,82 @@ export default function TrustDoseAuth() {
       console.log('🔐 Verifying password for role:', role);
 
       let verified = false;
-      if (user?.tempPassword?.valid && user?.tempPassword?.value) {
-        if (!pass) { setMsg("Please enter your password."); return; }
-        if (String(pass) === String(user.tempPassword.value)) {
-          verified = true;
-        }
-      }
 
-      if (!verified && ("passwordHash" in user) && ("passwordSalt" in user)) {
-        if (!pass) { setMsg("Please enter your password."); return; }
+// 1) temp password
+if (!verified && user?.tempPassword?.valid && user?.tempPassword?.value) {
+  if (!pass) { setMsg("Please enter your password."); return; }
+  if (String(pass) === String(user.tempPassword.value)) {
+    verified = true;
+  } else {
+    setMsg("❌ ID or password incorrect.");
+    return;
+  }
+}
 
-        const stored = String(user.passwordHash);
-        const iter = Number(user.passwordIter) || 100_000;
+// 2) PBKDF2 hashing
+else if (!verified && ("passwordHash" in user) && ("passwordSalt" in user)) {
+  if (!pass) { setMsg("Please enter your password."); return; }
 
-        if (/^[a-f0-9]{64}$/i.test(stored)) {
-          const derivedHex = await pbkdf2Hex(pass, user.passwordSalt, iter);
-          verified = (derivedHex === stored);
-        } else if (/^[A-Za-z0-9+/=]+$/.test(stored)) {
-          const derivedB64 = await pbkdf2Hash(pass, user.passwordSalt, iter);
-          verified = (derivedB64 === stored);
-        }
+  const stored = String(user.passwordHash);
+  const iter = Number(user.passwordIter) || 100_000;
 
-        if (!verified) {
-          setMsg("❌ ID or password incorrect.");
-          return;
-        }
-      } else if (!verified && ("password" in user)) {
-        if (!pass) { setMsg("Please enter your password."); return; }
+  let derived = "";
+  if (/^[a-f0-9]{64}$/i.test(stored)) {
+    derived = await pbkdf2Hex(pass, user.passwordSalt, iter);
+  } else {
+    derived = await pbkdf2Hash(pass, user.passwordSalt, iter);
+  }
 
-        const storedPassword = String(user.password);
-        const isHashed = storedPassword.length === 64 && /^[a-f0-9]+$/i.test(storedPassword);
+  if (derived !== stored) {
+    setMsg("❌ ID or password incorrect.");
+    return;
+  }
 
-        if (isHashed) {
-          verified = await verifyPasswordSHA256(pass, storedPassword);
-        } else {
-          verified = (pass === storedPassword);
-        }
+  verified = true;
+}
 
-        if (!verified) {
-          setMsg("❌ ID or password incorrect.");
-          return;
-        }
-      } else if (!verified) {
-        console.warn("[Auth] user has no password fields.");
-      }
+// 3) Logistics SHA256
+else if (!verified && role === "logistics" && user.passwordHash) {
+  if (!pass) { setMsg("Please enter your password."); return; }
+
+  const ok = await verifyPasswordSHA256(pass, user.passwordHash);
+  if (!ok) {
+    setMsg("❌ ID or password incorrect.");
+    return;
+  }
+  verified = true;
+}
+
+// 4) Plain / sha256 password
+else if (!verified && ("password" in user)) {
+  if (!pass) { setMsg("Please enter your password."); return; }
+
+  const storedPassword = String(user.password);
+  const isHashed = storedPassword.length === 64 && /^[a-f0-9]+$/i.test(storedPassword);
+
+  let ok = false;
+  if (isHashed) {
+    ok = await verifyPasswordSHA256(pass, storedPassword);
+  } else {
+    ok = (pass === storedPassword);
+  }
+
+  if (!ok) {
+    setMsg("❌ ID or password incorrect.");
+    return;
+  }
+
+  verified = true;
+}
+
+// 5) No password fields
+else if (!verified) {
+  setMsg("❌ This account has no password.");
+  return;
+}
+
+
+      
 
       const displayName = user.name || user.companyName || id;
 
@@ -667,6 +711,7 @@ export default function TrustDoseAuth() {
       }
       else if (role === "pharmacy") navigate("/pharmacy", { replace: true });
       else if (role === "patient") navigate("/patient", { replace: true });
+      else if (role === "logistics") navigate("/logistics", { replace: true });
       else navigate("/", { replace: true });
     } catch (err) {
       console.error(err);
@@ -850,7 +895,7 @@ export default function TrustDoseAuth() {
                   return;
                 }
               }}
-              placeholder="DoctorID / PharmacyID / NationalID"
+              placeholder="DoctorID / PharmacyID / NationalID / LogisticID"
               style={inputBase}
               onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
               onBlur={(e) =>
