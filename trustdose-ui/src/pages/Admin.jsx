@@ -2,7 +2,17 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Users, Building2, Truck, Stethoscope, Search, X, LayoutDashboard, UserPlus, LogOut } from "lucide-react";
+import {
+  Users,
+  Building2,
+  Truck,
+  Stethoscope,
+  Search,
+  X,
+  LayoutDashboard,
+  UserPlus,
+  LogOut,
+} from "lucide-react";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
 import { collection, getDocs } from "firebase/firestore";
@@ -47,27 +57,43 @@ function Sidebar({ open, setOpen, onNav, onLogout }) {
         </div>
 
         <nav className="px-3">
+          {/* Dashboard = Admin console (patients tab) */}
           <button
-            onClick={() => { setOpen(false); onNav("/admin?tab=patients"); }}
+            onClick={() => {
+              setOpen(false);
+              onNav("/admin?tab=patients");
+            }}
             className={`w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium ${
-              isActive("/admin?tab=patients") ? "bg-white text-[#5B3A70]" : "bg-white/25 text-white hover:bg-white/35"
+              isActive("/admin?tab=patients")
+                ? "bg-white text-[#5B3A70]"
+                : "bg-white/25 text-white hover:bg-white/35"
             }`}
           >
-            <LayoutDashboard size={18} /><span>Dashboard</span>
+            <LayoutDashboard size={18} />
+            <span>Dashboard</span>
           </button>
 
+          {/* Add Doctor page (مسار الأدمِن الأصلي) */}
           <button
-            onClick={() => { setOpen(false); onNav("/admin"); }}
+            onClick={() => {
+              setOpen(false);
+              onNav("/admin");
+            }}
             className="w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium bg-white/25 text-white hover:bg-white/35"
           >
-            <UserPlus size={18} /><span>Add Doctor</span>
+            <UserPlus size={18} />
+            <span>Add Doctor</span>
           </button>
 
           <button
-            onClick={() => { setOpen(false); onLogout?.(); }}
+            onClick={() => {
+              setOpen(false);
+              onLogout?.();
+            }}
             className="w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium text-white/90 hover:bg-white/10"
           >
-            <LogOut size={18} /><span>Logout</span>
+            <LogOut size={18} />
+            <span>Logout</span>
           </button>
         </nav>
       </aside>
@@ -92,6 +118,7 @@ function StatCard({ title, count, icon: Icon, accent }) {
     </div>
   );
 }
+
 function Pills({ tabs, active, onChange }) {
   return (
     <div className="flex flex-wrap gap-2 mt-7">
@@ -111,6 +138,7 @@ function Pills({ tabs, active, onChange }) {
     </div>
   );
 }
+
 function SectionHeader({ title, search, setSearch }) {
   return (
     <div className="flex items-center justify-between mb-3">
@@ -127,6 +155,7 @@ function SectionHeader({ title, search, setSearch }) {
     </div>
   );
 }
+
 function Pager({ page, pageCount, total, pageSize, setPage }) {
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);
@@ -169,27 +198,53 @@ function fmtDate(ts) {
   try {
     if (!ts) return "—";
     const d = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
-    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
-  } catch { return "—"; }
+    return d.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+    });
+  } catch {
+    return "—";
+  }
 }
+
 function mask(str, head = 6, tail = 4) {
   const s = String(str || "");
   if (!s) return "—";
   if (s.length <= head + tail) return s;
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
+
+/* === Normalizers (تجهيز البيانات لكل رول) === */
 const normalize = {
-  patient: (id, d) => ({
-    id,
-    accessId: d.accessId || d.patientId || d.PatientID || "—",
-    name: d.name || d.fullName || d.patientName || `${d.firstName || ""} ${d.lastName || ""}`.trim() || "—",
-    email: d.email || "",
-    phone: d.phone || "",
-    nationalId: d.nationalId || d.nid || d.nationalIdHash || "",
-    wallet: d.walletAddress || d.address || "",
-    status: d.status ?? (d.isActive === true ? "Active" : d.isActive === false ? "Inactive" : ""),
-    createdAt: d.createdAt || d.created_at || d.created || null,
-  }),
+  // Access ID للمريض = الـ National ID / Hash فعلياً (لكن ما نعرضه كعمود منفصل)
+  patient: (id, d) => {
+    const national =
+      d.nationalId || d.nid || d.nationalIdHash || d.accessId || "";
+    return {
+      id,
+      accessId: national, // للبحث فقط
+      name:
+        d.name ||
+        d.fullName ||
+        d.patientName ||
+        `${d.firstName || ""} ${d.lastName || ""}`.trim() ||
+        "—",
+      email: d.email || "",
+      phone: d.phone || "",
+      nationalId: national || "",
+      wallet: d.walletAddress || d.address || "",
+      status:
+        d.status ??
+        (d.isActive === true
+          ? "Active"
+          : d.isActive === false
+          ? "Inactive"
+          : ""),
+      createdAt: d.createdAt || d.created_at || d.created || null,
+    };
+  },
+
   doctor: (id, d) => ({
     id,
     accessId: d.accessId || d.doctorId || d.DoctorID || "—",
@@ -198,20 +253,42 @@ const normalize = {
     license: d.licenseNumber || d.license || "",
     facility: d.facility || d.hospital || "",
     wallet: d.walletAddress || d.address || "",
-    status: d.status ?? (d.isActive === true ? "Active" : d.isActive === false ? "Inactive" : ""),
+    status:
+      d.status ??
+      (d.isActive === true
+        ? "Active"
+        : d.isActive === false
+        ? "Inactive"
+        : ""),
     createdAt: d.createdAt || d.created_at || d.created || null,
   }),
+
+  // Pharmacy: Access ID من branchId / BranchID + Address بدال Wallet في الجدول
   pharmacy: (id, d) => ({
     id,
-    accessId: d.accessId || d.pharmacyId || d.PharmacyID || "—",
+    accessId:
+      d.accessId ||
+      d.pharmacyId ||
+      d.PharmacyID ||
+      d.branchId ||
+      d.BranchID ||
+      "—",
     name: d.name || d.pharmacyName || "—",
     email: d.email || "",
     phone: d.phone || "",
     license: d.licenseNumber || d.license || "",
-    wallet: d.walletAddress || d.address || "",
-    status: d.status ?? (d.isActive === true ? "Active" : d.isActive === false ? "Inactive" : ""),
+    address: d.branchAddress || d.BranchAddress || d.address || "",
+    wallet: d.walletAddress || "",
+    status:
+      d.status ??
+      (d.isActive === true
+        ? "Active"
+        : d.isActive === false
+        ? "Inactive"
+        : ""),
     createdAt: d.createdAt || d.created_at || d.created || null,
   }),
+
   logistics: (id, d) => ({
     id,
     accessId: d.accessId || d.logisticsId || d.LogisticsID || "—",
@@ -219,7 +296,13 @@ const normalize = {
     contact: d.contact || d.email || "",
     sla: d.sla || d.SLA || "",
     wallet: d.walletAddress || d.address || "",
-    status: d.status ?? (d.isActive === true ? "Active" : d.isActive === false ? "Inactive" : ""),
+    status:
+      d.status ??
+      (d.isActive === true
+        ? "Active"
+        : d.isActive === false
+        ? "Inactive"
+        : ""),
     createdAt: d.createdAt || d.created_at || d.created || null,
   }),
 };
@@ -240,7 +323,13 @@ export default function Admin() {
   }, [location.search]);
 
   // stats
-  const [counts, setCounts] = useState({ users: 0, doctors: 0, patients: 0, pharmacies: 0, logistics: 0 });
+  const [counts, setCounts] = useState({
+    users: 0,
+    doctors: 0,
+    patients: 0,
+    pharmacies: 0,
+    logistics: 0,
+  });
   const [loadingCards, setLoadingCards] = useState(true);
 
   // data
@@ -250,13 +339,22 @@ export default function Admin() {
   const [logistics, setLogistics] = useState([]);
 
   // loading per tab
-  const [loading, setLoading] = useState({ patients: true, doctors: true, pharmacies: true, logistics: true });
+  const [loading, setLoading] = useState({
+    patients: true,
+    doctors: true,
+    pharmacies: true,
+    logistics: true,
+  });
 
   // search + paging per tab
-  const [qPatients, setQPatients] = useState(""); const [pPatients, setPPatients] = useState(1);
-  const [qDoctors, setQDoctors] = useState("");   const [pDoctors, setPDoctors] = useState(1);
-  const [qPharms, setQPharms] = useState("");     const [pPharms, setPPharms] = useState(1);
-  const [qLogs, setQLogs] = useState("");         const [pLogs, setPLogs] = useState(1);
+  const [qPatients, setQPatients] = useState("");
+  const [pPatients, setPPatients] = useState(1);
+  const [qDoctors, setQDoctors] = useState("");
+  const [pDoctors, setPDoctors] = useState(1);
+  const [qPharms, setQPharms] = useState("");
+  const [pPharms, setPPharms] = useState(1);
+  const [qLogs, setQLogs] = useState("");
+  const [pLogs, setPLogs] = useState(1);
   const PAGE = 10;
 
   /* load counters */
@@ -271,10 +369,16 @@ export default function Admin() {
         ]);
         setCounts({
           users: d.size + p.size + ph.size + l.size,
-          doctors: d.size, patients: p.size, pharmacies: ph.size, logistics: l.size,
+          doctors: d.size,
+          patients: p.size,
+          pharmacies: ph.size,
+          logistics: l.size,
         });
-      } catch (e) { console.error(e); }
-      finally { setLoadingCards(false); }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoadingCards(false);
+      }
     }
     loadCounts();
   }, []);
@@ -284,88 +388,158 @@ export default function Admin() {
     (async () => {
       try {
         const snap = await getDocs(collection(db, "patients"));
-        const rows = []; snap.forEach((doc) => rows.push(normalize.patient(doc.id, doc.data() || {})));
-        rows.sort((a, b) => (b.createdAt?.seconds || b.createdAt || 0) - (a.createdAt?.seconds || a.createdAt || 0));
+        const rows = [];
+        snap.forEach((doc) =>
+          rows.push(normalize.patient(doc.id, doc.data() || {}))
+        );
+        rows.sort(
+          (a, b) =>
+            (b.createdAt?.seconds || b.createdAt || 0) -
+            (a.createdAt?.seconds || a.createdAt || 0)
+        );
         setPatients(rows);
-      } finally { setLoading((s)=>({ ...s, patients:false })); }
+      } finally {
+        setLoading((s) => ({ ...s, patients: false }));
+      }
 
       try {
         const snap = await getDocs(collection(db, "doctors"));
-        const rows = []; snap.forEach((doc) => rows.push(normalize.doctor(doc.id, doc.data() || {})));
-        rows.sort((a, b) => (b.createdAt?.seconds || b.createdAt || 0) - (a.createdAt?.seconds || a.createdAt || 0));
+        const rows = [];
+        snap.forEach((doc) =>
+          rows.push(normalize.doctor(doc.id, doc.data() || {}))
+        );
+        rows.sort(
+          (a, b) =>
+            (b.createdAt?.seconds || b.createdAt || 0) -
+            (a.createdAt?.seconds || a.createdAt || 0)
+        );
         setDoctors(rows);
-      } finally { setLoading((s)=>({ ...s, doctors:false })); }
+      } finally {
+        setLoading((s) => ({ ...s, doctors: false }));
+      }
 
       try {
         const snap = await getDocs(collection(db, "pharmacies"));
-        const rows = []; snap.forEach((doc) => rows.push(normalize.pharmacy(doc.id, doc.data() || {})));
-        rows.sort((a, b) => (b.createdAt?.seconds || b.createdAt || 0) - (a.createdAt?.seconds || a.createdAt || 0));
+        const rows = [];
+        snap.forEach((doc) =>
+          rows.push(normalize.pharmacy(doc.id, doc.data() || {}))
+        );
+        rows.sort(
+          (a, b) =>
+            (b.createdAt?.seconds || b.createdAt || 0) -
+            (a.createdAt?.seconds || a.createdAt || 0)
+        );
         setPharmacies(rows);
-      } finally { setLoading((s)=>({ ...s, pharmacies:false })); }
+      } finally {
+        setLoading((s) => ({ ...s, pharmacies: false }));
+      }
 
       try {
         const snap = await getDocs(collection(db, "logistics"));
-        const rows = []; snap.forEach((doc) => rows.push(normalize.logistics(doc.id, doc.data() || {})));
-        rows.sort((a, b) => (b.createdAt?.seconds || b.createdAt || 0) - (a.createdAt?.seconds || a.createdAt || 0));
+        const rows = [];
+        snap.forEach((doc) =>
+          rows.push(normalize.logistics(doc.id, doc.data() || {}))
+        );
+        rows.sort(
+          (a, b) =>
+            (b.createdAt?.seconds || b.createdAt || 0) -
+            (a.createdAt?.seconds || a.createdAt || 0)
+        );
         setLogistics(rows);
-      } finally { setLoading((s)=>({ ...s, logistics:false })); }
+      } finally {
+        setLoading((s) => ({ ...s, logistics: false }));
+      }
     })();
   }, []);
 
   /* filters + dynamic columns + paging */
+
+  // Patients: بدون عمود Access ID منفصل
   const fPatients = useMemo(() => {
     const q = qPatients.trim().toLowerCase();
-    const list = !q ? patients : patients.filter((r) =>
-      [r.name, r.email, r.phone, r.accessId, r.nationalId].some((v)=>String(v||"").toLowerCase().includes(q))
-    );
+    const list = !q
+      ? patients
+      : patients.filter((r) =>
+          [r.name, r.email, r.phone, r.nationalId].some((v) =>
+            String(v || "").toLowerCase().includes(q)
+          )
+        );
     const flags = {
       hasEmail: list.some((r) => r.email && r.email.trim() !== ""),
       hasPhone: list.some((r) => r.phone && r.phone.trim() !== ""),
-      hasNationalId: list.some((r) => r.nationalId && r.nationalId.trim() !== ""),
+      hasNationalId: list.some(
+        (r) => r.nationalId && r.nationalId.trim() !== ""
+      ),
       hasWallet: list.some((r) => r.wallet && r.wallet.trim() !== ""),
       hasStatus: list.some((r) => r.status && r.status.trim() !== ""),
       hasCreated: list.some((r) => r.createdAt),
     };
-    return { total: list.length, rows: list.slice((pPatients - 1) * PAGE, pPatients * PAGE), flags };
+    return {
+      total: list.length,
+      rows: list.slice((pPatients - 1) * PAGE, pPatients * PAGE),
+      flags,
+    };
   }, [patients, qPatients, pPatients]);
 
   const fDoctors = useMemo(() => {
     const q = qDoctors.trim().toLowerCase();
-    const list = !q ? doctors : doctors.filter((r) =>
-      [r.name, r.specialty, r.accessId, r.license, r.facility].some((v)=>String(v||"").toLowerCase().includes(q))
-    );
+    const list = !q
+      ? doctors
+      : doctors.filter((r) =>
+          [r.name, r.specialty, r.accessId, r.license, r.facility].some((v) =>
+            String(v || "").toLowerCase().includes(q)
+          )
+        );
     const flags = {
-      hasSpecialty: list.some((r) => r.specialty && r.specialty.trim() !== ""),
+      hasSpecialty: list.some(
+        (r) => r.specialty && r.specialty.trim() !== ""
+      ),
       hasLicense: list.some((r) => r.license && r.license.trim() !== ""),
       hasFacility: list.some((r) => r.facility && r.facility.trim() !== ""),
       hasWallet: list.some((r) => r.wallet && r.wallet.trim() !== ""),
       hasStatus: list.some((r) => r.status && r.status.trim() !== ""),
       hasCreated: list.some((r) => r.createdAt),
     };
-    return { total: list.length, rows: list.slice((pDoctors - 1) * PAGE, pDoctors * PAGE), flags };
+    return {
+      total: list.length,
+      rows: list.slice((pDoctors - 1) * PAGE, pDoctors * PAGE),
+      flags,
+    };
   }, [doctors, qDoctors, pDoctors]);
 
   const fPharms = useMemo(() => {
     const q = qPharms.trim().toLowerCase();
-    const list = !q ? pharmacies : pharmacies.filter((r) =>
-      [r.name, r.email, r.phone, r.license, r.accessId].some((v)=>String(v||"").toLowerCase().includes(q))
-    );
+    const list = !q
+      ? pharmacies
+      : pharmacies.filter((r) =>
+          [r.name, r.email, r.phone, r.license, r.accessId, r.address].some(
+            (v) => String(v || "").toLowerCase().includes(q)
+          )
+        );
     const flags = {
       hasEmail: list.some((r) => r.email && r.email.trim() !== ""),
       hasPhone: list.some((r) => r.phone && r.phone.trim() !== ""),
       hasLicense: list.some((r) => r.license && r.license.trim() !== ""),
-      hasWallet: list.some((r) => r.wallet && r.wallet.trim() !== ""),
+      hasAddress: list.some((r) => r.address && r.address.trim() !== ""),
       hasStatus: list.some((r) => r.status && r.status.trim() !== ""),
       hasCreated: list.some((r) => r.createdAt),
     };
-    return { total: list.length, rows: list.slice((pPharms - 1) * PAGE, pPharms * PAGE), flags };
+    return {
+      total: list.length,
+      rows: list.slice((pPharms - 1) * PAGE, pPharms * PAGE),
+      flags,
+    };
   }, [pharmacies, qPharms, pPharms]);
 
   const fLogs = useMemo(() => {
     const q = qLogs.trim().toLowerCase();
-    const list = !q ? logistics : logistics.filter((r) =>
-      [r.name, r.contact, r.sla, r.accessId].some((v)=>String(v||"").toLowerCase().includes(q))
-    );
+    const list = !q
+      ? logistics
+      : logistics.filter((r) =>
+          [r.name, r.contact, r.sla, r.accessId].some((v) =>
+            String(v || "").toLowerCase().includes(q)
+          )
+        );
     const flags = {
       hasContact: list.some((r) => r.contact && r.contact.trim() !== ""),
       hasSla: list.some((r) => r.sla && r.sla.trim() !== ""),
@@ -373,17 +547,21 @@ export default function Admin() {
       hasStatus: list.some((r) => r.status && r.status.trim() !== ""),
       hasCreated: list.some((r) => r.createdAt),
     };
-    return { total: list.length, rows: list.slice((pLogs - 1) * PAGE, pLogs * PAGE), flags };
+    return {
+      total: list.length,
+      rows: list.slice((pLogs - 1) * PAGE, pLogs * PAGE),
+      flags,
+    };
   }, [logistics, qLogs, pLogs]);
 
   const tabs = [
-    { key: "patients",   label: "Patients" },
-    { key: "doctors",    label: "Doctors" },
+    { key: "patients", label: "Patients" },
+    { key: "doctors", label: "Doctors" },
     { key: "pharmacies", label: "Pharmacies" },
-    { key: "logistics",  label: "Logistics" },
+    { key: "logistics", label: "Logistics" },
   ];
 
-  // ✅ هنا التعديل الصحيح: نستخدم location.pathname بدل ما نثبّت "/admin"
+  // نستخدم المسار الحالي (عشان ما يرجعنا على add doctor بالغلط)
   const changeTab = (key) => {
     setActive(key);
     const sp = new URLSearchParams(location.search);
@@ -406,20 +584,40 @@ export default function Admin() {
           />
           <div>
             <h1 className="text-[28px] leading-tight font-extrabold tracking-tight text-[#2A1E36]">
-              Admin Console
+             Welcome, Admin
             </h1>
             <p className="text-gray-500 text-sm">
-              Manage identities & compliance, and monitor medicine transfers.
+              Manage identities & compliance.
             </p>
           </div>
         </div>
 
         {/* top cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mt-7">
-          <StatCard title="Total Users"   count={loadingCards ? "…" : counts.users}      icon={Users}        accent={C.primary} />
-          <StatCard title="Doctors"       count={loadingCards ? "…" : counts.doctors}    icon={Stethoscope}  accent={C.teal} />
-          <StatCard title="Pharmacies"    count={loadingCards ? "…" : counts.pharmacies} icon={Building2}    accent={C.primary} />
-          <StatCard title="Logistics"     count={loadingCards ? "…" : counts.logistics}  icon={Truck}        accent={C.teal} />
+          <StatCard
+            title="Total Users"
+            count={loadingCards ? "…" : counts.users}
+            icon={Users}
+            accent={C.primary}
+          />
+          <StatCard
+            title="Doctors"
+            count={loadingCards ? "…" : counts.doctors}
+            icon={Stethoscope}
+            accent={C.teal}
+          />
+          <StatCard
+            title="Pharmacies"
+            count={loadingCards ? "…" : counts.pharmacies}
+            icon={Building2}
+            accent={C.primary}
+          />
+          <StatCard
+            title="Logistics"
+            count={loadingCards ? "…" : counts.logistics}
+            icon={Truck}
+            accent={C.teal}
+          />
         </div>
 
         {/* pills (tabs) */}
@@ -427,37 +625,94 @@ export default function Admin() {
 
         {/* ==== CONTENT (one tab visible) ==== */}
         <div className="mt-6 mb-16">
+          {/* Patients */}
           {active === "patients" && (
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
-              <SectionHeader title="Patients" search={qPatients} setSearch={(v)=>{ setQPatients(v); setPPatients(1); }} />
+              <SectionHeader
+                title="Patients"
+                search={qPatients}
+                setSearch={(v) => {
+                  setQPatients(v);
+                  setPPatients(1);
+                }}
+              />
               <div className="overflow-auto">
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50 text-gray-600">
                     <tr>
-                      <th className="text-left px-4 py-3">Access ID</th>
                       <th className="text-left px-4 py-3">Name</th>
-                      {fPatients.flags.hasEmail && <th className="text-left px-4 py-3">Email</th>}
-                      {fPatients.flags.hasPhone && <th className="text-left px-4 py-3">Phone</th>}
-                      {fPatients.flags.hasNationalId && <th className="text-left px-4 py-3">National ID / Hash</th>}
-                      {fPatients.flags.hasWallet && <th className="text-left px-4 py-3">Wallet</th>}
-                      {fPatients.flags.hasStatus && <th className="text-left px-4 py-3">Status</th>}
-                      {fPatients.flags.hasCreated && <th className="text-left px-4 py-3">Created</th>}
+                      {fPatients.flags.hasNationalId && (
+                        <th className="text-left px-4 py-3">
+                          National ID / Hash
+                        </th>
+                      )}
+                      {fPatients.flags.hasEmail && (
+                        <th className="text-left px-4 py-3">Email</th>
+                      )}
+                      {fPatients.flags.hasPhone && (
+                        <th className="text-left px-4 py-3">Phone</th>
+                      )}
+                      {fPatients.flags.hasWallet && (
+                        <th className="text-left px-4 py-3">Wallet</th>
+                      )}
+                      {fPatients.flags.hasStatus && (
+                        <th className="text-left px-4 py-3">Status</th>
+                      )}
+                      {fPatients.flags.hasCreated && (
+                        <th className="text-left px-4 py-3">Created</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
                     {loading.patients ? (
-                      <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-500">Loading…</td></tr>
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="px-4 py-6 text-center text-gray-500"
+                        >
+                          Loading…
+                        </td>
+                      </tr>
                     ) : fPatients.rows.length === 0 ? (
-                      <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-500">No patients found.</td></tr>
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="px-4 py-6 text-center text-gray-500"
+                        >
+                          No patients found.
+                        </td>
+                      </tr>
                     ) : (
                       fPatients.rows.map((r) => (
-                        <tr key={r.id} className="border-t border-gray-100">
-                          <td className="px-4 py-3 font-medium text-[#2A1E36]">{r.accessId}</td>
-                          <td className="px-4 py-3">{r.name}</td>
-                          {fPatients.flags.hasEmail && <td className="px-4 py-3">{r.email || "—"}</td>}
-                          {fPatients.flags.hasPhone && <td className="px-4 py-3">{r.phone || "—"}</td>}
-                          {fPatients.flags.hasNationalId && <td className="px-4 py-3">{r.nationalId ? mask(r.nationalId, 4, 3) : "—"}</td>}
-                          {fPatients.flags.hasWallet && <td className="px-4 py-3">{r.wallet ? mask(r.wallet) : "—"}</td>}
+                        <tr
+                          key={r.id}
+                          className="border-t border-gray-100"
+                        >
+                          <td className="px-4 py-3 font-medium text-[#2A1E36]">
+                            {r.name}
+                          </td>
+                          {fPatients.flags.hasNationalId && (
+                            <td className="px-4 py-3">
+                              {r.nationalId
+                                ? mask(r.nationalId, 4, 3)
+                                : "—"}
+                            </td>
+                          )}
+                          {fPatients.flags.hasEmail && (
+                            <td className="px-4 py-3">
+                              {r.email || "—"}
+                            </td>
+                          )}
+                          {fPatients.flags.hasPhone && (
+                            <td className="px-4 py-3">
+                              {r.phone || "—"}
+                            </td>
+                          )}
+                          {fPatients.flags.hasWallet && (
+                            <td className="px-4 py-3">
+                              {r.wallet ? mask(r.wallet) : "—"}
+                            </td>
+                          )}
                           {fPatients.flags.hasStatus && (
                             <td className="px-4 py-3">
                               <span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">
@@ -465,48 +720,113 @@ export default function Admin() {
                               </span>
                             </td>
                           )}
-                          {fPatients.flags.hasCreated && <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>}
+                          {fPatients.flags.hasCreated && (
+                            <td className="px-4 py-3">
+                              {fmtDate(r.createdAt)}
+                            </td>
+                          )}
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
               </div>
-              <Pager page={pPatients} pageCount={Math.ceil(fPatients.total / PAGE)} total={fPatients.total} pageSize={PAGE} setPage={setPPatients} />
+              <Pager
+                page={pPatients}
+                pageCount={Math.ceil(fPatients.total / PAGE)}
+                total={fPatients.total}
+                pageSize={PAGE}
+                setPage={setPPatients}
+              />
             </div>
           )}
 
+          {/* Doctors */}
           {active === "doctors" && (
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
-              <SectionHeader title="Doctors" search={qDoctors} setSearch={(v)=>{ setQDoctors(v); setPDoctors(1); }} />
+              <SectionHeader
+                title="Doctors"
+                search={qDoctors}
+                setSearch={(v) => {
+                  setQDoctors(v);
+                  setPDoctors(1);
+                }}
+              />
               <div className="overflow-auto">
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50 text-gray-600">
                     <tr>
                       <th className="text-left px-4 py-3">Access ID</th>
                       <th className="text-left px-4 py-3">Name</th>
-                      {fDoctors.flags.hasSpecialty && <th className="text-left px-4 py-3">Specialty</th>}
-                      {fDoctors.flags.hasLicense && <th className="text-left px-4 py-3">License</th>}
-                      {fDoctors.flags.hasFacility && <th className="text-left px-4 py-3">Facility</th>}
-                      {fDoctors.flags.hasWallet && <th className="text-left px-4 py-3">Wallet</th>}
-                      {fDoctors.flags.hasStatus && <th className="text-left px-4 py-3">Status</th>}
-                      {fDoctors.flags.hasCreated && <th className="text-left px-4 py-3">Created</th>}
+                      {fDoctors.flags.hasSpecialty && (
+                        <th className="text-left px-4 py-3">Specialty</th>
+                      )}
+                      {fDoctors.flags.hasLicense && (
+                        <th className="text-left px-4 py-3">License</th>
+                      )}
+                      {fDoctors.flags.hasFacility && (
+                        <th className="text-left px-4 py-3">Facility</th>
+                      )}
+                      {fDoctors.flags.hasWallet && (
+                        <th className="text-left px-4 py-3">Wallet</th>
+                      )}
+                      {fDoctors.flags.hasStatus && (
+                        <th className="text-left px-4 py-3">Status</th>
+                      )}
+                      {fDoctors.flags.hasCreated && (
+                        <th className="text-left px-4 py-3">Created</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
                     {loading.doctors ? (
-                      <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-500">Loading…</td></tr>
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="px-4 py-6 text-center text-gray-500"
+                        >
+                          Loading…
+                        </td>
+                      </tr>
                     ) : fDoctors.rows.length === 0 ? (
-                      <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-500">No doctors found.</td></tr>
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="px-4 py-6 text-center text-gray-500"
+                        >
+                          No doctors found.
+                        </td>
+                      </tr>
                     ) : (
                       fDoctors.rows.map((r) => (
-                        <tr key={r.id} className="border-t border-gray-100">
-                          <td className="px-4 py-3 font-medium text-[#2A1E36]">{r.accessId}</td>
+                        <tr
+                          key={r.id}
+                          className="border-t border-gray-100"
+                        >
+                          <td className="px-4 py-3 font-medium text-[#2A1E36]">
+                            {r.accessId}
+                          </td>
                           <td className="px-4 py-3">{r.name}</td>
-                          {fDoctors.flags.hasSpecialty && <td className="px-4 py-3">{r.specialty || "—"}</td>}
-                          {fDoctors.flags.hasLicense && <td className="px-4 py-3">{r.license || "—"}</td>}
-                          {fDoctors.flags.hasFacility && <td className="px-4 py-3">{r.facility || "—"}</td>}
-                          {fDoctors.flags.hasWallet && <td className="px-4 py-3">{r.wallet ? mask(r.wallet) : "—"}</td>}
+                          {fDoctors.flags.hasSpecialty && (
+                            <td className="px-4 py-3">
+                              {r.specialty || "—"}
+                            </td>
+                          )}
+                          {fDoctors.flags.hasLicense && (
+                            <td className="px-4 py-3">
+                              {r.license || "—"}
+                            </td>
+                          )}
+                          {fDoctors.flags.hasFacility && (
+                            <td className="px-4 py-3">
+                              {r.facility || "—"}
+                            </td>
+                          )}
+                          {fDoctors.flags.hasWallet && (
+                            <td className="px-4 py-3">
+                              {r.wallet ? mask(r.wallet) : "—"}
+                            </td>
+                          )}
                           {fDoctors.flags.hasStatus && (
                             <td className="px-4 py-3">
                               <span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">
@@ -514,48 +834,113 @@ export default function Admin() {
                               </span>
                             </td>
                           )}
-                          {fDoctors.flags.hasCreated && <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>}
+                          {fDoctors.flags.hasCreated && (
+                            <td className="px-4 py-3">
+                              {fmtDate(r.createdAt)}
+                            </td>
+                          )}
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
               </div>
-              <Pager page={pDoctors} pageCount={Math.ceil(fDoctors.total / PAGE)} total={fDoctors.total} pageSize={PAGE} setPage={setPDoctors} />
+              <Pager
+                page={pDoctors}
+                pageCount={Math.ceil(fDoctors.total / PAGE)}
+                total={fDoctors.total}
+                pageSize={PAGE}
+                setPage={setPDoctors}
+              />
             </div>
           )}
 
+          {/* Pharmacies (Access ID + Address بدل Wallet) */}
           {active === "pharmacies" && (
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
-              <SectionHeader title="Pharmacies" search={qPharms} setSearch={(v)=>{ setQPharms(v); setPPharms(1); }} />
+              <SectionHeader
+                title="Pharmacies"
+                search={qPharms}
+                setSearch={(v) => {
+                  setQPharms(v);
+                  setPPharms(1);
+                }}
+              />
               <div className="overflow-auto">
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50 text-gray-600">
                     <tr>
                       <th className="text-left px-4 py-3">Access ID</th>
                       <th className="text-left px-4 py-3">Name</th>
-                      {fPharms.flags.hasEmail && <th className="text-left px-4 py-3">Email</th>}
-                      {fPharms.flags.hasPhone && <th className="text-left px-4 py-3">Phone</th>}
-                      {fPharms.flags.hasLicense && <th className="text-left px-4 py-3">License</th>}
-                      {fPharms.flags.hasWallet && <th className="text-left px-4 py-3">Wallet</th>}
-                      {fPharms.flags.hasStatus && <th className="text-left px-4 py-3">Status</th>}
-                      {fPharms.flags.hasCreated && <th className="text-left px-4 py-3">Created</th>}
+                      {fPharms.flags.hasEmail && (
+                        <th className="text-left px-4 py-3">Email</th>
+                      )}
+                      {fPharms.flags.hasPhone && (
+                        <th className="text-left px-4 py-3">Phone</th>
+                      )}
+                      {fPharms.flags.hasLicense && (
+                        <th className="text-left px-4 py-3">License</th>
+                      )}
+                      {fPharms.flags.hasAddress && (
+                        <th className="text-left px-4 py-3">Address</th>
+                      )}
+                      {fPharms.flags.hasStatus && (
+                        <th className="text-left px-4 py-3">Status</th>
+                      )}
+                      {fPharms.flags.hasCreated && (
+                        <th className="text-left px-4 py-3">Created</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
                     {loading.pharmacies ? (
-                      <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-500">Loading…</td></tr>
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="px-4 py-6 text-center text-gray-500"
+                        >
+                          Loading…
+                        </td>
+                      </tr>
                     ) : fPharms.rows.length === 0 ? (
-                      <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-500">No pharmacies found.</td></tr>
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="px-4 py-6 text-center text-gray-500"
+                        >
+                          No pharmacies found.
+                        </td>
+                      </tr>
                     ) : (
                       fPharms.rows.map((r) => (
-                        <tr key={r.id} className="border-t border-gray-100">
-                          <td className="px-4 py-3 font-medium text-[#2A1E36]">{r.accessId}</td>
+                        <tr
+                          key={r.id}
+                          className="border-t border-gray-100"
+                        >
+                          <td className="px-4 py-3 font-medium text-[#2A1E36]">
+                            {r.accessId}
+                          </td>
                           <td className="px-4 py-3">{r.name}</td>
-                          {fPharms.flags.hasEmail && <td className="px-4 py-3">{r.email || "—"}</td>}
-                          {fPharms.flags.hasPhone && <td className="px-4 py-3">{r.phone || "—"}</td>}
-                          {fPharms.flags.hasLicense && <td className="px-4 py-3">{r.license || "—"}</td>}
-                          {fPharms.flags.hasWallet && <td className="px-4 py-3">{r.wallet ? mask(r.wallet) : "—"}</td>}
+                          {fPharms.flags.hasEmail && (
+                            <td className="px-4 py-3">
+                              {r.email || "—"}
+                            </td>
+                          )}
+                          {fPharms.flags.hasPhone && (
+                            <td className="px-4 py-3">
+                              {r.phone || "—"}
+                            </td>
+                          )}
+                          {fPharms.flags.hasLicense && (
+                            <td className="px-4 py-3">
+                              {r.license || "—"}
+                            </td>
+                          )}
+                          {fPharms.flags.hasAddress && (
+                            <td className="px-4 py-3">
+                              {r.address || "—"}
+                            </td>
+                          )}
                           {fPharms.flags.hasStatus && (
                             <td className="px-4 py-3">
                               <span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">
@@ -563,46 +948,107 @@ export default function Admin() {
                               </span>
                             </td>
                           )}
-                          {fPharms.flags.hasCreated && <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>}
+                          {fPharms.flags.hasCreated && (
+                            <td className="px-4 py-3">
+                              {fmtDate(r.createdAt)}
+                            </td>
+                          )}
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
               </div>
-              <Pager page={pPharms} pageCount={Math.ceil(fPharms.total / PAGE)} total={fPharms.total} pageSize={PAGE} setPage={setPPharms} />
+              <Pager
+                page={pPharms}
+                pageCount={Math.ceil(fPharms.total / PAGE)}
+                total={fPharms.total}
+                pageSize={PAGE}
+                setPage={setPPharms}
+              />
             </div>
           )}
 
+          {/* Logistics */}
           {active === "logistics" && (
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
-              <SectionHeader title="Logistics" search={qLogs} setSearch={(v)=>{ setQLogs(v); setPLogs(1); }} />
+              <SectionHeader
+                title="Logistics"
+                search={qLogs}
+                setSearch={(v) => {
+                  setQLogs(v);
+                  setPLogs(1);
+                }}
+              />
               <div className="overflow-auto">
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50 text-gray-600">
                     <tr>
                       <th className="text-left px-4 py-3">Access ID</th>
-                      <th className="text-left px-4 py-3">Company / Name</th>
-                      {fLogs.flags.hasContact && <th className="text-left px-4 py-3">Contact</th>}
-                      {fLogs.flags.hasSla && <th className="text-left px-4 py-3">SLA</th>}
-                      {fLogs.flags.hasWallet && <th className="text-left px-4 py-3">Wallet</th>}
-                      {fLogs.flags.hasStatus && <th className="text-left px-4 py-3">Status</th>}
-                      {fLogs.flags.hasCreated && <th className="text-left px-4 py-3">Created</th>}
+                      <th className="text-left px-4 py-3">
+                        Company / Name
+                      </th>
+                      {fLogs.flags.hasContact && (
+                        <th className="text-left px-4 py-3">Contact</th>
+                      )}
+                      {fLogs.flags.hasSla && (
+                        <th className="text-left px-4 py-3">SLA</th>
+                      )}
+                      {fLogs.flags.hasWallet && (
+                        <th className="text-left px-4 py-3">Wallet</th>
+                      )}
+                      {fLogs.flags.hasStatus && (
+                        <th className="text-left px-4 py-3">Status</th>
+                      )}
+                      {fLogs.flags.hasCreated && (
+                        <th className="text-left px-4 py-3">Created</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
                     {loading.logistics ? (
-                      <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-500">Loading…</td></tr>
+                      <tr>
+                        <td
+                          colSpan={7}
+                          className="px-4 py-6 text-center text-gray-500"
+                        >
+                          Loading…
+                        </td>
+                      </tr>
                     ) : fLogs.rows.length === 0 ? (
-                      <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-500">No logistics found.</td></tr>
+                      <tr>
+                        <td
+                          colSpan={7}
+                          className="px-4 py-6 text-center text-gray-500"
+                        >
+                          No logistics found.
+                        </td>
+                      </tr>
                     ) : (
                       fLogs.rows.map((r) => (
-                        <tr key={r.id} className="border-t border-gray-100">
-                          <td className="px-4 py-3 font-medium text-[#2A1E36]">{r.accessId}</td>
+                        <tr
+                          key={r.id}
+                          className="border-t border-gray-100"
+                        >
+                          <td className="px-4 py-3 font-medium text-[#2A1E36]">
+                            {r.accessId}
+                          </td>
                           <td className="px-4 py-3">{r.name}</td>
-                          {fLogs.flags.hasContact && <td className="px-4 py-3">{r.contact || "—"}</td>}
-                          {fLogs.flags.hasSla && <td className="px-4 py-3">{r.sla || "—"}</td>}
-                          {fLogs.flags.hasWallet && <td className="px-4 py-3">{r.wallet ? mask(r.wallet) : "—"}</td>}
+                          {fLogs.flags.hasContact && (
+                            <td className="px-4 py-3">
+                              {r.contact || "—"}
+                            </td>
+                          )}
+                          {fLogs.flags.hasSla && (
+                            <td className="px-4 py-3">
+                              {r.sla || "—"}
+                            </td>
+                          )}
+                          {fLogs.flags.hasWallet && (
+                            <td className="px-4 py-3">
+                              {r.wallet ? mask(r.wallet) : "—"}
+                            </td>
+                          )}
                           {fLogs.flags.hasStatus && (
                             <td className="px-4 py-3">
                               <span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">
@@ -610,14 +1056,24 @@ export default function Admin() {
                               </span>
                             </td>
                           )}
-                          {fLogs.flags.hasCreated && <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>}
+                          {fLogs.flags.hasCreated && (
+                            <td className="px-4 py-3">
+                              {fmtDate(r.createdAt)}
+                            </td>
+                          )}
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
               </div>
-              <Pager page={pLogs} pageCount={Math.ceil(fLogs.total / PAGE)} total={fLogs.total} pageSize={PAGE} setPage={setPLogs} />
+              <Pager
+                page={pLogs}
+                pageCount={Math.ceil(fLogs.total / PAGE)}
+                total={fLogs.total}
+                pageSize={PAGE}
+                setPage={setPLogs}
+              />
             </div>
           )}
         </div>
