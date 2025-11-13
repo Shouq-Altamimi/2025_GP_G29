@@ -2,10 +2,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  Users, Building2, Truck, Stethoscope, Search,
-  X, LayoutDashboard, UserPlus, LogOut
-} from "lucide-react";
+import { Users, Building2, Truck, Stethoscope, Search, X, LayoutDashboard, UserPlus, LogOut } from "lucide-react";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
 import { collection, getDocs } from "firebase/firestore";
@@ -14,21 +11,21 @@ import { useNavigate, useLocation } from "react-router-dom";
 
 const C = { primary: "#B08CC1", teal: "#52B9C4", ink: "#4A2C59" };
 
-/* ================= Sidebar (3 عناصر فقط) ================ */
+/* ================= Sidebar ================ */
 function Sidebar({ open, setOpen, onNav, onLogout }) {
   const location = useLocation();
-  const base = location.pathname; // يبقيك على نفس صفحة Admin.jsx
-  const activeTab = new URLSearchParams(location.search).get("tab") || "overview";
-  const isAdminConsole = base.includes("/admin/dashboard"); // لو مسار Admin.jsx هو /admin/dashboard
+  const isActive = (p) => location.pathname + location.search === p;
 
   return (
     <>
+      {/* Backdrop */}
       <div
         onClick={() => setOpen(false)}
         className={`fixed inset-0 z-50 bg-black/40 transition-opacity ${
           open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
       />
+      {/* Drawer */}
       <aside
         className="fixed top-0 left-0 z-[60] h-full w-[290px] shadow-2xl"
         style={{
@@ -50,33 +47,27 @@ function Sidebar({ open, setOpen, onNav, onLogout }) {
         </div>
 
         <nav className="px-3">
-          {/* Dashboard -> Admin.jsx (يفضّل /admin/dashboard) */}
           <button
-            onClick={() => { setOpen(false); onNav("/admin/dashboard"); }}
+            onClick={() => { setOpen(false); onNav("/admin?tab=patients"); }}
             className={`w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium ${
-              isAdminConsole ? "bg-white text-[#5B3A70]" : "bg-white/25 text-white hover:bg-white/35"
+              isActive("/admin?tab=patients") ? "bg-white text-[#5B3A70]" : "bg-white/25 text-white hover:bg-white/35"
             }`}
           >
-            <LayoutDashboard size={18} />
-            <span>Dashboard</span>
+            <LayoutDashboard size={18} /><span>Dashboard</span>
           </button>
 
-          {/* Add Doctor -> صفحة الادمن القديمة على /admin */}
           <button
             onClick={() => { setOpen(false); onNav("/admin"); }}
-            className="w-full mb-6 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium bg-white/25 text-white hover:bg-white/35"
+            className="w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium bg-white/25 text-white hover:bg-white/35"
           >
-            <UserPlus size={18} />
-            <span>Add Doctor</span>
+            <UserPlus size={18} /><span>Add Doctor</span>
           </button>
 
-          {/* Logout */}
           <button
             onClick={() => { setOpen(false); onLogout?.(); }}
             className="w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium text-white/90 hover:bg-white/10"
           >
-            <LogOut size={18} />
-            <span>Logout</span>
+            <LogOut size={18} /><span>Logout</span>
           </button>
         </nav>
       </aside>
@@ -177,7 +168,7 @@ function Pager({ page, pageCount, total, pageSize, setPage }) {
 function fmtDate(ts) {
   try {
     if (!ts) return "—";
-    const d = ts?.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
+    const d = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
     return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
   } catch { return "—"; }
 }
@@ -192,43 +183,43 @@ const normalize = {
     id,
     accessId: d.accessId || d.patientId || d.PatientID || "—",
     name: d.name || d.fullName || d.patientName || `${d.firstName || ""} ${d.lastName || ""}`.trim() || "—",
-    email: d.email || "—",
-    phone: d.phone || "—",
-    nationalId: d.nationalId || d.nid || d.nationalIdHash || "—",
-    wallet: d.walletAddress || d.address || "—",
-    status: d.status ?? (d.isActive === true ? "Active" : d.isActive === false ? "Inactive" : "—"),
+    email: d.email || "",
+    phone: d.phone || "",
+    nationalId: d.nationalId || d.nid || d.nationalIdHash || "",
+    wallet: d.walletAddress || d.address || "",
+    status: d.status ?? (d.isActive === true ? "Active" : d.isActive === false ? "Inactive" : ""),
     createdAt: d.createdAt || d.created_at || d.created || null,
   }),
   doctor: (id, d) => ({
     id,
     accessId: d.accessId || d.doctorId || d.DoctorID || "—",
     name: d.name || d.fullName || "—",
-    specialty: d.specialty || d.speciality || "—",
-    license: d.licenseNumber || d.license || "—",
-    facility: d.facility || d.hospital || "—",
-    wallet: d.walletAddress || d.address || "—",
-    status: d.status ?? (d.isActive === true ? "Active" : d.isActive === false ? "Inactive" : "—"),
+    specialty: d.specialty || d.speciality || "",
+    license: d.licenseNumber || d.license || "",
+    facility: d.facility || d.hospital || "",
+    wallet: d.walletAddress || d.address || "",
+    status: d.status ?? (d.isActive === true ? "Active" : d.isActive === false ? "Inactive" : ""),
     createdAt: d.createdAt || d.created_at || d.created || null,
   }),
   pharmacy: (id, d) => ({
     id,
     accessId: d.accessId || d.pharmacyId || d.PharmacyID || "—",
     name: d.name || d.pharmacyName || "—",
-    email: d.email || "—",
-    phone: d.phone || "—",
-    license: d.licenseNumber || d.license || "—",
-    wallet: d.walletAddress || d.address || "—",
-    status: d.status ?? (d.isActive === true ? "Active" : d.isActive === false ? "Inactive" : "—"),
+    email: d.email || "",
+    phone: d.phone || "",
+    license: d.licenseNumber || d.license || "",
+    wallet: d.walletAddress || d.address || "",
+    status: d.status ?? (d.isActive === true ? "Active" : d.isActive === false ? "Inactive" : ""),
     createdAt: d.createdAt || d.created_at || d.created || null,
   }),
   logistics: (id, d) => ({
     id,
     accessId: d.accessId || d.logisticsId || d.LogisticsID || "—",
     name: d.name || d.company || d.partnerName || "—",
-    contact: d.contact || d.email || "—",
-    sla: d.sla || d.SLA || "—",
-    wallet: d.walletAddress || d.address || "—",
-    status: d.status ?? (d.isActive === true ? "Active" : d.isActive === false ? "Inactive" : "—"),
+    contact: d.contact || d.email || "",
+    sla: d.sla || d.SLA || "",
+    wallet: d.walletAddress || d.address || "",
+    status: d.status ?? (d.isActive === true ? "Active" : d.isActive === false ? "Inactive" : ""),
     createdAt: d.createdAt || d.created_at || d.created || null,
   }),
 };
@@ -237,38 +228,38 @@ const normalize = {
 export default function Admin() {
   const navigate = useNavigate();
   const location = useLocation();
+  const queryTab = new URLSearchParams(location.search).get("tab");
+  const [active, setActive] = useState(queryTab || "patients");
   const [open, setOpen] = useState(false);
 
-  const queryTab = new URLSearchParams(location.search).get("tab");
-  const [active, setActive] = useState(queryTab || "overview");
-
-  // مزامنة التبويب مع الـ URL
+  // sync tab with URL
   useEffect(() => {
-    const s = new URLSearchParams(location.search).get("tab") || "overview";
+    const s = new URLSearchParams(location.search).get("tab") || "patients";
     if (s !== active) setActive(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
 
-  // إحصائيات
+  // stats
   const [counts, setCounts] = useState({ users: 0, doctors: 0, patients: 0, pharmacies: 0, logistics: 0 });
   const [loadingCards, setLoadingCards] = useState(true);
 
-  // البيانات
+  // data
   const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [pharmacies, setPharmacies] = useState([]);
   const [logistics, setLogistics] = useState([]);
 
+  // loading per tab
   const [loading, setLoading] = useState({ patients: true, doctors: true, pharmacies: true, logistics: true });
 
-  // بحث وترقيم
+  // search + paging per tab
   const [qPatients, setQPatients] = useState(""); const [pPatients, setPPatients] = useState(1);
   const [qDoctors, setQDoctors] = useState("");   const [pDoctors, setPDoctors] = useState(1);
   const [qPharms, setQPharms] = useState("");     const [pPharms, setPPharms] = useState(1);
   const [qLogs, setQLogs] = useState("");         const [pLogs, setPLogs] = useState(1);
   const PAGE = 10;
 
-  /* تحميل العدّادات */
+  /* load counters */
   useEffect(() => {
     async function loadCounts() {
       try {
@@ -288,7 +279,7 @@ export default function Admin() {
     loadCounts();
   }, []);
 
-  /* تحميل الجداول */
+  /* load tables once */
   useEffect(() => {
     (async () => {
       try {
@@ -321,13 +312,21 @@ export default function Admin() {
     })();
   }, []);
 
-  /* فلاتر وترقيم */
+  /* filters + dynamic columns + paging */
   const fPatients = useMemo(() => {
     const q = qPatients.trim().toLowerCase();
     const list = !q ? patients : patients.filter((r) =>
       [r.name, r.email, r.phone, r.accessId, r.nationalId].some((v)=>String(v||"").toLowerCase().includes(q))
     );
-    return { total: list.length, rows: list.slice((pPatients - 1) * PAGE, pPatients * PAGE) };
+    const flags = {
+      hasEmail: list.some((r) => r.email && r.email.trim() !== ""),
+      hasPhone: list.some((r) => r.phone && r.phone.trim() !== ""),
+      hasNationalId: list.some((r) => r.nationalId && r.nationalId.trim() !== ""),
+      hasWallet: list.some((r) => r.wallet && r.wallet.trim() !== ""),
+      hasStatus: list.some((r) => r.status && r.status.trim() !== ""),
+      hasCreated: list.some((r) => r.createdAt),
+    };
+    return { total: list.length, rows: list.slice((pPatients - 1) * PAGE, pPatients * PAGE), flags };
   }, [patients, qPatients, pPatients]);
 
   const fDoctors = useMemo(() => {
@@ -335,7 +334,15 @@ export default function Admin() {
     const list = !q ? doctors : doctors.filter((r) =>
       [r.name, r.specialty, r.accessId, r.license, r.facility].some((v)=>String(v||"").toLowerCase().includes(q))
     );
-    return { total: list.length, rows: list.slice((pDoctors - 1) * PAGE, pDoctors * PAGE) };
+    const flags = {
+      hasSpecialty: list.some((r) => r.specialty && r.specialty.trim() !== ""),
+      hasLicense: list.some((r) => r.license && r.license.trim() !== ""),
+      hasFacility: list.some((r) => r.facility && r.facility.trim() !== ""),
+      hasWallet: list.some((r) => r.wallet && r.wallet.trim() !== ""),
+      hasStatus: list.some((r) => r.status && r.status.trim() !== ""),
+      hasCreated: list.some((r) => r.createdAt),
+    };
+    return { total: list.length, rows: list.slice((pDoctors - 1) * PAGE, pDoctors * PAGE), flags };
   }, [doctors, qDoctors, pDoctors]);
 
   const fPharms = useMemo(() => {
@@ -343,7 +350,15 @@ export default function Admin() {
     const list = !q ? pharmacies : pharmacies.filter((r) =>
       [r.name, r.email, r.phone, r.license, r.accessId].some((v)=>String(v||"").toLowerCase().includes(q))
     );
-    return { total: list.length, rows: list.slice((pPharms - 1) * PAGE, pPharms * PAGE) };
+    const flags = {
+      hasEmail: list.some((r) => r.email && r.email.trim() !== ""),
+      hasPhone: list.some((r) => r.phone && r.phone.trim() !== ""),
+      hasLicense: list.some((r) => r.license && r.license.trim() !== ""),
+      hasWallet: list.some((r) => r.wallet && r.wallet.trim() !== ""),
+      hasStatus: list.some((r) => r.status && r.status.trim() !== ""),
+      hasCreated: list.some((r) => r.createdAt),
+    };
+    return { total: list.length, rows: list.slice((pPharms - 1) * PAGE, pPharms * PAGE), flags };
   }, [pharmacies, qPharms, pPharms]);
 
   const fLogs = useMemo(() => {
@@ -351,28 +366,34 @@ export default function Admin() {
     const list = !q ? logistics : logistics.filter((r) =>
       [r.name, r.contact, r.sla, r.accessId].some((v)=>String(v||"").toLowerCase().includes(q))
     );
-    return { total: list.length, rows: list.slice((pLogs - 1) * PAGE, pLogs * PAGE) };
+    const flags = {
+      hasContact: list.some((r) => r.contact && r.contact.trim() !== ""),
+      hasSla: list.some((r) => r.sla && r.sla.trim() !== ""),
+      hasWallet: list.some((r) => r.wallet && r.wallet.trim() !== ""),
+      hasStatus: list.some((r) => r.status && r.status.trim() !== ""),
+      hasCreated: list.some((r) => r.createdAt),
+    };
+    return { total: list.length, rows: list.slice((pLogs - 1) * PAGE, pLogs * PAGE), flags };
   }, [logistics, qLogs, pLogs]);
 
   const tabs = [
-    { key: "overview",   label: "Overview" },
-    { key: "patients",   label: "Users" },
+    { key: "patients",   label: "Patients" },
     { key: "doctors",    label: "Doctors" },
     { key: "pharmacies", label: "Pharmacies" },
     { key: "logistics",  label: "Logistics" },
   ];
 
+  // ✅ هنا التعديل الصحيح: نستخدم location.pathname بدل ما نثبّت "/admin"
   const changeTab = (key) => {
     setActive(key);
     const sp = new URLSearchParams(location.search);
     sp.set("tab", key);
-    // تحديث نفس الصفحة بدون الذهاب إلى /admin
     navigate(`${location.pathname}?${sp.toString()}`, { replace: true });
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* زر المينيو لفتح السايدبار */}
+      {/* Header مع زر المينيو للسايدبار */}
       <Header hideMenu={false} onMenuClick={() => setOpen(true)} />
 
       <section className="mx-auto w-full max-w-6xl px-6 mt-10">
@@ -385,7 +406,7 @@ export default function Admin() {
           />
           <div>
             <h1 className="text-[28px] leading-tight font-extrabold tracking-tight text-[#2A1E36]">
-              Welcome, Admin
+              Admin Console
             </h1>
             <p className="text-gray-500 text-sm">
               Manage identities & compliance, and monitor medicine transfers.
@@ -393,7 +414,7 @@ export default function Admin() {
           </div>
         </div>
 
-        {/* بطاقات علوية */}
+        {/* top cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mt-7">
           <StatCard title="Total Users"   count={loadingCards ? "…" : counts.users}      icon={Users}        accent={C.primary} />
           <StatCard title="Doctors"       count={loadingCards ? "…" : counts.doctors}    icon={Stethoscope}  accent={C.teal} />
@@ -401,17 +422,11 @@ export default function Admin() {
           <StatCard title="Logistics"     count={loadingCards ? "…" : counts.logistics}  icon={Truck}        accent={C.teal} />
         </div>
 
-        {/* تبويبات */}
+        {/* pills (tabs) */}
         <Pills tabs={tabs} active={active} onChange={changeTab} />
 
-        {/* المحتوى حسب التبويب */}
+        {/* ==== CONTENT (one tab visible) ==== */}
         <div className="mt-6 mb-16">
-          {active === "overview" && (
-            <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-6 text-gray-700">
-              <p>Choose a section above to view and manage records.</p>
-            </div>
-          )}
-
           {active === "patients" && (
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
               <SectionHeader title="Patients" search={qPatients} setSearch={(v)=>{ setQPatients(v); setPPatients(1); }} />
@@ -421,12 +436,12 @@ export default function Admin() {
                     <tr>
                       <th className="text-left px-4 py-3">Access ID</th>
                       <th className="text-left px-4 py-3">Name</th>
-                      <th className="text-left px-4 py-3">Email</th>
-                      <th className="text-left px-4 py-3">Phone</th>
-                      <th className="text-left px-4 py-3">National ID / Hash</th>
-                      <th className="text-left px-4 py-3">Wallet</th>
-                      <th className="text-left px-4 py-3">Status</th>
-                      <th className="text-left px-4 py-3">Created</th>
+                      {fPatients.flags.hasEmail && <th className="text-left px-4 py-3">Email</th>}
+                      {fPatients.flags.hasPhone && <th className="text-left px-4 py-3">Phone</th>}
+                      {fPatients.flags.hasNationalId && <th className="text-left px-4 py-3">National ID / Hash</th>}
+                      {fPatients.flags.hasWallet && <th className="text-left px-4 py-3">Wallet</th>}
+                      {fPatients.flags.hasStatus && <th className="text-left px-4 py-3">Status</th>}
+                      {fPatients.flags.hasCreated && <th className="text-left px-4 py-3">Created</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -439,12 +454,18 @@ export default function Admin() {
                         <tr key={r.id} className="border-t border-gray-100">
                           <td className="px-4 py-3 font-medium text-[#2A1E36]">{r.accessId}</td>
                           <td className="px-4 py-3">{r.name}</td>
-                          <td className="px-4 py-3">{r.email}</td>
-                          <td className="px-4 py-3">{r.phone}</td>
-                          <td className="px-4 py-3">{mask(r.nationalId, 4, 3)}</td>
-                          <td className="px-4 py-3">{mask(r.wallet)}</td>
-                          <td className="px-4 py-3"><span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">{r.status || "—"}</span></td>
-                          <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>
+                          {fPatients.flags.hasEmail && <td className="px-4 py-3">{r.email || "—"}</td>}
+                          {fPatients.flags.hasPhone && <td className="px-4 py-3">{r.phone || "—"}</td>}
+                          {fPatients.flags.hasNationalId && <td className="px-4 py-3">{r.nationalId ? mask(r.nationalId, 4, 3) : "—"}</td>}
+                          {fPatients.flags.hasWallet && <td className="px-4 py-3">{r.wallet ? mask(r.wallet) : "—"}</td>}
+                          {fPatients.flags.hasStatus && (
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">
+                                {r.status || "—"}
+                              </span>
+                            </td>
+                          )}
+                          {fPatients.flags.hasCreated && <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>}
                         </tr>
                       ))
                     )}
@@ -464,12 +485,12 @@ export default function Admin() {
                     <tr>
                       <th className="text-left px-4 py-3">Access ID</th>
                       <th className="text-left px-4 py-3">Name</th>
-                      <th className="text-left px-4 py-3">Specialty</th>
-                      <th className="text-left px-4 py-3">License</th>
-                      <th className="text-left px-4 py-3">Facility</th>
-                      <th className="text-left px-4 py-3">Wallet</th>
-                      <th className="text-left px-4 py-3">Status</th>
-                      <th className="text-left px-4 py-3">Created</th>
+                      {fDoctors.flags.hasSpecialty && <th className="text-left px-4 py-3">Specialty</th>}
+                      {fDoctors.flags.hasLicense && <th className="text-left px-4 py-3">License</th>}
+                      {fDoctors.flags.hasFacility && <th className="text-left px-4 py-3">Facility</th>}
+                      {fDoctors.flags.hasWallet && <th className="text-left px-4 py-3">Wallet</th>}
+                      {fDoctors.flags.hasStatus && <th className="text-left px-4 py-3">Status</th>}
+                      {fDoctors.flags.hasCreated && <th className="text-left px-4 py-3">Created</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -482,12 +503,18 @@ export default function Admin() {
                         <tr key={r.id} className="border-t border-gray-100">
                           <td className="px-4 py-3 font-medium text-[#2A1E36]">{r.accessId}</td>
                           <td className="px-4 py-3">{r.name}</td>
-                          <td className="px-4 py-3">{r.specialty}</td>
-                          <td className="px-4 py-3">{r.license}</td>
-                          <td className="px-4 py-3">{r.facility}</td>
-                          <td className="px-4 py-3">{mask(r.wallet)}</td>
-                          <td className="px-4 py-3"><span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">{r.status || "—"}</span></td>
-                          <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>
+                          {fDoctors.flags.hasSpecialty && <td className="px-4 py-3">{r.specialty || "—"}</td>}
+                          {fDoctors.flags.hasLicense && <td className="px-4 py-3">{r.license || "—"}</td>}
+                          {fDoctors.flags.hasFacility && <td className="px-4 py-3">{r.facility || "—"}</td>}
+                          {fDoctors.flags.hasWallet && <td className="px-4 py-3">{r.wallet ? mask(r.wallet) : "—"}</td>}
+                          {fDoctors.flags.hasStatus && (
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">
+                                {r.status || "—"}
+                              </span>
+                            </td>
+                          )}
+                          {fDoctors.flags.hasCreated && <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>}
                         </tr>
                       ))
                     )}
@@ -507,12 +534,12 @@ export default function Admin() {
                     <tr>
                       <th className="text-left px-4 py-3">Access ID</th>
                       <th className="text-left px-4 py-3">Name</th>
-                      <th className="text-left px-4 py-3">Email</th>
-                      <th className="text-left px-4 py-3">Phone</th>
-                      <th className="text-left px-4 py-3">License</th>
-                      <th className="text-left px-4 py-3">Wallet</th>
-                      <th className="text-left px-4 py-3">Status</th>
-                      <th className="text-left px-4 py-3">Created</th>
+                      {fPharms.flags.hasEmail && <th className="text-left px-4 py-3">Email</th>}
+                      {fPharms.flags.hasPhone && <th className="text-left px-4 py-3">Phone</th>}
+                      {fPharms.flags.hasLicense && <th className="text-left px-4 py-3">License</th>}
+                      {fPharms.flags.hasWallet && <th className="text-left px-4 py-3">Wallet</th>}
+                      {fPharms.flags.hasStatus && <th className="text-left px-4 py-3">Status</th>}
+                      {fPharms.flags.hasCreated && <th className="text-left px-4 py-3">Created</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -525,12 +552,18 @@ export default function Admin() {
                         <tr key={r.id} className="border-t border-gray-100">
                           <td className="px-4 py-3 font-medium text-[#2A1E36]">{r.accessId}</td>
                           <td className="px-4 py-3">{r.name}</td>
-                          <td className="px-4 py-3">{r.email}</td>
-                          <td className="px-4 py-3">{r.phone}</td>
-                          <td className="px-4 py-3">{r.license}</td>
-                          <td className="px-4 py-3">{mask(r.wallet)}</td>
-                          <td className="px-4 py-3"><span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">{r.status || "—"}</span></td>
-                          <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>
+                          {fPharms.flags.hasEmail && <td className="px-4 py-3">{r.email || "—"}</td>}
+                          {fPharms.flags.hasPhone && <td className="px-4 py-3">{r.phone || "—"}</td>}
+                          {fPharms.flags.hasLicense && <td className="px-4 py-3">{r.license || "—"}</td>}
+                          {fPharms.flags.hasWallet && <td className="px-4 py-3">{r.wallet ? mask(r.wallet) : "—"}</td>}
+                          {fPharms.flags.hasStatus && (
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">
+                                {r.status || "—"}
+                              </span>
+                            </td>
+                          )}
+                          {fPharms.flags.hasCreated && <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>}
                         </tr>
                       ))
                     )}
@@ -550,11 +583,11 @@ export default function Admin() {
                     <tr>
                       <th className="text-left px-4 py-3">Access ID</th>
                       <th className="text-left px-4 py-3">Company / Name</th>
-                      <th className="text-left px-4 py-3">Contact</th>
-                      <th className="text-left px-4 py-3">SLA</th>
-                      <th className="text-left px-4 py-3">Wallet</th>
-                      <th className="text-left px-4 py-3">Status</th>
-                      <th className="text-left px-4 py-3">Created</th>
+                      {fLogs.flags.hasContact && <th className="text-left px-4 py-3">Contact</th>}
+                      {fLogs.flags.hasSla && <th className="text-left px-4 py-3">SLA</th>}
+                      {fLogs.flags.hasWallet && <th className="text-left px-4 py-3">Wallet</th>}
+                      {fLogs.flags.hasStatus && <th className="text-left px-4 py-3">Status</th>}
+                      {fLogs.flags.hasCreated && <th className="text-left px-4 py-3">Created</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -567,11 +600,17 @@ export default function Admin() {
                         <tr key={r.id} className="border-t border-gray-100">
                           <td className="px-4 py-3 font-medium text-[#2A1E36]">{r.accessId}</td>
                           <td className="px-4 py-3">{r.name}</td>
-                          <td className="px-4 py-3">{r.contact}</td>
-                          <td className="px-4 py-3">{r.sla}</td>
-                          <td className="px-4 py-3">{mask(r.wallet)}</td>
-                          <td className="px-4 py-3"><span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">{r.status || "—"}</span></td>
-                          <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>
+                          {fLogs.flags.hasContact && <td className="px-4 py-3">{r.contact || "—"}</td>}
+                          {fLogs.flags.hasSla && <td className="px-4 py-3">{r.sla || "—"}</td>}
+                          {fLogs.flags.hasWallet && <td className="px-4 py-3">{r.wallet ? mask(r.wallet) : "—"}</td>}
+                          {fLogs.flags.hasStatus && (
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">
+                                {r.status || "—"}
+                              </span>
+                            </td>
+                          )}
+                          {fLogs.flags.hasCreated && <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>}
                         </tr>
                       ))
                     )}
@@ -586,7 +625,7 @@ export default function Admin() {
 
       <Footer />
 
-      {/* ربط السايدبار */}
+      {/* Sidebar hook-up */}
       <Sidebar
         open={open}
         setOpen={setOpen}

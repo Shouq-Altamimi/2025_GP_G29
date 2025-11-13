@@ -1,3 +1,6 @@
+// src/pages/AdminDashboard.jsx (أو اسم ملفك)
+// صفحة: AdminAddDoctorOnly
+
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -224,8 +227,9 @@ function SidebarItem({ children, onClick, variant = "solid", active = false }) {
 /* =========================
    Validation (EN-only)
    ========================= */
-const NAME_RE = /^[A-Za-z ]{3,}$/;
-const SPEC_RE = /^[A-Za-z ]{3,}$/;
+// min 5 chars
+const NAME_RE = /^[A-Za-z ]{5,}$/;
+const SPEC_RE = /^[A-Za-z ]{5,}$/;
 const LIC_RE  = /^[A-Za-z0-9]{10}$/; // exactly 10 alphanumeric
 
 function validateLic(v) {
@@ -235,12 +239,12 @@ function validateLic(v) {
 }
 function validateName(v) {
   if (!v) return { ok: false, err: "Name is required." };
-  if (!NAME_RE.test(v)) return { ok: false, err: "Letters and spaces only (min 3 chars)." };
+  if (!NAME_RE.test(v)) return { ok: false, err: "Letters and spaces only (min 5 chars)." };
   return { ok: true, err: "" };
 }
 function validateSpec(v) {
   if (!v) return { ok: false, err: "Specialty is required." };
-  if (!SPEC_RE.test(v)) return { ok: false, err: "Letters and spaces only (min 3 chars)." };
+  if (!SPEC_RE.test(v)) return { ok: false, err: "Letters and spaces only (min 5 chars)." };
   return { ok: true, err: "" };
 }
 function validateContract(v) {
@@ -249,31 +253,26 @@ function validateContract(v) {
   return { ok: true, err: "" };
 }
 function validateWallet(v) {
-  if (!v) return { ok: false, err: "Wallet address is required." };
+  if (!v) return { ok: false, err: "Wallet address is required (use MetaMask button)." };
   if (!isHex40(v)) return { ok: false, err: "Enter a valid 0x + 40 hex address." };
   return { ok: true, err: "" };
 }
 
 /* === Sanitizers to force EN-only during typing === */
 function sanitizeName(raw) {
-  // Allow A–Z and spaces only
   return raw.replace(/[^A-Za-z ]/g, "").replace(/\s{2,}/g, " ");
 }
 function sanitizeSpec(raw) {
   return raw.replace(/[^A-Za-z ]/g, "").replace(/\s{2,}/g, " ");
 }
 function sanitizeLicense(raw) {
-  // Only A–Z / 0–9 and max 10
   return raw.replace(/[^A-Za-z0-9]/g, "").slice(0, 10);
 }
 function sanitizeHexLike(raw) {
-  // Keep only 0..9 a..f A..F and 'x'
   let s = raw.replace(/[^0-9a-fA-Fx]/g, "");
-  // Normalize "0x" prefix: if doesn't start with 0x, remove stray x's
   if (!s.toLowerCase().startsWith("0x")) {
-    s = s.replace(/x/gi, ""); // drop any x not after 0
+    s = s.replace(/x/gi, "");
   }
-  // If starts with 0x, ensure no extra 'x' later
   if (s.toLowerCase().startsWith("0x")) {
     const rest = s.slice(2).replace(/x/gi, "");
     s = "0x" + rest;
@@ -284,12 +283,11 @@ function sanitizeHexLike(raw) {
 /* =========================
    UI helpers
    ========================= */
-/* تم تعديلها لإلغاء الأخضر عند النجاح وإبقاء المحايد */
 function fieldClasses(valid, dirty) {
   const neutral = "border-gray-200 focus:ring-[#B08CC1]";
-  if (!dirty) return neutral;              // قبل اللمس: محايد
-  if (!valid) return "border-rose-500 focus:ring-rose-300"; // خطأ: أحمر
-  return neutral;                          // صحيح: محايد (لا أخضر)
+  if (!dirty) return neutral;
+  if (!valid) return "border-rose-500 focus:ring-rose-300";
+  return neutral; // صحيح: محايد
 }
 function ErrorMsg({ children }) {
   if (!children) return null;
@@ -403,7 +401,6 @@ export default function AdminAddDoctorOnly() {
       await markAccessIdClaimed_Firestore(id);
 
       setStatus(`✅ Doctor added successfully.`);
-      // reset
       setLicenseNumber("");
       setName("");
       setspeciality("");
@@ -547,13 +544,9 @@ export default function AdminAddDoctorOnly() {
             </label>
             <div className="flex items-center gap-2">
               <input
-                placeholder="0x + 40 hex characters"
+                placeholder="Click “Use MetaMask” to fill"
                 value={walletAddress}
-                onChange={(e) => {
-                  const cleaned = sanitizeHexLike(e.target.value);
-                  setWalletAddress(cleaned);
-                  setDirty((d)=>({...d, wallet:true}));
-                }}
+                readOnly
                 className={`flex-1 rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(vWallet.ok, dirty.wallet)}`}
                 inputMode="text"
                 dir="ltr"
@@ -567,6 +560,9 @@ export default function AdminAddDoctorOnly() {
                 Use MetaMask
               </button>
             </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Please click "Use MetaMask" to automatically fill the wallet address.
+            </p>
             <ErrorMsg>{dirty.wallet && !vWallet.ok ? vWallet.err : ""}</ErrorMsg>
           </div>
 
