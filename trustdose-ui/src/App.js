@@ -18,6 +18,8 @@ import PrescriptionsPage from "./pages/PrescriptionsPage";
 // الصيدلية
 import PharmacyShell from "./pages/PharmacyShell";
 import Pharmacy from "./pages/pharmacy.jsx";
+// ✅ NEW: صفحة طلبات التوصيل الحسّاسة
+import DeliveryOrders from "./pages/DeliveryOrders.jsx";
 
 // البريد / إعادة تعيين
 import AuthEmailHandler from "./pages/AuthEmailHandler";
@@ -25,7 +27,6 @@ import PasswordReset from "./pages/PasswordReset";
 
 // ✅ الحماية بالأدوار
 import RequireAuth from "./auth/RequireAuth";
-import Admin from "./pages/Admin";
 
 export default function App() {
   return (
@@ -48,15 +49,6 @@ export default function App() {
             </RequireAuth>
           }
         />
-        <Route
-         path="/admin/dashboard"
-          element={
-            <RequireAuth allowedRoles={["admin"]}>
-                    <Admin />
-            </RequireAuth>
-           }
-        />
-
 
         {/* الطبيب */}
         <Route
@@ -101,6 +93,11 @@ export default function App() {
           }
         >
           <Route index element={<Pharmacy />} />
+          {/* ✅ NEW: /pharmacy/delivery */}
+          <Route
+            path="delivery"
+            element={<DeliveryOrders pharmacyId="pharma_001" />}
+          />
         </Route>
 
         {/* 404 */}
@@ -109,4 +106,3 @@ export default function App() {
     </BrowserRouter>
   );
 }
-
