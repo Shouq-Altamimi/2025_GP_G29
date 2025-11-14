@@ -1,8 +1,11 @@
+// src/pages/AdminDashboard.jsx (أو اسم ملفك)
+// صفحة: AdminAddDoctorOnly
+
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { LogOut } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { X, LayoutDashboard, UserPlus, LogOut } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
 
@@ -14,6 +17,9 @@ import {
 } from "firebase/firestore";
 import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "firebase/auth";
 
+/* =========================
+   Auth setup
+   ========================= */
 const auth = getAuth(app);
 if (!auth.currentUser) signInAnonymously(auth).catch(() => {});
 onAuthStateChanged(auth, (u) => u && console.log(" anon uid:", u.uid));
@@ -33,6 +39,9 @@ function ensureAuthReady() {
   return authReadyPromise;
 }
 
+/* =========================
+   Blockchain utils
+   ========================= */
 const DoctorRegistry_ABI = [
   {
     inputs: [
@@ -42,29 +51,6 @@ const DoctorRegistry_ABI = [
     ],
     name: "addDoctor", outputs: [], stateMutability: "nonpayable", type: "function"
   },
-  {
-    inputs: [
-      { internalType: "address", name: "_doctor", type: "address" },
-      { internalType: "bool",    name: "_active", type: "bool" }
-    ],
-    name: "setDoctorActive", outputs: [], stateMutability: "nonpayable", type: "function"
-  },
-  {
-    inputs: [{ internalType: "string", name: "_accessId", type: "string" }],
-    name: "isAccessIdUsed", outputs: [{ internalType: "bool", name: "", type: "bool" }],
-    stateMutability: "view", type: "function"
-  },
-  {
-    inputs: [{ internalType: "address", name: "_doctor", type: "address" }],
-    name: "getDoctor",
-    outputs: [
-      { internalType: "string",  name: "accessId",     type: "string" },
-      { internalType: "bytes32", name: "tempPassHash", type: "bytes32" },
-      { internalType: "bool",    name: "active",       type: "bool" }
-    ],
-    stateMutability: "view", type: "function"
-  },
-  { inputs: [], name: "owner", outputs: [{ internalType: "address", name: "", type: "address" }], stateMutability: "view", type: "function" }
 ];
 
 async function loadEthers() {
@@ -73,8 +59,7 @@ async function loadEthers() {
 }
 async function getProvider() {
   const E = await loadEthers();
-  if (E.BrowserProvider) return new E.BrowserProvider(window.ethereum);
-  return new E.providers.Web3Provider(window.ethereum);
+  return E.BrowserProvider ? new E.BrowserProvider(window.ethereum) : new E.providers.Web3Provider(window.ethereum);
 }
 async function getSigner(provider) {
   const s = provider.getSigner();
@@ -85,6 +70,9 @@ async function idCompat(text) {
   return (E.utils?.id || E.id)(text);
 }
 
+/* =========================
+   Helpers
+   ========================= */
 function generateTempPassword() {
   const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const a = letters[Math.floor(Math.random() * letters.length)];
@@ -101,7 +89,9 @@ async function sha256Hex(text) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/*database*/
+/* =========================
+   Firestore
+   ========================= */
 async function saveDoctor_FirestoreMulti(docData) {
   await ensureAuthReady();
   return addDoc(collection(db, "doctors"), { ...docData, createdAt: serverTimestamp() });
@@ -150,7 +140,9 @@ async function allocateSequentialAccessId() {
   throw new Error("Failed to allocate sequential Access ID. Please try again.");
 }
 
-/* Blockchain */
+/* =========================
+   Blockchain save
+   ========================= */
 async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPassword }) {
   const E = await loadEthers();
   const provider = E.BrowserProvider ? new E.BrowserProvider(window.ethereum) : new E.providers.Web3Provider(window.ethereum);
@@ -162,27 +154,164 @@ async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPasswo
   return { txHash: tx.hash, block: rc.blockNumber };
 }
 
+/* =========================
+   Sidebar (TrustDose style) + Active state
+   ========================= */
+function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
+  const location = useLocation();
+  const go = (path) => { setOpen(false); onNav?.(path); };
+  const isActive = (path) => location.pathname === path;
+
+  return (
+    <>
+      <div
+        onClick={() => setOpen(false)}
+        className={`fixed inset-0 z-40 bg-black/40 transition-opacity ${
+          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+      />
+      <aside
+        className="fixed top-0 left-0 z-50 h-full w-[290px] shadow-2xl"
+        style={{
+          transform: open ? "translateX(0)" : "translateX(-100%)",
+          transition: "transform 180ms ease",
+          background:
+            "linear-gradient(180deg, rgba(176,140,193,0.95) 0%, rgba(146,137,186,0.95) 45%, rgba(82,185,196,0.92) 100%)",
+        }}
+      >
+        <div className="flex items-center justify-between px-4 py-4">
+          <img src="/Images/TrustDose_logo.png" alt="TrustDose" className="h-7 w-auto" />
+          <button
+            onClick={() => setOpen(false)}
+            className="h-9 w-9 grid place-items-center rounded-lg hover:bg-white/20 text-white"
+            aria-label="Close sidebar"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <nav className="px-3">
+          <SidebarItem active={isActive("/admin/dashboard")} onClick={() => go("/admin/dashboard")}>
+            <LayoutDashboard size={18} />
+            <span>Dashboard</span>
+          </SidebarItem>
+
+          <SidebarItem active={isActive("/admin")} onClick={() => go("/admin")}>
+            <UserPlus size={18} />
+            <span>Add Doctor</span>
+          </SidebarItem>
+
+          <SidebarItem variant="ghost" onClick={() => { setOpen(false); onLogout?.(); }}>
+            <LogOut size={18} />
+            <span>Logout</span>
+          </SidebarItem>
+        </nav>
+      </aside>
+    </>
+  );
+}
+function SidebarItem({ children, onClick, variant = "solid", active = false }) {
+  const base = "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
+  const styles = active
+    ? "bg-white text-[#5B3A70]"
+    : variant === "ghost"
+      ? "text-white/90 hover:bg-white/10"
+      : "bg-white/25 text-white hover:bg-white/35";
+  return (
+    <button onClick={onClick} className={`${base} ${styles}`} aria-current={active ? "page" : undefined}>
+      {children}
+    </button>
+  );
+}
+
+/* =========================
+   Validation (EN-only)
+   ========================= */
+// min 5 chars
+const NAME_RE = /^[A-Za-z ]{5,}$/;
+const SPEC_RE = /^[A-Za-z ]{5,}$/;
+const LIC_RE  = /^[A-Za-z0-9]{10}$/; // exactly 10 alphanumeric
+
+function validateLic(v) {
+  if (!v) return { ok: false, err: "License number is required." };
+  if (!LIC_RE.test(v)) return { ok: false, err: "Must be exactly 10 letters or digits." };
+  return { ok: true, err: "" };
+}
+function validateName(v) {
+  if (!v) return { ok: false, err: "Name is required." };
+  if (!NAME_RE.test(v)) return { ok: false, err: "Letters and spaces only (min 5 chars)." };
+  return { ok: true, err: "" };
+}
+function validateSpec(v) {
+  if (!v) return { ok: false, err: "Specialty is required." };
+  if (!SPEC_RE.test(v)) return { ok: false, err: "Letters and spaces only (min 5 chars)." };
+  return { ok: true, err: "" };
+}
+function validateContract(v) {
+  if (!v) return { ok: false, err: "Contract address is required." };
+  if (!isHex40(v)) return { ok: false, err: "Enter a valid 0x + 40 hex address." };
+  return { ok: true, err: "" };
+}
+function validateWallet(v) {
+  if (!v) return { ok: false, err: "Wallet address is required (use MetaMask button)." };
+  if (!isHex40(v)) return { ok: false, err: "Enter a valid 0x + 40 hex address." };
+  return { ok: true, err: "" };
+}
+
+/* === Sanitizers to force EN-only during typing === */
+function sanitizeName(raw) {
+  return raw.replace(/[^A-Za-z ]/g, "").replace(/\s{2,}/g, " ");
+}
+function sanitizeSpec(raw) {
+  return raw.replace(/[^A-Za-z ]/g, "").replace(/\s{2,}/g, " ");
+}
+function sanitizeLicense(raw) {
+  return raw.replace(/[^A-Za-z0-9]/g, "").slice(0, 10);
+}
+function sanitizeHexLike(raw) {
+  let s = raw.replace(/[^0-9a-fA-Fx]/g, "");
+  if (!s.toLowerCase().startsWith("0x")) {
+    s = s.replace(/x/gi, "");
+  }
+  if (s.toLowerCase().startsWith("0x")) {
+    const rest = s.slice(2).replace(/x/gi, "");
+    s = "0x" + rest;
+  }
+  return s;
+}
+
+/* =========================
+   UI helpers
+   ========================= */
+function fieldClasses(valid, dirty) {
+  const neutral = "border-gray-200 focus:ring-[#B08CC1]";
+  if (!dirty) return neutral;
+  if (!valid) return "border-rose-500 focus:ring-rose-300";
+  return neutral; // صحيح: محايد
+}
+function ErrorMsg({ children }) {
+  if (!children) return null;
+  return <div className="mt-1 text-xs text-rose-600 text-left">{children}</div>;
+}
+
+/* =========================
+   Page
+   ========================= */
 export default function AdminAddDoctorOnly() {
   const navigate = useNavigate();
-
+  const [open, setOpen] = useState(false);
 
   async function handleLogout() {
-    try {
-      localStorage.removeItem("userRole");
-      localStorage.removeItem("userId");
-      sessionStorage.clear();
-      try { await signOut(getAuth(app)); } catch {}
-    } finally {
-      navigate("/auth", { replace: true });
-    }
+    localStorage.clear();
+    sessionStorage.clear();
+    try { await signOut(getAuth(app)); } catch {}
+    navigate("/auth", { replace: true });
   }
 
-
   const HOSPITAL_NAME = "Dr. Sulaiman Al Habib Hospital";
-
   const [contractAddress, setContractAddress] = useState("0xb999b08A96B0374f3454e125FC1E59E2Fc223C83");
   const [DoctorID, setDoctorID] = useState("");
-  const [healthFacility, sethealthFacility] = useState(HOSPITAL_NAME); // fixed value
+  const [healthFacility] = useState(HOSPITAL_NAME);
   const [licenseNumber, setLicenseNumber] = useState("");
   const [name, setName] = useState("");
   const [speciality, setspeciality] = useState("");
@@ -192,7 +321,16 @@ export default function AdminAddDoctorOnly() {
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
 
-  
+  const [dirty, setDirty] = useState({ contract: false, name: false, spec: false, lic: false, wallet: false });
+
+  // Validations
+  const vContract = validateContract(contractAddress);
+  const vName     = validateName(name);
+  const vSpec     = validateSpec(speciality);
+  const vLic      = validateLic(licenseNumber);
+  const vWallet   = validateWallet(walletAddress);
+  const allValid  = vContract.ok && vName.ok && vSpec.ok && vLic.ok && vWallet.ok;
+
   async function connectMetaMask() {
     try {
       if (!window?.ethereum) { setStatus("⚠️ Please install MetaMask first."); return; }
@@ -201,10 +339,10 @@ export default function AdminAddDoctorOnly() {
       const signer = await getSigner(provider);
       const addr = await signer.getAddress();
       setWalletAddress(addr);
+      setDirty((d) => ({ ...d, wallet: true }));
       setStatus("✅ Address fetched from MetaMask.");
     } catch (e) {
-      if (e?.code === 4001) setStatus("❌ MetaMask request rejected.");
-      else setStatus(`❌ MetaMask: ${e?.message || e}`);
+      setStatus(`❌ ${e?.message || e}`);
     }
   }
 
@@ -218,13 +356,7 @@ export default function AdminAddDoctorOnly() {
     })();
   }, []);
 
-  const formOk = useMemo(
-    () =>
-      isHex40(contractAddress) &&
-      isHex40(walletAddress) &&
-      name && speciality && healthFacility && licenseNumber && tempPassword,
-    [contractAddress, walletAddress, name, speciality, healthFacility, licenseNumber, tempPassword]
-  );
+  const formOk = useMemo(() => allValid && tempPassword, [allValid, tempPassword]);
 
   async function handleSave() {
     try {
@@ -244,7 +376,6 @@ export default function AdminAddDoctorOnly() {
       const tempPasswordHash = await sha256Hex(tempPassword);
       const expiresAtMs = Date.now() + 24 * 60 * 60 * 1000;
 
-      
       await saveDoctor_FirestoreMulti({
         entityType: "Doctor",
         role: "Doctor",
@@ -252,9 +383,7 @@ export default function AdminAddDoctorOnly() {
 
         name,
         specialty: speciality,
-        speciality,
         facility: healthFacility,
-        healthFacility,
         licenseNumber,
 
         walletAddress,
@@ -271,11 +400,16 @@ export default function AdminAddDoctorOnly() {
 
       await markAccessIdClaimed_Firestore(id);
 
-      setStatus(`✅ Doctor added. Tx: ${chain.txHash.slice(0, 12)}…`);
+      setStatus(`✅ Doctor added successfully.`);
+      setLicenseNumber("");
+      setName("");
+      setspeciality("");
+      setWalletAddress("");
+      setDirty({ contract: false, name: false, spec: false, lic: false, wallet: false });
+      setTempPassword(generateTempPassword());
       const previewNext = await peekNextAccessId();
       setAccessId(previewNext);
       setDoctorID(previewNext);
-      setTempPassword(generateTempPassword());
     } catch (e) {
       setStatus(`❌ ${e?.message || e}`);
     } finally {
@@ -285,20 +419,8 @@ export default function AdminAddDoctorOnly() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Header */}
-      <Header
-        hideMenu
-        rightNode={
-          <button
-            onClick={handleLogout}
-            className="inline-flex items-center gap-2 rounded-xl border border-zinc-300 px-3 py-2 text-sm text-[#4A2C59] hover:bg-zinc-50"
-            title="Logout"
-          >
-            <LogOut className="h-4 w-4" />
-            <span className="hidden sm:inline">Logout</span>
-          </button>
-        }
-      />
+      {/* Header without logout button */}
+      <Header hideMenu={false} onMenuClick={() => setOpen(true)} />
 
       <section className="mx-auto w-full max-w-5xl px-6 mt-10 mb-4">
         <div className="flex items-center gap-0">
@@ -319,69 +441,132 @@ export default function AdminAddDoctorOnly() {
         <aside className="w-full max-w-xl bg-white rounded-3xl shadow-xl border border-gray-200 p-6">
           <h3 className="mb-4 text-xl font-semibold text-[#4A2C59]">Add Doctor</h3>
 
-          <input
-            placeholder="Contract Address — 0x…"
-            value={contractAddress}
-            onChange={(e) => setContractAddress(e.target.value)}
-            className="mb-3 w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
-          />
-
-          <div className="grid grid-cols-1 gap-3">
+          {/* Contract Address */}
+          <div className="mb-3">
+            <label className="block text-sm text-gray-700 mb-1">
+              Contract Address <span className="text-rose-600">*</span>
+            </label>
             <input
-              placeholder="Doctor Name"
-              value={name}
-              onChange={(e) => setName(e.target.value.replace(/[^A-Za-z\s]+/g, ""))}
-              className="rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
+              placeholder="0x + 40 hex characters"
+              value={contractAddress}
+              onChange={(e) => {
+                const cleaned = sanitizeHexLike(e.target.value);
+                setContractAddress(cleaned);
+                setDirty((d)=>({...d, contract:true}));
+              }}
+              className={`w-full rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(vContract.ok, dirty.contract)}`}
+              inputMode="text"
+              dir="ltr"
             />
-            <input
-              placeholder="Specialty"
-              value={speciality}
-              onChange={(e) => setspeciality(e.target.value.replace(/[^A-Za-z\s]+/g, ""))}
-              className="rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
-            />
+            <ErrorMsg>{dirty.contract && !vContract.ok ? vContract.err : ""}</ErrorMsg>
           </div>
 
+          {/* Name + Specialty */}
+          <div className="grid grid-cols-1 gap-3">
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">
+                Doctor Name <span className="text-rose-600">*</span>
+              </label>
+              <input
+                placeholder="e.g., Ahmed Alharbi"
+                value={name}
+                onChange={(e) => {
+                  setName(sanitizeName(e.target.value));
+                  setDirty((d)=>({...d, name:true}));
+                }}
+                className={`w-full rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(vName.ok, dirty.name)}`}
+                inputMode="text"
+              />
+              <ErrorMsg>{dirty.name && !vName.ok ? vName.err : ""}</ErrorMsg>
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">
+                Specialty <span className="text-rose-600">*</span>
+              </label>
+              <input
+                placeholder="e.g., Cardiology"
+                value={speciality}
+                onChange={(e) => {
+                  setspeciality(sanitizeSpec(e.target.value));
+                  setDirty((d)=>({...d, spec:true}));
+                }}
+                className={`w-full rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(vSpec.ok, dirty.spec)}`}
+                inputMode="text"
+              />
+              <ErrorMsg>{dirty.spec && !vSpec.ok ? vSpec.err : ""}</ErrorMsg>
+            </div>
+          </div>
+
+          {/* IDs / Facility / License */}
           <div className="mt-3 grid grid-cols-1 gap-3">
-            <input
-              placeholder="Doctor ID"
-              value={DoctorID}
-              readOnly
-              className="rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
-            />
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Doctor ID</label>
+              <input
+                placeholder="Auto-generated (e.g., Dr-007)"
+                value={DoctorID}
+                readOnly
+                className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none bg-gray-50"
+              />
+            </div>
 
-            {/* Health Facility */}
-            <input
-              value={healthFacility}
-              readOnly
-              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none bg-gray-50 focus:ring-2 focus:ring-[#B08CC1]"
-            />
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Health Facility</label>
+              <input
+                value={healthFacility}
+                readOnly
+                className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none bg-gray-50"
+              />
+            </div>
 
-            <input
-              placeholder="License Number"
-              value={licenseNumber}
-              onChange={(e) => setLicenseNumber(e.target.value.replace(/[^A-Za-z0-9-]+/g, ""))}
-              className="rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
-            />
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">
+                License Number <span className="text-rose-600">*</span>
+              </label>
+              <input
+                placeholder="10 letters or digits"
+                value={licenseNumber}
+                onChange={(e) => {
+                  setLicenseNumber(sanitizeLicense(e.target.value));
+                  setDirty((d)=>({...d, lic:true}));
+                }}
+                className={`w-full rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(vLic.ok, dirty.lic)}`}
+                inputMode="text"
+              />
+              <ErrorMsg>{dirty.lic && !vLic.ok ? vLic.err : ""}</ErrorMsg>
+            </div>
           </div>
 
           {/* Wallet + Use MetaMask */}
-          <div className="mt-3 flex items-center gap-2">
-            <input
-              placeholder="Wallet Address 0x…"
-              value={walletAddress}
-              onChange={(e) => setWalletAddress(e.target.value)}
-              className="flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
-            />
-            <button
-              onClick={connectMetaMask}
-              type="button"
-              className="rounded-2xl border border-gray-200 bg-[#F8F6FB] px-4 py-3 text-[#4A2C59] hover:bg-[#EDE4F3]"
-              title="Fetch address from MetaMask"
-            >
-              Use MetaMask
-            </button>
+          <div className="mt-3">
+            <label className="block text-sm text-gray-700 mb-1">
+              Wallet Address <span className="text-rose-600">*</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                placeholder="Click “Use MetaMask” to fill"
+                value={walletAddress}
+                readOnly
+                className={`flex-1 rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(vWallet.ok, dirty.wallet)}`}
+                inputMode="text"
+                dir="ltr"
+              />
+              <button
+                onClick={connectMetaMask}
+                type="button"
+                className="rounded-2xl border border-gray-200 bg-[#F8F6FB] px-4 py-3 text-[#4A2C59] hover:bg-[#EDE4F3]"
+                title="Fetch address from MetaMask"
+              >
+                Use MetaMask
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Please click "Use MetaMask" to automatically fill the wallet address.
+            </p>
+            <ErrorMsg>{dirty.wallet && !vWallet.ok ? vWallet.err : ""}</ErrorMsg>
           </div>
 
+          {/* Access ID + Temp Password (read-only) */}
           <div className="mt-4 space-y-2">
             <div className="flex justify-between border border-gray-200 bg-gray-50 px-4 py-2 rounded-2xl text-sm text-gray-700">
               <span><b>Access ID:</b> {accessId}</span>
@@ -391,8 +576,12 @@ export default function AdminAddDoctorOnly() {
             </div>
           </div>
 
+          {/* Actions */}
           <div className="mt-5 flex justify-end gap-3">
-            <button onClick={() => window.history.back()} className="rounded-2xl border border-gray-200 px-5 py-3 text-[#4A2C59] hover:bg-[#F5F0FA]">
+            <button
+              onClick={() => window.history.back()}
+              className="rounded-2xl border border-gray-200 px-5 py-3 text-[#4A2C59] hover:bg-[#F5F0FA]"
+            >
               Cancel
             </button>
             <button
@@ -411,6 +600,14 @@ export default function AdminAddDoctorOnly() {
       </main>
 
       <Footer />
+
+      {/* Sidebar */}
+      <TDAdminSidebar
+        open={open}
+        setOpen={setOpen}
+        onNav={(path) => navigate(path)}
+        onLogout={handleLogout}
+      />
     </div>
   );
 }

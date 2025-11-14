@@ -19,6 +19,8 @@ export default function RequireAuth({ allowedRoles, children }) {
         ? "/pharmacy"
         : userRole === "patient"
         ? "/patient"
+         : userRole === "logistics"
+        ? "/logistics"
         : "/auth";
     return <Navigate to={fallback} replace />;
   }
