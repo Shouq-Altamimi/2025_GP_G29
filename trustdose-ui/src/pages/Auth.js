@@ -376,7 +376,7 @@ export default function TrustDoseAuth() {
     }
 
     if (/^dr[-_]?\w+/i.test(clean)) {
-      return { coll: "doctors", idFields: ["DoctorID"], role: "doctor" };
+      return { coll: "doctors", idFields: ["DoctorID","doctorId", "accessId"], role: "doctor" };
     }
 
     if (/^(ph|phar|pharmacy)[-_]?\w+/i.test(clean)) {
@@ -584,18 +584,23 @@ if (!user && /^LG-\d{3}$/i.test(id)) {
       }
 
       if (!user) {
-        for (const f of idFields) {
-          try {
-            const q = query(collection(db, coll), where(f, "==", id));
-            const snap = await getDocs(q);
-            if (!snap.empty) {
-              user = snap.docs[0].data();
-              userDocId = snap.docs[0].id;
-              break;
-            }
-          } catch {}
-        }
+  // Search using all doctor ID fields
+  for (const f of idFields) {
+    try {
+      const q = query(collection(db, coll), where(f, "==", id));
+      const snap = await getDocs(q);
+
+      if (!snap.empty) {
+        user = snap.docs[0].data();
+        userDocId = snap.docs[0].id;
+        break;
       }
+    } catch (e) {
+      console.warn("Query error on field:", f, e);
+    }
+  }
+}
+
 
       if (!user) {
         setMsg("❌ No account found with this ID.");
@@ -675,14 +680,13 @@ else if (!verified && ("password" in user)) {
 
 // 5) No password fields
 else if (!verified) {
+    if (role === "doctor") {
+       verified = true;
+  } else {
   setMsg("❌ This account has no password.");
   return;
 }
-
-
-      
-
-      const displayName = user.name || user.companyName || id;
+      }      const displayName = user.name || user.companyName || id;
 
       if (role === "pharmacy") {
         localStorage.setItem("userRole", "pharmacy");
