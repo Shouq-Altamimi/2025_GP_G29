@@ -610,17 +610,53 @@ if (!user && /^LG-\d{3}$/i.test(id)) {
       console.log('🔐 Verifying password for role:', role);
 
       let verified = false;
+      // FORCE tempPassword for doctors
+// Doctor login logic
+if (role === "doctor") {
 
-// 1) temp password
-if (!verified && user?.tempPassword?.valid && user?.tempPassword?.value) {
-  if (!pass) { setMsg("Please enter your password."); return; }
-  if (String(pass) === String(user.tempPassword.value)) {
+  // 0) If password empty → show message
+  if (!pass) {
+    setMsg("Please enter your password.");
+    return;
+  }
+
+  // 1) Check temp password first
+  if (user.tempPassword?.valid && user.tempPassword?.value) {
+    if (String(pass) !== String(user.tempPassword.value)) {
+      setMsg("❌ ID or password incorrect.");
+      return;
+    }
     verified = true;
-  } else {
-    setMsg("❌ ID or password incorrect.");
+  }
+
+  // 2) If doctor has SHA-256 password saved in "password"
+  else if (user.password) {
+    const ok = await verifyPasswordSHA256(pass, user.password);
+    if (!ok) {
+      setMsg("❌ ID or password incorrect.");
+      return;
+    }
+    verified = true;
+  }
+
+  // 3) Fallback: if old doctors still have passwordHash
+  else if (user.passwordHash) {
+    const ok = await verifyPasswordSHA256(pass, user.passwordHash);
+    if (!ok) {
+      setMsg("❌ ID or password incorrect.");
+      return;
+    }
+    verified = true;
+  }
+
+  else {
+    setMsg("❌ This doctor account has no password.");
     return;
   }
 }
+
+
+
 
 // 2) PBKDF2 hashing
 else if (!verified && ("passwordHash" in user) && ("passwordSalt" in user)) {
@@ -680,13 +716,10 @@ else if (!verified && ("password" in user)) {
 
 // 5) No password fields
 else if (!verified) {
-    if (role === "doctor") {
-       verified = true;
-  } else {
   setMsg("❌ This account has no password.");
   return;
 }
-      }      const displayName = user.name || user.companyName || id;
+           const displayName = user.name || user.companyName || id;
 
       if (role === "pharmacy") {
         localStorage.setItem("userRole", "pharmacy");
