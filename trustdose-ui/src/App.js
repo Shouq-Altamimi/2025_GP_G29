@@ -8,7 +8,7 @@ import DoctorHome from "./DoctorHome";
 
 // الطبيب
 import Doctor from "./pages/Doctor";
-import Shell from "./pages/DoctorHeader.jsx"; 
+import Shell from "./pages/DoctorHeader.jsx";
 
 // المريض
 import PShell from "./pages/PShell.jsx";
@@ -18,7 +18,7 @@ import PrescriptionsPage from "./pages/PrescriptionsPage";
 // الصيدلية
 import PharmacyShell from "./pages/PharmacyShell";
 import Pharmacy from "./pages/pharmacy.jsx";
-// ✅ NEW: صفحة طلبات التوصيل الحسّاسة
+// ✅ صفحة طلبات التوصيل الحسّاسة
 import DeliveryOrders from "./pages/DeliveryOrders.jsx";
 
 // البريد / إعادة تعيين
@@ -27,6 +27,7 @@ import PasswordReset from "./pages/PasswordReset";
 
 // ✅ الحماية بالأدوار
 import RequireAuth from "./auth/RequireAuth";
+import Admin from "./pages/Admin";
 
 export default function App() {
   return (
@@ -46,6 +47,14 @@ export default function App() {
           element={
             <RequireAuth allowedRoles={["admin"]}>
               <AdminDashboard />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/dashboard"
+          element={
+            <RequireAuth allowedRoles={["admin"]}>
+              <Admin />
             </RequireAuth>
           }
         />
@@ -93,7 +102,7 @@ export default function App() {
           }
         >
           <Route index element={<Pharmacy />} />
-          {/* ✅ NEW: /pharmacy/delivery */}
+          {/* ✅ /pharmacy/delivery */}
           <Route
             path="delivery"
             element={<DeliveryOrders pharmacyId="pharma_001" />}
@@ -101,7 +110,10 @@ export default function App() {
         </Route>
 
         {/* 404 */}
-        <Route path="*" element={<div style={{ padding: 24 }}>Page not found</div>} />
+        <Route
+          path="*"
+          element={<div style={{ padding: 24 }}>Page not found</div>}
+        />
       </Routes>
     </BrowserRouter>
   );
