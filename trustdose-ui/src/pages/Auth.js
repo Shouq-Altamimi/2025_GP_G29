@@ -440,7 +440,7 @@ if (/^LG-\d{3}$/i.test(clean)) {
     }
   }
   
-  async function handleForgotPassword(e) {
+ async function handleForgotPassword(e) {
     e.preventDefault();
     setForgotMsg("");
     setForgotLoading(true);
@@ -549,6 +549,114 @@ if (!user && /^LG-\d{3}$/i.test(id)) {
       setForgotLoading(false);
     }
   }
+///////////////////////////////////////////////////////////////////////////
+ /*async function handleForgotPassword(e) {
+  e.preventDefault();
+  setForgotMsg("");
+  setForgotLoading(true);
+
+  try {
+    const id = forgotId.trim();
+    if (!id) throw new Error("Please enter your ID");
+
+    const { coll, idFields, role } = detectSource(id);
+    let user = null;
+    let userDocId = null;
+
+    // Patients by national ID
+    if (role === "patient") {
+      try {
+        const p = await getDoc(doc(db, "patients", `Ph_${id}`));
+        if (p.exists()) { user = p.data(); userDocId = p.id; }
+      } catch {}
+    }
+
+    // Pharmacy by BranchID (Nahdi / pharmacies)
+    if (!user && /^B-\d+$/i.test(id)) {
+      try {
+        let snap = await getDocs(query(collection(db, "Phar_Nahdi"), where("BranchID", "==", id)));
+        if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
+
+        if (!user) {
+          snap = await getDocs(query(collection(db, "pharmacies"), where("BranchID", "==", id)));
+          if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
+        }
+      } catch {}
+    }
+
+    // Logistics
+    if (!user && /^LG-\d{3}$/i.test(id)) {
+      try {
+        const snap = await getDocs(
+          query(collection(db, "logistics"), where("LogisticsID", "==", id))
+        );
+        if (!snap.empty) {
+          user = snap.docs[0].data();
+          userDocId = snap.docs[0].id;
+        }
+      } catch {}
+    }
+
+    // Generic lookup using idFields
+    if (!user) {
+      for (const f of idFields) {
+        try {
+          const q = query(collection(db, coll), where(f, "==", id));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            user = snap.docs[0].data();
+            userDocId = snap.docs[0].id;
+            break;
+          }
+        } catch {}
+      }
+    }
+
+    if (!user) {
+      setForgotMsg("❌ No account found with this ID.");
+      return;
+    }
+
+    const email = user.email;
+    if (!email) {
+      setForgotMsg("❌ No email registered for this account. Please contact support.");
+      return;
+    }
+
+    const auth = getAuth();
+    const BASE = window.location.origin;
+
+    // ⚠️ بدال ما نرسل إيميل، نطبع نفس رابط إعادة التعيين
+    const params = new URLSearchParams({
+      col: coll,
+      doc: String(userDocId || ""),
+      id: id,
+      reset: "true",
+      e: email,
+      redirect: "/auth",
+      debug: "1",
+    });
+
+    const testLink = `${BASE}/password-reset?${params.toString()}`;
+
+    console.log("=======================================");
+    console.log("🚨 DEBUG MODE: Password reset link (copy & paste into browser)");
+    console.log(testLink);
+    console.log("=======================================");
+
+    setForgotMsg("✅ DEBUG MODE: Reset link printed in Console. Copy it and open it in a new tab.");
+
+  } catch (err) {
+    console.error("Forgot password error:", err);
+    let errorMessage = "Failed to prepare reset link";
+    if (err.message) errorMessage = err.message;
+    setForgotMsg(`❌ ${errorMessage}`);
+  } finally {
+    setForgotLoading(false);
+  }
+}
+*/
+ ///////////////////////////////////////////////////////////////////////////
 
   async function handleSignIn(e) {
     e.preventDefault();
@@ -611,6 +719,13 @@ if (!user && /^LG-\d{3}$/i.test(id)) {
 
       let verified = false;
       // FORCE tempPassword for doctors
+      console.log("LOGIN DEBUG → doctor:", {
+  enteredPassword: pass,
+  tempPassword: user.tempPassword,
+  password: user.password,
+  passwordHash: user.passwordHash
+});
+
 // Doctor login logic
 if (role === "doctor") {
 
@@ -694,25 +809,34 @@ else if (!verified && role === "logistics" && user.passwordHash) {
 
 // 4) Plain / sha256 password
 else if (!verified && ("password" in user)) {
-  if (!pass) { setMsg("Please enter your password."); return; }
-
-  const storedPassword = String(user.password);
-  const isHashed = storedPassword.length === 64 && /^[a-f0-9]+$/i.test(storedPassword);
-
-  let ok = false;
-  if (isHashed) {
-    ok = await verifyPasswordSHA256(pass, storedPassword);
-  } else {
-    ok = (pass === storedPassword);
-  }
-
-  if (!ok) {
-    setMsg("❌ ID or password incorrect.");
+  if (!pass) {
+    setMsg("Please enter your password.");
     return;
   }
 
-  verified = true;
+  const stored = String(user.password).trim();
+
+  // hashed SHA256 (64 hex)
+  if (/^[a-f0-9]{64}$/i.test(stored)) {
+    const ok = await verifyPasswordSHA256(pass, stored);
+    if (!ok) {
+      setMsg("❌ ID or password incorrect.");
+      return;
+    }
+    verified = true;
+  }
+
+  // plain text (legacy)
+  else if (pass === stored) {
+    verified = true;
+  }
+
+  else {
+    setMsg("❌ ID or password incorrect.");
+    return;
+  }
 }
+
 
 // 5) No password fields
 else if (!verified) {

@@ -127,7 +127,7 @@ async function fetchPrescriptionsSmart(foundDocId, nid) {
 /* =========================
    Hydrate doctor & pharmacist info 
    ========================= */
-async function hydrateNames(items) {
+/*async function hydrateNames(items) {
   const out = [];
   for (const p of items) {
     const doctorName =
@@ -140,19 +140,23 @@ async function hydrateNames(items) {
       (p.doctor && p.doctor.name) ||
       "";
 
-    const facilityName =
-      p.doctorFacility ||
-      p.facilityName ||
-      p.facility ||
-      p.healthFacility ||
-      p.healthcareFacility ||
-      p.clinicName ||
-      p.hospitalName ||
-      p.locationName ||
-      p.pharmacyName ||
-      (p.facility && p.facility.name) ||
-      (p.hospital && p.hospital.name) ||
-      "";
+   const facilityName =
+  p.doctorFacility ||
+  p.facilityName ||
+  p.facility ||
+  p.healthFacility ||
+  p.healthcareFacility ||
+  p.clinicName ||
+  p.hospitalName ||
+  p.locationName ||
+  p.pharmacyName ||
+  p?.doctor?.facility ||
+  p?.doctor?.hospital ||
+  p?.doctor?.facilityName ||
+  (p.facility && p.facility.name) ||
+  (p.hospital && p.hospital.name) ||
+  "";
+
 
     // Pharmacist + Pharmacy fallbacks
     const pharmacistName =
@@ -178,7 +182,65 @@ async function hydrateNames(items) {
     });
   }
   return out;
+}*/
+
+async function hydrateNames(items) {
+  const out = [];
+
+  // ========== نجيب أول صيدلية ==========
+  let globalPharmacyName = "—";
+  try {
+    const col = collection(db, "pharmacies");
+    const snap = await getDocs(col);
+    if (!snap.empty) {
+      const first = snap.docs[0].data();
+      if (first.name) globalPharmacyName = first.name;
+    }
+  } catch (e) {
+    console.log("pharmacy fetch failed", e);
+  }
+
+  for (const p of items) {
+
+    // ========== Doctor Name (من الوصفة فقط) ==========
+    const doctorName =
+      p.doctorName ||
+      p.doctorFullName ||
+      p.createdByName ||
+      "";
+
+    // ========== Healthcare Facility (من doctors collection) ==========
+    let facilityName = "—";
+
+    try {
+      if (p.doctorId) {
+        const doctorsCol = collection(db, "doctors");
+        const q = fsQuery(doctorsCol, where("walletAddress", "==", p.doctorId), fsLimit(1));
+        const snap = await getDocs(q);
+
+        if (!snap.empty) {
+          const d = snap.docs[0].data();
+          if (d.facility) facilityName = d.facility;   // ← facility الحقيقي من الداتابيس
+        }
+      }
+    } catch (e) {
+      console.log("doctor facility fetch failed", e);
+    }
+
+    // ========== Push النهائي ==========
+    out.push({
+      ...p,
+      _doctorName: doctorName,
+      _facilityName: facilityName,       // ← Healthcare Facility
+      _pharmacyName: globalPharmacyName  // ← Pharmacy Name فقط
+      // 🚫 _pharmacistName محذوف
+    });
+  }
+
+  return out;
 }
+
+
 
 /* =========================
    UI helpers
@@ -283,7 +345,7 @@ export default function PatientPage() {
 
   // Pagination
   const [page, setPage] = useState(1);
-  const PER_PAGE = 6;
+  const PER_PAGE = 3;
 
   useEffect(() => {
     const id = resolveNidFromAnywhere();
@@ -470,7 +532,7 @@ export default function PatientPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(460px, 1fr))",
+                gridTemplateColumns: "1fr",
                 columnGap: 28,
                 rowGap: 28,
                 alignItems: "start",
@@ -588,7 +650,6 @@ export default function PatientPage() {
                         <Row label="National ID" value={maskNid(p.patientNationalID || p.nationalID || p.nid)} />
                         <Row label="Healthcare Facility" value={facility} />
                         <Row label="Doctor Name" value={doctor} />
-                        <Row label="Pharmacist Name" value={pharmacist} />
                         <Row label="Pharmacy Name" value={pharmacy} />
                         <Row label="Dispensed At" value={dispensedAt ? fmtDateTime(dispensedAt) : "—"} />
                         <Row label="Date & Time Consultation" value={createdFull} />

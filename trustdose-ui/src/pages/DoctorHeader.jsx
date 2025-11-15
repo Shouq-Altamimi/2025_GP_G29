@@ -720,22 +720,25 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
         return;
       }
 
-      const salt = randomSaltB64(16);
-      const iter = 100000;
-      const newHash = await pbkdf2Hex(newPass, salt, iter);
+      //const salt = randomSaltB64(16);
+      //const iter = 100000;
+      //const newHash = await pbkdf2Hex(newPass, salt, iter);
 
       await updateDoc(docRef, {
-        passwordAlgo: "PBKDF2-SHA256",
-        passwordSalt: salt,
-        passwordIter: iter,
-        passwordHash: newHash,
-        passwordUpdatedAt: serverTimestamp(),
-        requirePasswordChange: false,
-        "tempPassword.valid": false,
-        "tempPassword.expiresAtMs": 0,
-        "tempPassword.value": deleteField(),
-        password: deleteField(),
-      });
+password: await sha256Hex(newPass),
+  passwordUpdatedAt: serverTimestamp(),
+  requirePasswordChange: false,
+  "tempPassword.valid": false,
+  "tempPassword.expiresAtMs": 0,
+  "tempPassword.value": deleteField(),
+
+  // إزالة حقول PBKDF2 لأنها غير مستخدمة
+  //passwordAlgo: deleteField(),
+  //passwordSalt: deleteField(),
+  //passwordIter: deleteField(),
+  //passwordHash: deleteField()
+});
+
 
       setMsg("Password updated successfully! ✓");
       setMsgType("success");

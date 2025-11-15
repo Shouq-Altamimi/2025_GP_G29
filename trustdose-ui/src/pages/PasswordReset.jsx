@@ -202,6 +202,90 @@ export default function PasswordReset() {
     })();
   }, [searchParams]);
 
+  //////////////////////////////////////////////////////////////////////
+
+  // التحقق من الرابط (يدعم وضع الـ DEBUG)
+/*useEffect(() => {
+  (async () => {
+    try {
+      const href = window.location.href;
+
+      const col = searchParams.get("col") || "";
+      const documentId = searchParams.get("doc") || "";
+      const id = searchParams.get("id") || "";
+      const isReset = searchParams.get("reset") === "true";
+      const email = searchParams.get("e") || "";
+      const redirectPath = searchParams.get("redirect") || "/auth";
+      const debug = searchParams.get("debug") === "1";   // <-- أهم سطر
+
+      console.log("🔗 Reset URL:", href);
+      console.log("📋 Params:", { col, documentId, id, email, isReset, debug });
+
+      // ===========================
+      //     🔥 DEBUG MODE
+      // ===========================
+      if (debug) {
+        console.log("🚨 DEBUG MODE ACTIVE — Skipping Firebase checks");
+
+        if (!col || !documentId || !id || !email || !isReset) {
+          setStatus("❌ Invalid reset link - missing info (debug)");
+          setStep("error");
+          setError(true);
+          return;
+        }
+
+        setUserCol(col);
+        setUserDocId(documentId);
+        setUserId(id);
+        setRedirect(redirectPath);
+
+        setStatus("✅ Debug link verified! Enter your new password.");
+        setStep("reset");
+        return;
+      }
+
+      // ===========================
+      //   الوضع العادي Firebase
+      // ===========================
+      const auth = getAuth();
+
+      if (!isSignInWithEmailLink(auth, href)) {
+        setStatus("❌ Invalid or expired reset link");
+        setStep("error");
+        setError(true);
+        return;
+      }
+
+      if (!email || !documentId || !col || !isReset) {
+        setStatus("❌ Invalid reset link (missing data)");
+        setStep("error");
+        setError(true);
+        return;
+      }
+
+      setStatus("🔐 Authenticating...");
+
+      await signInWithEmailLink(auth, email, href);
+      await signOut(auth);
+
+      setUserCol(col);
+      setUserDocId(documentId);
+      setUserId(id);
+      setRedirect(redirectPath);
+
+      setStatus("✅ Link verified! Enter your new password.");
+      setStep("reset");
+
+    } catch (e) {
+      console.error("💥 Error:", e);
+      setError(true);
+      setStep("error");
+      setStatus("❌ Error verifying reset link");
+    }
+  })();
+}, [searchParams]);*/
+
+/////////////////////////////////////////////////////////////////////////////
   // تحديث الباسوورد
   async function handleResetPassword(e) {
     e.preventDefault();
