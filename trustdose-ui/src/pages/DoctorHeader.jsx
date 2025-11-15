@@ -720,18 +720,9 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
         return;
       }
 
-<<<<<<< HEAD
-      // 2) upgrade to PBKDF2
-      //const salt = randomSaltB64(16);
-      //const iter = 100000;
-      //const newHash = await pbkdf2Hex(newPass, salt, iter);
-      const newHash = await sha256Hex(newPass);
-
-=======
       const salt = randomSaltB64(16);
       const iter = 100000;
       const newHash = await pbkdf2Hex(newPass, salt, iter);
->>>>>>> 0170e4bfe62672757204b79ed09c100ddff5762f
 
       await updateDoc(docRef, {
   password: newHash,
