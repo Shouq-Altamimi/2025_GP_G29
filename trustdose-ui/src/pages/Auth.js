@@ -549,6 +549,7 @@ if (!user && /^LG-\d{3}$/i.test(id)) {
       setForgotLoading(false);
     }
   }
+///////////////////////////////////////////////////////////////////////////
  /*async function handleForgotPassword(e) {
   e.preventDefault();
   setForgotMsg("");
@@ -653,9 +654,9 @@ if (!user && /^LG-\d{3}$/i.test(id)) {
   } finally {
     setForgotLoading(false);
   }
-}*/
-
- //
+}
+*/
+ ///////////////////////////////////////////////////////////////////////////
 
   async function handleSignIn(e) {
     e.preventDefault();

@@ -202,6 +202,8 @@ export default function PasswordReset() {
     })();
   }, [searchParams]);
 
+  //////////////////////////////////////////////////////////////////////
+
   // التحقق من الرابط (يدعم وضع الـ DEBUG)
 /*useEffect(() => {
   (async () => {
@@ -283,7 +285,7 @@ export default function PasswordReset() {
   })();
 }, [searchParams]);*/
 
-
+/////////////////////////////////////////////////////////////////////////////
   // تحديث الباسوورد
   async function handleResetPassword(e) {
     e.preventDefault();
