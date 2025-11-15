@@ -543,7 +543,13 @@ export default function PatientPage() {
                 const status = computeStatus(p);
                 const createdDate = fmtDate(p.createdAt);
                 const createdFull = fmtDateTime(p.createdAt);
-                const dispensedAt = p.dispensedAt || p.dispensedOn || p.fulfilledAt || null;
+                //const dispensedAt = p.dispensedAt || p.dispensedOn || p.fulfilledAt || null;
+                const dispensedAt =
+  p.dispensedAt?.toDate ? p.dispensedAt :
+  p.dispensedOn?.toDate ? p.dispensedOn :
+  p.fulfilledAt?.toDate ? p.fulfilledAt :
+  null;
+
                 const isOpen = !!openIds[p.id];
 
                 const facility = p._facilityName || "—";
