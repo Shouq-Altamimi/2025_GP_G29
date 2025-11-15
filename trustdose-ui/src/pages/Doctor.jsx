@@ -13,7 +13,7 @@ import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "luci
 import PRESCRIPTION from "../contracts/Prescription.json";
 
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
-const CONTRACT_ADDRESS = "0x3D6d8545F5bfd8d3D85C2EaEcC12036bb63f8E21";
+const CONTRACT_ADDRESS = "0xd1560BedDeF6dAA5a3A4F008207159e3AD9542C9";
 
 const OTHER_MAX = 20; 
 const LIMITS = Object.freeze({
@@ -357,9 +357,9 @@ export default function Doctor() {
       {(welcome.name || welcome.healthFacility || welcome.speciality) && (
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 56, height: "auto" }} />
+            <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 64, height: "auto" }} />
             <div>
-              <div className="font-extrabold text-lg" style={{ color: "#334155" }}>
+              <div className="font-extrabold text-2xl" style={{ color: "#334155" }}>
                 {welcome?.name ? `Welcome, Dr. ${welcome.name}` : "Welcome, Doctor"}
               </div>
               {(welcome?.healthFacility || welcome?.speciality) && (

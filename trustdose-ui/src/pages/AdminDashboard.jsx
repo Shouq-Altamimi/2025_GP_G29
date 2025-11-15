@@ -309,7 +309,7 @@ export default function AdminAddDoctorOnly() {
   }
 
   const HOSPITAL_NAME = "Dr. Sulaiman Al Habib Hospital";
-  const [contractAddress, setContractAddress] = useState("0xb999b08A96B0374f3454e125FC1E59E2Fc223C83");
+  const [contractAddress, setContractAddress] = useState("0x457110738AeeF39FCe7934967FA273016A74A5d5");
   const [DoctorID, setDoctorID] = useState("");
   const [healthFacility] = useState(HOSPITAL_NAME);
   const [licenseNumber, setLicenseNumber] = useState("");

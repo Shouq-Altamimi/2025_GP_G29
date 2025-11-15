@@ -33,6 +33,7 @@ async function sha256Hex(str) {
     .map(b => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
 async function pbkdf2Hex(password, saltB64, iter = 100000) {
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
@@ -52,11 +53,13 @@ async function pbkdf2Hex(password, saltB64, iter = 100000) {
     .map(b => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
 function randomSaltB64(len = 16) {
   const buf = new Uint8Array(len);
   crypto.getRandomValues(buf);
   return btoa(String.fromCharCode(...buf));
 }
+
 const isHex64 = (s) => typeof s === "string" && /^[a-f0-9]{64}$/i.test(s);
 
 async function verifyCurrentPassword(docData, inputPwd) {
@@ -96,15 +99,27 @@ async function verifyCurrentPassword(docData, inputPwd) {
 
 function normalizeDoctor(raw) {
   if (!raw) return null;
+
   return {
     name: pickStr(raw, ["name"]),
-    healthFacility: pickStr(raw, ["healthFacility"]),
-    speciality: pickStr(raw, ["speciality"]),
-    licenseNumber: pickStr(raw, ["licenseNumber"]),
-    DoctorID: pickStr(raw, ["DoctorID"]),
-    phone: pickStr(raw, ["phone"]),
+
+    healthFacility: pickStr(raw, [
+      "healthFacility",
+      "facility",
+      "facilityName",
+    ]),
+
+    speciality: pickStr(raw, [
+      "speciality",
+      "specialty",
+      "specialization",
+    ]),
+
+    licenseNumber: pickStr(raw, ["licenseNumber", "licenseNo"]),
+    DoctorID: pickStr(raw, ["DoctorID", "doctorId", "accessId"]),
+    phone: pickStr(raw, ["phone", "mobile"]),
     email: pickStr(raw, ["email"]),
-    password: raw?.password || "",
+
     requirePasswordChange: raw?.requirePasswordChange ?? false,
     passwordUpdatedAt: raw?.passwordUpdatedAt ?? null,
   };
@@ -160,25 +175,32 @@ export default function DoctorHeader() {
 
   useEffect(() => {
     if (!isDoctorPage) return;
+
     (async () => {
       const role = localStorage.getItem("userRole");
       const userDoctorID = localStorage.getItem("userId");
 
       if (role !== "doctor" || !userDoctorID) return;
 
-      const qy = query(collection(db, "doctors"), where("DoctorID", "==", String(userDoctorID)), fsLimit(1));
+      const qy = query(
+        collection(db, "doctors"),
+        where("doctorId", "==", String(userDoctorID)),
+        fsLimit(1)
+      );
       const qs = await getDocs(qy);
-      if (!qs.empty) {
-        const d = qs.docs[0];
-        const norm = normalizeDoctor(d.data());
-        setDoctor(norm);
-        setDoctorDocId(d.id);
-        setShowEmailAlert(!norm.email);
-        setShowResetAlert(
-          norm.requirePasswordChange === true ||
-          (!!norm.email && !norm.passwordUpdatedAt)
-        );
-      }
+      if (qs.empty) return;
+
+      const d = qs.docs[0];
+      const norm = normalizeDoctor(d.data());
+
+      setDoctor(norm);
+      setDoctorDocId(d.id);
+
+      setShowEmailAlert(!norm.email);
+      setShowResetAlert(
+        norm.requirePasswordChange === true ||
+        (!!norm.email && !norm.passwordUpdatedAt)
+      );
     })();
   }, [isDoctorPage, location.pathname]);
 
@@ -311,7 +333,7 @@ function Row({ label, value }) {
 }
 
 /* =========================
-   Account modal (EN + tidy layout)
+   Account modal
    ========================= */
 function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   const [phone, setPhone] = useState(doctor?.phone || "");
@@ -321,7 +343,6 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState(""); // success | error | ""
 
-  // NEW: edit toggle + autofocus
   const [editingPhone, setEditingPhone] = useState(false);
   const phoneRef = useRef(null);
   useEffect(() => { if (editingPhone) setTimeout(() => phoneRef.current?.focus(), 0); }, [editingPhone]);
@@ -333,8 +354,8 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
 
   useEffect(() => setPhoneInfo(validateAndNormalizePhone(phone)), [phone]);
 
-  const canSave = phoneInfo.ok && !saving;
-  const changed = phone !== initialPhone;
+  const canSave = phoneInfo.ok && !saving && phone !== initialPhone;
+  const hasPhone = !!initialPhone;
 
   // ESC closes modal
   useEffect(() => {
@@ -343,24 +364,17 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  async function save() {
-    const pInfo = validateAndNormalizePhone(phone);
-    if (!pInfo.ok) { setMsgType("error"); setMsg(pInfo.reason || "Invalid phone."); return; }
-    if (!doctorDocId) { setMsgType("error"); setMsg("Doctor record not found."); return; }
-    try {
-      setSaving(true); setMsg(""); setMsgType("");
-      const payload = { phone: pInfo.normalized, updatedAt: serverTimestamp(), phoneLocal: deleteField() };
-      await updateDoc(doc(db, "doctors", doctorDocId), payload);
-      setInitialPhone(payload.phone);
-      onSaved?.({ phone: payload.phone });
-      setMsgType("success"); setMsg("Saved ✓");
-      setEditingPhone(false); // hide input after success
-      setTimeout(() => { setMsg(""); setMsgType(""); }, 1500);
-    } catch (e) {
-      setMsgType("error"); setMsg(e?.message || "Failed to save.");
-    } finally {
-      setSaving(false);
-    }
+  // Phone helper: لا يسمح بأي تكرار حتى لو نفس الدكتور
+  async function isDoctorPhoneTaken(phoneNormalized) {
+    const q1 = query(
+      collection(db, "doctors"),
+      where("phone", "==", phoneNormalized),
+      fsLimit(5)
+    );
+    const snap = await getDocs(q1);
+    if (snap.empty) return false;
+    // أي وجود = تكرار مرفوض
+    return true;
   }
 
   // Email helper
@@ -370,6 +384,64 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
     if (snap.empty) return false;
     const doc0 = snap.docs[0];
     return doc0.id !== selfId;
+  }
+
+  async function save() {
+    const pInfo = validateAndNormalizePhone(phone);
+    if (!pInfo.ok) {
+      setMsgType("error");
+      setMsg(pInfo.reason || "Invalid phone.");
+      return;
+    }
+    if (!doctorDocId) {
+      setMsgType("error");
+      setMsg("Doctor record not found.");
+      return;
+    }
+
+    // لو نفس الرقم القديم بالضبط → نمنع التحديث
+    if (phone === initialPhone) {
+      setMsgType("error");
+      setMsg("You are already using this phone number.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setMsg("");
+      setMsgType("");
+
+      // تشيك تكرار الرقم في الدكاترة
+      const taken = await isDoctorPhoneTaken(pInfo.normalized);
+      if (taken) {
+        setMsgType("error");
+        setMsg("This phone number is already used by another doctor.");
+        setSaving(false);
+        return;
+      }
+
+      const payload = {
+        phone: pInfo.normalized,
+        updatedAt: serverTimestamp(),
+        phoneLocal: deleteField(),
+      };
+
+      await updateDoc(doc(db, "doctors", doctorDocId), payload);
+      setInitialPhone(payload.phone);
+      onSaved?.({ phone: payload.phone });
+      setMsgType("success");
+      setMsg("Saved ✓");
+      setEditingPhone(false);
+      setTimeout(() => {
+        setMsg("");
+        setMsgType("");
+      }, 1500);
+    } catch (e) {
+      setMsgType("error");
+      setMsg(e?.message || "Failed to save.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   // Email state
@@ -386,7 +458,10 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       if (!ok) { setEmailMsg("Please enter a valid email."); return; }
 
       const taken = await isDoctorEmailTaken(raw, String(doctorDocId || ""));
-      if (taken) { setEmailMsg("This email is already used by another doctor. Please use a different email."); return; }
+      if (taken) {
+        setEmailMsg("This email is already used by another doctor. Please use a different email.");
+        return;
+      }
 
       const BASE = window.location.origin;
       const params = new URLSearchParams({
@@ -447,7 +522,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                       className="px-3 py-1.5 rounded-lg text-white"
                       style={{ background: C.primary }}
                     >
-                      Update
+                      {hasPhone ? "Update" : "Add"}
                     </button>
                   )}
                 </div>
@@ -473,15 +548,14 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                     <button
                       onClick={save}
                       disabled={!canSave}
-                      className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
-                      style={{ background: C.primary }}
+                      className="px-3 py-2 rounded-lg text:white disabled:opacity-50"
+                      style={{ background: C.primary, color: "#fff" }}
                     >
-                      {saving ? "Saving..." : (changed ? "Save Changes" : "Save")}
+                      {saving ? "Saving..." : "Save"}
                     </button>
                   </div>
                 )}
 
-                {/* messages (no 'No changes yet' line anymore) */}
                 {msgType === "success" && !!msg && (
                   <div className="text-green-700 font-medium mt-2">{msg}</div>
                 )}
@@ -546,10 +620,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
 }
 
 /* =========================
-   Password Reset (unchanged logic)
-   ========================= */
-/* =========================
-   Password Reset (fixed)
+   Password Reset
    ========================= */
 function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
   const [showOld, setShowOld] = useState(false);
@@ -641,7 +712,6 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
 
       const data = snap.data();
 
-      // 1) verify current
       const v = await verifyCurrentPassword(data, oldPass);
       if (!v.ok) {
         setMsg("Current password is incorrect");
@@ -650,12 +720,18 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
         return;
       }
 
+<<<<<<< HEAD
       // 2) upgrade to PBKDF2
       //const salt = randomSaltB64(16);
       //const iter = 100000;
       //const newHash = await pbkdf2Hex(newPass, salt, iter);
       const newHash = await sha256Hex(newPass);
 
+=======
+      const salt = randomSaltB64(16);
+      const iter = 100000;
+      const newHash = await pbkdf2Hex(newPass, salt, iter);
+>>>>>>> 0170e4bfe62672757204b79ed09c100ddff5762f
 
       await updateDoc(docRef, {
   password: newHash,

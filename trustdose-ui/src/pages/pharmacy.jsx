@@ -12,8 +12,8 @@ import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
-const PRESCRIPTION_ADDRESS = "0x3D6d8545F5bfd8d3D85C2EaEcC12036bb63f8E21";
-const DISPENSE_ADDRESS     = "0x3E00E10Bc1edc20a8e23F1e8ac2963074783dB12";
+const PRESCRIPTION_ADDRESS = "0xd1560BedDeF6dAA5a3A4F008207159e3AD9542C9";
+const DISPENSE_ADDRESS     = "0x285814Dd46763ad7529073b31719bb79A0099c8E";
 
 // ===== Pagination size =====
 const PAGE_SIZE = 6;
