@@ -107,6 +107,13 @@ export default function App() {
           }
         >
           <Route index element={<Pharmacy />} />
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+=======
+          {/* طلبات التوصيل الحسّاسة */}
+>>>>>>> 881dbd9ef56752064776783ff8054ddd1e2b5a93
+>>>>>>> 2f62c0be64d324ec2f5687d37dc367f78655b48c
           <Route
             path="delivery"
             element={<DeliveryOrders pharmacyId="pharma_001" />}
