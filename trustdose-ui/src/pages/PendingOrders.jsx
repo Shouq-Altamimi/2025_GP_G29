@@ -18,7 +18,7 @@ import {
 import { ethers } from "ethers";
 import LOGISTICS_RECEIVE from "../contracts/LogisticsReceive.json";
 
-const LOGISTICS_RECEIVE_ADDRESS = "0x0D9654cad377971206F864b46E7B662C14eB303e";
+const LOGISTICS_RECEIVE_ADDRESS = "0x7329c628F971242ba591900cA71dC26727483Aea";
 
 const C = {
   primary: "#B08CC1",
