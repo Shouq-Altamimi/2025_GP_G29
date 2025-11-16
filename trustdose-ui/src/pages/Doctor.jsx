@@ -13,7 +13,7 @@ import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "luci
 import PRESCRIPTION from "../contracts/Prescription.json";
 
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
-const CONTRACT_ADDRESS = "0x213e24e9cf56944745154c78efced97d8b23Da4A";
+const CONTRACT_ADDRESS = "0xf2eBEbCbed6f8195bf294b55f5af095e5139E21E";
 
 const OTHER_MAX = 20; 
 const LIMITS = Object.freeze({
@@ -291,7 +291,7 @@ export default function Doctor() {
       const generatedId = await generateSequentialPrescriptionId(); 
       const generatedNum = parseInt(generatedId.slice(1), 10);    
 
-      const payload = {
+        const payload = {
         [F.createdAt]: serverTimestamp(),
         [F.doctorId]: doctorAddress,
         [F.doctorName]: welcome?.name || "",
@@ -311,10 +311,12 @@ export default function Doctor() {
         nationalID: natId,
         patientName: selectedPatient.name,
         onchainId: onchainId ?? null,
-        prescriptionID: generatedId,   
-        prescriptionNum: generatedNum, 
+        prescriptionID: generatedId,
+        prescriptionNum: generatedNum,
         dispensed: false,
+        acceptDelivery: false,   
       };
+
 
       if (selectedMed?.sensitivity) payload[F.sensitivity] = selectedMed.sensitivity;
 

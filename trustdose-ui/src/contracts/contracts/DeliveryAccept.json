@@ -6255,12 +6255,12 @@
     "5777": {
       "events": {},
       "links": {},
-      "address": "0x595b5B9AFA64a5FE96f2C994b2DDE0452b66BCCf",
-      "transactionHash": "0xe5ed27c540c9167aa94c5042746d13e8701926aa1ad3979126f4adc62b726974"
+      "address": "0x2f022100DEdAb2C142E6f2b52d56CBD1609CcC59",
+      "transactionHash": "0xec11507f28a8176802f4ed74853e9eb3f0c86a6a1044f15987f09a5e12a9d3f5"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-11-15T18:27:57.620Z",
+  "updatedAt": "2025-11-16T11:40:17.357Z",
   "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",

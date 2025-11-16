@@ -18,7 +18,7 @@ const RX_STATUS = { DELIVERY_REQUESTED: "DELIVERY_REQUESTED", PHARM_ACCEPTED: "P
 const PAGE_SIZE = 6;
 
 // ======== عقد DeliveryAccept ========
-const DELIVERY_ACCEPT_ADDRESS = "0x595b5B9AFA64a5FE96f2C994b2DDE0452b66BCCf";
+const DELIVERY_ACCEPT_ADDRESS = "0x2f022100DEdAb2C142E6f2b52d56CBD1609CcC59";
 const DELIVERY_ACCEPT_ABI = DELIVERY_ACCEPT?.abi ?? [];
 
 /* ========== helpers ========== */
@@ -233,7 +233,9 @@ export default function DeliveryOrders({ pharmacyId }) {
       await updateDoc(ref, {
         dispensed: true,
         dispensedAt: serverTimestamp(),
+        acceptDelivery: true,
       });
+
 
       // نحدّث الستيت المحلي -> dispensed=true => الكارد يختفي
       setRows((arr) =>
