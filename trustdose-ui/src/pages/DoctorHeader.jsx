@@ -357,14 +357,12 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   const canSave = phoneInfo.ok && !saving && phone !== initialPhone;
   const hasPhone = !!initialPhone;
 
-  // ESC closes modal
   useEffect(() => {
     function onKey(e) { if (e.key === "Escape") onClose?.(); }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Phone helper: لا يسمح بأي تكرار حتى لو نفس الدكتور
   async function isDoctorPhoneTaken(phoneNormalized) {
     const q1 = query(
       collection(db, "doctors"),
@@ -373,7 +371,6 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
     );
     const snap = await getDocs(q1);
     if (snap.empty) return false;
-    // أي وجود = تكرار مرفوض
     return true;
   }
 
@@ -720,10 +717,6 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
         return;
       }
 
-      //const salt = randomSaltB64(16);
-      //const iter = 100000;
-      //const newHash = await pbkdf2Hex(newPass, salt, iter);
-
       await updateDoc(docRef, {
 password: await sha256Hex(newPass),
   passwordUpdatedAt: serverTimestamp(),
@@ -732,11 +725,6 @@ password: await sha256Hex(newPass),
   "tempPassword.expiresAtMs": 0,
   "tempPassword.value": deleteField(),
 
-  // إزالة حقول PBKDF2 لأنها غير مستخدمة
-  //passwordAlgo: deleteField(),
-  //passwordSalt: deleteField(),
-  //passwordIter: deleteField(),
-  //passwordHash: deleteField()
 });
 
 

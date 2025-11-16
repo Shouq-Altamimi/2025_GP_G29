@@ -5,9 +5,17 @@ import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { db } from "../firebase";
 import {
-  collection, doc, getDoc, getDocs,
-  query, where, addDoc, serverTimestamp,
-  orderBy, limit, runTransaction 
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  addDoc,
+  serverTimestamp,
+  orderBy,
+  limit,
+  runTransaction,
 } from "firebase/firestore";
 import { ethers } from "ethers";
 import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "lucide-react";
@@ -16,7 +24,7 @@ import PRESCRIPTION from "../contracts/Prescription.json";
 const C = { primary: "#B08CC1", primaryDark: "#B08CC1", ink: "#4A2C59", pale: "#F6F1FA" };
 const CONTRACT_ADDRESS = "0xf2eBEbCbed6f8195bf294b55f5af095e5139E21E";
 
-const OTHER_MAX = 20; 
+const OTHER_MAX = 20;
 const LIMITS = Object.freeze({
   medicalCondition: { min: 5, max: 120 },
   notes: { min: 0, max: 300 },
@@ -32,7 +40,9 @@ const DOSAGE_BY_FORM = {
   cream: ["Apply thin layer"],
   ointment: ["Apply thin layer"],
 };
-function getDoseOptions(form) { return form ? DOSAGE_BY_FORM[form] || [] : []; }
+function getDoseOptions(form) {
+  return form ? DOSAGE_BY_FORM[form] || [] : [];
+}
 
 const F = Object.freeze({
   createdAt: "createdAt",
@@ -65,7 +75,9 @@ function readWelcomeSync() {
 async function sha256Hex(input) {
   const enc = new TextEncoder();
   const hash = await crypto.subtle.digest("SHA-256", enc.encode(input));
-  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return [...new Uint8Array(hash)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 async function getSignerEnsured() {
@@ -83,9 +95,7 @@ export async function generateSequentialPrescriptionId() {
   const nextNumber = await runTransaction(db, async (tx) => {
     const snap = await tx.get(counterRef);
     const current =
-      snap.exists() && typeof snap.data().next === "number"
-        ? snap.data().next
-        : START_NUMBER;
+      snap.exists() && typeof snap.data().next === "number" ? snap.data().next : START_NUMBER;
     const updated = current + 1;
     tx.set(counterRef, { next: updated }, { merge: true });
     return updated;
@@ -119,7 +129,56 @@ export default function Doctor() {
     })();
   }, [location.search]);
 
-  const [welcome] = useState(() => readWelcomeSync());
+    const [welcome] = useState(() => readWelcomeSync());
+  const [doctorProfile, setDoctorProfile] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const role = localStorage.getItem("userRole");
+      const userDoctorID = localStorage.getItem("userId"); 
+
+      if (role !== "doctor" || !userDoctorID) {
+        setDoctorProfile(welcome);
+        return;
+      }
+
+      try {
+        const colRef = collection(db, "doctors");
+        const qDoc = query(colRef, where("doctorId", "==", String(userDoctorID)), limit(1));
+        const snap = await getDocs(qDoc);
+
+        if (!snap.empty) {
+          const d = snap.docs[0].data();
+
+          const merged = {
+            ...welcome,
+            name: d.name || welcome?.name || "",
+            phone: d.phone || welcome?.phone || "",
+            facility: d.facility || welcome?.facility || welcome?.healthFacility || "",
+            healthFacility:
+              d.healthFacility ||
+              d.facility ||
+              welcome?.healthFacility ||
+              welcome?.facility ||
+              "",
+            speciality: d.speciality || d.specialty || welcome?.speciality || "",
+          };
+
+          setDoctorProfile(merged);
+          localStorage.setItem("welcome_doctor", JSON.stringify(merged));
+        } else {
+          setDoctorProfile(welcome);
+        }
+      } catch (e) {
+        console.error("Failed to load doctor profile:", e);
+        setDoctorProfile(welcome);
+      }
+    })();
+  }, [welcome]);
+
+
+  const profile = doctorProfile || welcome || {};
+
   const [q, setQ] = useState("");
   const [searchMsg, setSearchMsg] = useState("");
   const [searched, setSearched] = useState(false);
@@ -130,7 +189,7 @@ export default function Doctor() {
 
   const [selectedMed, setSelectedMed] = useState(null);
   const [dose, setDose] = useState("");
-  const [timesPerDay, setTimesPerDay] = useState("");   
+  const [timesPerDay, setTimesPerDay] = useState("");
   const [durationDays, setDurationDays] = useState("");
   const [medicalCondition, setMedicalCondition] = useState("");
   const [notes, setNotes] = useState("");
@@ -178,14 +237,16 @@ export default function Doctor() {
 
   async function runSearch(idOverride, opts = {}) {
     const { silent = false } = opts;
-    const raw = (idOverride ?? q) ?? "";
+    const raw = idOverride ?? q ?? "";
     const natDigits = String(raw).replace(/\D/g, "");
     const firstOk = natDigits.length > 0 && (natDigits[0] === "1" || natDigits[0] === "2");
     const lenOk = natDigits.length === 10;
 
     if (!firstOk || !lenOk) {
       if (!silent) {
-        setSearchMsg(!firstOk ? "National ID must start with 1 or 2." : "National ID must be 10 digits.");
+        setSearchMsg(
+          !firstOk ? "National ID must start with 1 or 2." : "National ID must be 10 digits."
+        );
         setSelectedPatient(null);
         setSearched(false);
       }
@@ -203,7 +264,6 @@ export default function Doctor() {
         setSelectedPatient(patient);
         setSearched(true);
         sessionStorage.setItem("td_last_patient", natDigits);
-
       } else {
         setSelectedPatient(null);
         setSearched(true);
@@ -219,7 +279,7 @@ export default function Doctor() {
     }
   }
 
-  // ===== Blockchain then saving 
+  // ===== Blockchain then saving =====
   async function confirmAndSave() {
     if (!selectedPatient) return setRxMsg("Please search for a patient first.");
     if (!selectedMed) return setRxMsg("Please choose a medicine from the list.");
@@ -278,7 +338,7 @@ export default function Doctor() {
       let onchainId = null;
       try {
         const iface = new ethers.Interface(PRESCRIPTION.abi);
-        for (const log of (receipt.logs || [])) {
+        for (const log of receipt.logs || []) {
           try {
             const parsed = iface.parseLog(log);
             if (parsed?.name === "PrescriptionCreated") {
@@ -289,15 +349,15 @@ export default function Doctor() {
         }
       } catch {}
 
-      const generatedId = await generateSequentialPrescriptionId(); 
-      const generatedNum = parseInt(generatedId.slice(1), 10);    
+      const generatedId = await generateSequentialPrescriptionId();
+      const generatedNum = parseInt(generatedId.slice(1), 10);
 
       const payload = {
         [F.createdAt]: serverTimestamp(),
         [F.doctorId]: doctorAddress,
-        [F.doctorName]: welcome?.name || "",
-        [F.doctorPhone]: welcome?.phone || "",
-        [F.doctorFacility]: welcome?.healthFacility || "",
+        [F.doctorName]: profile.name || "",
+        [F.doctorPhone]: profile.phone || "",
+        [F.doctorFacility]: profile.facility   || "",
         [F.medicineLabel]: selectedMed.label,
         [F.medicineName]: selectedMed.name,
         [F.dosageForm]: selectedMed.dosageForm || "",
@@ -315,7 +375,7 @@ export default function Doctor() {
         prescriptionID: generatedId,
         prescriptionNum: generatedNum,
         dispensed: false,
-        acceptDelivery: false,   
+        acceptDelivery: false,
       };
 
       if (selectedMed?.sensitivity) payload[F.sensitivity] = selectedMed.sensitivity;
@@ -342,10 +402,14 @@ export default function Doctor() {
           state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
         });
       })();
-
     } catch (e) {
       console.error("createPrescription failed:", e);
-      setRxMsg(e?.info?.error?.message || e?.shortMessage || e?.message || "Blockchain confirmation failed.");
+      setRxMsg(
+        e?.info?.error?.message ||
+          e?.shortMessage ||
+          e?.message ||
+          "Blockchain confirmation failed."
+      );
       setTimeout(() => setRxMsg(""), 6000);
     } finally {
       setIsLoading(false);
@@ -356,19 +420,23 @@ export default function Doctor() {
 
   return (
     <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-6 py-6 md:py-8">
-      {(welcome.name || welcome.healthFacility || welcome.speciality) && (
+      {(profile.name || profile.healthFacility || profile.speciality) && (
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 64, height: "auto" }} />
+            <img
+              src="/Images/TrustDose-pill.png"
+              alt="TrustDose Capsule"
+              style={{ width: 64, height: "auto" }}
+            />
             <div>
               <div className="font-extrabold text-2xl" style={{ color: "#334155" }}>
-                {welcome?.name ? `Welcome, Dr. ${welcome.name}` : "Welcome, Doctor"}
+                {profile?.name ? `Welcome, Dr. ${profile.name}` : "Welcome, Doctor"}
               </div>
-              {(welcome?.healthFacility || welcome?.speciality) && (
+              {(profile?.healthFacility || profile?.speciality) && (
                 <div className="text-sm text-gray-600">
-                  {(welcome?.healthFacility || "")}
-                  {welcome?.healthFacility && welcome?.speciality ? " • " : ""}
-                  {(welcome?.speciality || "")}
+                  {profile?.healthFacility || ""}
+                  {profile?.healthFacility && profile?.speciality ? " • " : ""}
+                  {profile?.speciality || ""}
                 </div>
               )}
             </div>
@@ -377,6 +445,7 @@ export default function Doctor() {
       )}
 
       <section className="space-y-6">
+        {/* Search section */}
         <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <Search size={20} style={{ color: C.primary }} />
@@ -452,6 +521,7 @@ export default function Doctor() {
 
         {searched && selectedPatient && (
           <>
+            {/* Patient info */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 relative">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
                 <ClipboardList size={20} style={{ color: C.primary }} />
@@ -468,10 +538,13 @@ export default function Doctor() {
                 <button
                   onClick={async () => {
                     const pidHash = "0x" + (await sha256Hex(selectedPatient.id.toString()));
-                    sessionStorage.setItem("td_patient", JSON.stringify({
-                      id: selectedPatient.id,
-                      name: selectedPatient.name,
-                    }));
+                    sessionStorage.setItem(
+                      "td_patient",
+                      JSON.stringify({
+                        id: selectedPatient.id,
+                        name: selectedPatient.name,
+                      })
+                    );
                     navigate(`/prescriptions?pid=${pidHash}`, {
                       replace: true,
                       state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
@@ -486,6 +559,7 @@ export default function Doctor() {
               </div>
             </section>
 
+            {/* Create prescription */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
                 <FileText size={20} style={{ color: C.primary }} />
@@ -517,7 +591,12 @@ export default function Doctor() {
                       ? "border-rose-400 focus:ring-rose-200"
                       : "border-gray-300"
                   }`}
-                  style={{ outlineColor: mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min ? "#f87171" : C.primary }}
+                  style={{
+                    outlineColor:
+                      mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min
+                        ? "#f87171"
+                        : C.primary,
+                  }}
                   placeholder="e.g., Hypertension"
                   value={medicalCondition}
                   onChange={(e) => {
@@ -529,9 +608,13 @@ export default function Doctor() {
                 />
                 <div className="mt-1 flex items-center justify-between text-xs">
                   {mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min && (
-                    <span className="text-rose-600">Please enter at least {LIMITS.medicalCondition.min} characters.</span>
+                    <span className="text-rose-600">
+                      Please enter at least {LIMITS.medicalCondition.min} characters.
+                    </span>
                   )}
-                  <span className="text-gray-500">{`${medicalCondition.length}/${LIMITS.medicalCondition.max}`}</span>
+                  <span className="text-gray-500">
+                    {medicalCondition.length}/{LIMITS.medicalCondition.max}
+                  </span>
                 </div>
               </div>
 
@@ -554,9 +637,12 @@ export default function Doctor() {
                     <span
                       className="inline-flex items-center rounded-lg px-3 py-1 text-sm font-medium border"
                       style={{
-                        background: selectedMed.sensitivity === "Sensitive" ? "#FEF2F2" : "#F1F8F5",
-                        color: selectedMed.sensitivity === "Sensitive" ? "#991B1B" : "#166534",
-                        borderColor: selectedMed.sensitivity === "Sensitive" ? "#FECACA" : "#BBE5C8",
+                        background:
+                          selectedMed.sensitivity === "Sensitive" ? "#FEF2F2" : "#F1F8F5",
+                        color:
+                          selectedMed.sensitivity === "Sensitive" ? "#991B1B" : "#166534",
+                        borderColor:
+                          selectedMed.sensitivity === "Sensitive" ? "#FECACA" : "#BBE5C8",
                       }}
                     >
                       Sensitivity: {selectedMed.sensitivity}
@@ -566,7 +652,9 @@ export default function Doctor() {
               </div>
 
               {!selectedMed ? (
-                <div className="mt-2 text-sm text-gray-500">Select a medicine first to show fields.</div>
+                <div className="mt-2 text-sm text-gray-500">
+                  Select a medicine first to show fields.
+                </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <DosageSelect
@@ -598,8 +686,16 @@ export default function Doctor() {
                     onChange={setDurationDays}
                     placeholder="Select duration"
                     options={[
-                      "3 days","5 days","7 days","10 days","14 days","21 days","30 days",
-                      "1 month","2 months","3 months",
+                      "3 days",
+                      "5 days",
+                      "7 days",
+                      "10 days",
+                      "14 days",
+                      "21 days",
+                      "30 days",
+                      "1 month",
+                      "2 months",
+                      "3 months",
                     ]}
                     required
                     allowOther
@@ -640,7 +736,14 @@ export default function Doctor() {
               <div className="flex items-center justify-between pt-4">
                 <button
                   onClick={confirmAndSave}
-                  disabled={isLoading || !selectedMed || !dose || !timesPerDay || !durationDays || !medicalCondition.trim()}
+                  disabled={
+                    isLoading ||
+                    !selectedMed ||
+                    !dose ||
+                    !timesPerDay ||
+                    !durationDays ||
+                    !medicalCondition.trim()
+                  }
                   className="px-6 py-3 text-white rounded-xl disabled:opacity-50 transition-colors flex items-center gap-2 font-medium shadow-sm"
                   style={{ backgroundColor: C.primary }}
                 >
@@ -674,14 +777,21 @@ export default function Doctor() {
 }
 
 /* ============== Components ============== */
+
 function InfoCard({ label, value, bold = false, highlight = false }) {
   return (
     <div
       className="p-4 border rounded-xl"
-      style={{ background: highlight ? "#F6F1FA" : "#F9FAFB", borderColor: highlight ? "#E9DFF1" : "#E5E7EB" }}
+      style={{
+        background: highlight ? "#F6F1FA" : "#F9FAFB",
+        borderColor: highlight ? "#E9DFF1" : "#E5E7EB",
+      }}
     >
       <div className="text-sm text-gray-600 mb-1">{label}</div>
-      <div className={`text-gray-800 ${bold ? "font-semibold" : ""}`} style={highlight ? { color: "#4A2C59", fontWeight: 600 } : undefined}>
+      <div
+        className={`text-gray-800 ${bold ? "font-semibold" : ""}`}
+        style={highlight ? { color: "#4A2C59", fontWeight: 600 } : undefined}
+      >
         {value ?? "—"}
       </div>
     </div>
@@ -712,7 +822,7 @@ function SelectField({
     }
   }, [value, options, allowOther]);
 
-  const selectValue = isCustomMode ? "__OTHER__" : (value || "");
+  const selectValue = isCustomMode ? "__OTHER__" : value || "";
   const missing = required && (isCustomMode ? customText.trim() === "" : selectValue === "");
   const showError = missing && touched;
 
@@ -734,7 +844,7 @@ function SelectField({
             const v = e.target.value;
             if (allowOther && v === "__OTHER__") {
               setIsCustomMode(true);
-              if (!customText) onChange(""); 
+              if (!customText) onChange("");
             } else {
               setIsCustomMode(false);
               setCustomText("");
@@ -743,11 +853,19 @@ function SelectField({
           }}
           onBlur={() => setTouched(true)}
         >
-          <option value="" disabled hidden>{placeholder}</option>
-          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+          <option value="" disabled hidden>
+            {placeholder}
+          </option>
+          {options.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
           {allowOther && <option value="__OTHER__">Other…</option>}
         </select>
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">▾</div>
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">
+          ▾
+        </div>
       </div>
 
       {isCustomMode && (
@@ -764,7 +882,7 @@ function SelectField({
               setTouched(true);
               const clean = e.target.value.replace(/[^A-Za-z0-9 ]/g, "").slice(0, OTHER_MAX);
               setCustomText(clean);
-              onChange(clean); 
+              onChange(clean);
             }}
           />
           {showError && <div className="mt-1 text-xs text-rose-600">This field is required.</div>}
@@ -797,7 +915,7 @@ function DosageSelect({
     }
   }, [value, options, allowOther]);
 
-  const selectValue = isCustomMode ? "__OTHER__" : (value || "");
+  const selectValue = isCustomMode ? "__OTHER__" : value || "";
   const missing = required && (isCustomMode ? customText.trim() === "" : selectValue === "");
   const showError = missing && touched;
 
@@ -828,11 +946,19 @@ function DosageSelect({
           }}
           onBlur={() => setTouched(true)}
         >
-          <option value="" disabled hidden>{placeholder}</option>
-          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+          <option value="" disabled hidden>
+            {placeholder}
+          </option>
+          {options.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
           {allowOther && <option value="__OTHER__">Other…</option>}
         </select>
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">▾</div>
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">
+          ▾
+        </div>
       </div>
 
       {isCustomMode && (
@@ -849,10 +975,12 @@ function DosageSelect({
               setTouched(true);
               const clean = e.target.value.replace(/[^A-Za-z0-9 ]/g, "").slice(0, OTHER_MAX);
               setCustomText(clean);
-              onChange(clean); 
+              onChange(clean);
             }}
           />
-          {showError && <div className="mt-1 text-xs text-rose-600">Please enter dosage.</div>}
+          {showError && (
+            <div className="mt-1 text-xs text-rose-600">Please enter dosage.</div>
+          )}
         </div>
       )}
     </div>
@@ -885,7 +1013,9 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
     return base
       .map((m) => ({ m, s: score(m) }))
       .filter((x) => x.s > 0)
-      .sort((a, b) => b.s - a.s || String(a.m.label).localeCompare(String(b.m.label)))
+      .sort(
+        (a, b) => b.s - a.s || String(a.m.label).localeCompare(String(b.m.label))
+      )
       .map((x) => x.m)
       .slice(0, 15);
   }, [q, data]);
@@ -910,15 +1040,23 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
   }
 
   function onKeyDown(e) {
-    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) { setOpen(true); return; }
+    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      setOpen(true);
+      return;
+    }
     if (!open) return;
-    if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.min(c + 1, suggestions.length - 1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => Math.max(c - 1, 0)); }
-    else if (e.key === "Enter") {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setCursor((c) => Math.min(c + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setCursor((c) => Math.max(c - 1, 0));
+    } else if (e.key === "Enter") {
       e.preventDefault();
       if (cursor >= 0 && suggestions[cursor]) choose(suggestions[cursor]);
+    } else if (e.key === "Escape") {
+      setOpen(false);
     }
-    else if (e.key === "Escape") { setOpen(false); }
   }
 
   const showError = invalid || (touched && !value);
@@ -935,7 +1073,11 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
         style={{ outlineColor: showError ? "#f87171" : C.primary }}
         placeholder={placeholder}
         value={q}
-        onChange={(e) => { setQ(e.target.value); setOpen(true); setInvalid(false); }}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setOpen(true);
+          setInvalid(false);
+        }}
         onFocus={() => setOpen(true)}
         onBlur={handleBlur}
         onKeyDown={onKeyDown}
@@ -949,7 +1091,10 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
       )}
 
       {open && (
-        <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-80 overflow-y-auto" role="listbox">
+        <ul
+          className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-80 overflow-y-auto"
+          role="listbox"
+        >
           {suggestions.length === 0 ? (
             <li className="px-4 py-3 text-sm text-gray-500">No matches found</li>
           ) : (
@@ -958,21 +1103,31 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
                 key={m.id || m.label}
                 role="option"
                 aria-selected={i === cursor}
-                onMouseDown={(e) => { e.preventDefault(); choose(m); }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  choose(m);
+                }}
                 onMouseEnter={() => setCursor(i)}
-                className={`px-4 py-2 text-sm cursor-pointer ${i === cursor ? "bg-gray-100" : "hover:bg-gray-50"}`}
+                className={`px-4 py-2 text-sm cursor-pointer ${
+                  i === cursor ? "bg-gray-100" : "hover:bg-gray-50"
+                }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="font-medium">{m.label}</div>
                   <div className="ml-3 flex items-center gap-2">
-                    <span className="text-[11px] uppercase text-gray-500">{m.dosageForm}</span>
+                    <span className="text-[11px] uppercase text-gray-500">
+                      {m.dosageForm}
+                    </span>
                     {m.sensitivity && (
                       <span
                         className="text-[11px] px-2 py-0.5 rounded-full border"
                         style={{
-                          background: m.sensitivity === "Sensitive" ? "#FEF2F2" : "#F1F8F5",
-                          color: m.sensitivity === "Sensitive" ? "#991B1B" : "#166534",
-                          borderColor: m.sensitivity === "Sensitive" ? "#FECACA" : "#BBE5C8",
+                          background:
+                            m.sensitivity === "Sensitive" ? "#FEF2F2" : "#F1F8F5",
+                          color:
+                            m.sensitivity === "Sensitive" ? "#991B1B" : "#166534",
+                          borderColor:
+                            m.sensitivity === "Sensitive" ? "#FECACA" : "#BBE5C8",
                         }}
                       >
                         {m.sensitivity}
@@ -980,7 +1135,9 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
                     )}
                   </div>
                 </div>
-                {m.name && <div className="text-xs text-gray-500">{m.name}</div>}
+                {m.name && (
+                  <div className="text-xs text-gray-500">{m.name}</div>
+                )}
               </li>
             ))
           )}
@@ -1004,7 +1161,9 @@ function toAgeAny(birthValue) {
     const diffMs = Date.now() - d.getTime();
     const age = Math.floor(diffMs / (365.25 * 24 * 60 * 60 * 1000));
     return age >= 0 ? age : "—";
-  } catch { return "—"; }
+  } catch {
+    return "—";
+  }
 }
 
 async function fetchPatientByNationalId(id) {
