@@ -849,12 +849,24 @@ else if (!verified) {
   setMsg("❌ This account has no password.");
   return;
 }
-           const displayName = user.name || user.companyName || id;
+                const displayName = user.name || user.companyName || id;
 
       if (role === "pharmacy") {
         localStorage.setItem("userRole", "pharmacy");
         localStorage.setItem("userId", userDocId || id);
-        if (user.BranchID) localStorage.setItem("pharmacyBranchId", user.BranchID);
+        if (user.BranchID) {
+          localStorage.setItem("pharmacyBranchId", user.BranchID);
+        }
+      } else if (role === "logistics") {
+        const welcomeLogistics = {
+          logisticsId: user.LogisticsID || user.logisticsId || id,
+          companyName: user.companyName || "",
+          vehicleId: user.vehicleId || "",
+        };
+
+        localStorage.setItem("userRole", "logistics");
+        localStorage.setItem("userId", welcomeLogistics.logisticsId);
+        localStorage.setItem("welcome_logistics", JSON.stringify(welcomeLogistics));
       } else {
         localStorage.setItem("userId", id);
         localStorage.setItem("userRole", role);

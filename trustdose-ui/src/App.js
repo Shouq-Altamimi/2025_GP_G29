@@ -1,6 +1,6 @@
 // src/App.js
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import TrustDoseAuth from "./pages/Auth";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -18,7 +18,6 @@ import PrescriptionsPage from "./pages/PrescriptionsPage";
 // الصيدلية
 import PharmacyShell from "./pages/PharmacyShell";
 import Pharmacy from "./pages/pharmacy.jsx";
-// ✅ صفحة طلبات التوصيل الحسّاسة
 import DeliveryOrders from "./pages/DeliveryOrders.jsx";
 // ✅ صفحة الطلبات المعلّقة (بانتظار اللوجستكس)
 import PendingOrders from "./pages/PendingOrders.jsx";
@@ -27,9 +26,13 @@ import PendingOrders from "./pages/PendingOrders.jsx";
 import AuthEmailHandler from "./pages/AuthEmailHandler";
 import PasswordReset from "./pages/PasswordReset";
 
-// ✅ الحماية بالأدوار
+// الحماية بالأدوار
 import RequireAuth from "./auth/RequireAuth";
 import Admin from "./pages/Admin";
+
+// اللوجستك
+import LogisticsHeader from "./pages/LogisticsHeader.jsx";
+import Logistics from "./pages/Logistics.jsx";
 
 export default function App() {
   return (
@@ -104,7 +107,6 @@ export default function App() {
           }
         >
           <Route index element={<Pharmacy />} />
-          {/* طلبات التوصيل الحسّاسة */}
           <Route
             path="delivery"
             element={<DeliveryOrders pharmacyId="pharma_001" />}
@@ -114,6 +116,18 @@ export default function App() {
             path="pending"
             element={<PendingOrders pharmacyId="pharma_001" />}
           />
+        </Route>
+
+        {/* اللوجستك */}
+        <Route
+          path="/logistics"
+          element={
+            <RequireAuth allowedRoles={["logistics"]}>
+              <LogisticsHeader />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<Logistics />} />
         </Route>
 
         {/* 404 */}
