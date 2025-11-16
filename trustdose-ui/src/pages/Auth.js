@@ -139,7 +139,7 @@ function validateAndNormalizePhone(raw) {
   }
   return {
     ok: false,
-    reason: "Phone must start with 05 or +9665 followed by 8 digits (e.g., 05xxxxxxxx or +9665xxxxxxxx).",
+    reason: "Phone must start with 5 followed by 8 digits (e.g., +9665xxxxxxxx).",
   };
 }
 
