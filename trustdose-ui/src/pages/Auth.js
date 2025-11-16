@@ -139,7 +139,7 @@ function validateAndNormalizePhone(raw) {
   }
   return {
     ok: false,
-    reason: "Phone must start with 05 or +9665 followed by 8 digits (e.g., 05xxxxxxxx or +9665xxxxxxxx).",
+    reason: "Phone must start with 5 followed by 8 digits (e.g., +9665xxxxxxxx).",
   };
 }
 
@@ -231,8 +231,13 @@ const linkStyle = {
   textDecoration: "none",
 };
 
-function Label({ children }) {
-  return <label style={{ fontSize: 13, color: TD.ink, fontWeight: 600 }}>{children}</label>;
+function Label({ children, required }) {
+  return (
+    <label style={{ fontSize: 13, color: TD.ink, fontWeight: 600 }}>
+      {children}
+      {required && <span style={{ color: TD.err, marginLeft: 4 }}>*</span>}
+    </label>
+  );
 }
 
 function Select({ name, value, onChange, disabled, required, placeholder, children }) {
@@ -299,6 +304,7 @@ export default function TrustDoseAuth() {
   const [phone, setPhone] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
+  const [nameErr, setNameErr] = useState("");
   const [gender, setGender] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [birthDateErr, setBirthDateErr] = useState("");
@@ -711,7 +717,7 @@ if (!user && /^LG-\d{3}$/i.test(id)) {
 
 
       if (!user) {
-        setMsg("❌ No account found with this ID.");
+        setMsg("❌ ID or password incorrect.");
         return;
       }
 
@@ -965,6 +971,7 @@ else if (!verified) {
       setPassword("");
       setConfirmPassword("");
       setName("");
+      setNameErr("");
       setGender("");
       setBirthDate("");
       setPhone("");
@@ -1222,141 +1229,294 @@ else if (!verified) {
           </form>
         ) : (
           <form onSubmit={handleSignUp}>
-            <Label>National ID</Label>
-            <input
-              value={nationalId}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (hasArabic(v)) return;
-                const live = isValidNationalIdLive(v);
-                setNationalId(v);
-                setNationalIdErr(live.ok ? "" : live.reason);
-              }}
-              onPaste={(e) => {
-                const paste = e.clipboardData.getData('text');
-                if (hasArabic(paste)) {
-                  e.preventDefault();
-                  return;
-                }
-              }}
-              placeholder="1xxxxxxxxx or 2xxxxxxxxx"
-              style={{
-                ...inputBase,
-                ...inputCompact,
-                ...(nationalIdErr ? { borderColor: TD.err, boxShadow: "0 0 0 4px rgba(220,38,38,.08)" } : {}),
-              }}
-              onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(!!nationalIdErr))}
-              onBlur={(e) =>
-                Object.assign(e.currentTarget.style, {
-                  borderColor: "#DFE3E8",
-                  boxShadow: "0 3px 14px rgba(0,0,0,.04)",
-                })
-              }
-              required
-              maxLength={10}
-              inputMode="numeric"
-              pattern="[12][0-9]{9}"
-              title="Exactly 10 digits starting with 1 or 2"
-              onKeyDown={(e) => {
-                const allowedControl = ["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"];
-                if (e.key === " ") { e.preventDefault(); return; }
-                if (/^[0-9]$/.test(e.key)) return;
-                if (allowedControl.includes(e.key)) return;
-                e.preventDefault();
-              }}
-            />
-            {nationalIdErr && (
-              <div style={{ marginTop: -6, marginBottom: 8, fontSize: 12, color: "#b91c1c" }}>
-                {nationalIdErr}
-              </div>
-            )}
+            <Label required>National ID</Label>
+<input
+  value={nationalId}
+  onChange={(e) => {
+    const v = e.target.value;
+    if (hasArabic(v)) return;
+    
+    // ✅ أول رقم لازم يكون 1 أو 2
+    if (v.length === 1 && v !== '1' && v !== '2') {
+      setNationalIdErr("Must start with 1 or 2");
+      return;
+    }
+    
+    // ✅ أرقام فقط
+    if (!/^[0-9]*$/.test(v)) {
+      setNationalIdErr("Digits 0-9 only");
+      return;
+    }
+    
+    const live = isValidNationalIdLive(v);
+    setNationalId(v);
+    setNationalIdErr(live.ok ? "" : live.reason);
+  }}
+  onPaste={(e) => {
+    const paste = e.clipboardData.getData('text');
+    if (hasArabic(paste)) {
+      e.preventDefault();
+      return;
+    }
+    
+    // ✅ التحقق من أن اللصق يبدأ بـ 1 أو 2
+    const cleaned = paste.trim().replace(/\s/g, '');
+    if (cleaned.length > 0 && cleaned[0] !== '1' && cleaned[0] !== '2') {
+      e.preventDefault();
+      setNationalIdErr("Must start with 1 or 2");
+      return;
+    }
+    
+    // ✅ التحقق من أنه أرقام فقط
+    if (!/^[12][0-9]*$/.test(cleaned)) {
+      e.preventDefault();
+      setNationalIdErr("Must start with 1 or 2, followed by digits");
+      return;
+    }
+  }}
+  placeholder="1xxxxxxxxx or 2xxxxxxxxx"
+  style={{
+    ...inputBase,
+    ...inputCompact,
+    ...(nationalIdErr ? { borderColor: TD.err, boxShadow: "0 0 0 4px rgba(220,38,38,.08)" } : {}),
+  }}
+  onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(!!nationalIdErr))}
+  onBlur={(e) =>
+    Object.assign(e.currentTarget.style, {
+      borderColor: "#DFE3E8",
+      boxShadow: "0 3px 14px rgba(0,0,0,.04)",
+    })
+  }
+  required
+  maxLength={10}
+  inputMode="numeric"
+  pattern="[12][0-9]{9}"
+  title="Exactly 10 digits starting with 1 or 2"
+  onKeyDown={(e) => {
+    const allowedControl = ["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"];
+    
+    if (e.key === " ") { 
+      e.preventDefault(); 
+      return; 
+    }
+    
+    if (allowedControl.includes(e.key)) return;
+    
+    // ✅ أول رقم لازم يكون 1 أو 2 فقط
+    if (nationalId.length === 0 && e.key !== '1' && e.key !== '2') {
+      e.preventDefault();
+      setNationalIdErr("Must start with 1 or 2");
+      return;
+    }
+    
+    // ✅ باقي الأرقام: 0-9 فقط
+    if (!/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+      return;
+    }
+  }}
+/>
+{nationalIdErr && (
+  <div style={{ marginTop: -6, marginBottom: 8, fontSize: 12, color: "#b91c1c" }}>
+    {nationalIdErr}
+  </div>
+)}
 
-            <Label>Phone</Label>
-            <input
-              value={phone}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (hasArabic(val)) return;
-                setPhone(val);
-              }}
-              onPaste={(e) => {
-                const paste = e.clipboardData.getData('text');
-                if (hasArabic(paste)) {
-                  e.preventDefault();
-                  return;
-                }
-              }}
-              placeholder="05xxxxxxxx or +9665xxxxxxxx (no spaces)"
-              style={{ ...inputBase, ...inputCompact }}
-              onFocus={(e) =>
-                Object.assign(
-                  e.currentTarget.style,
-                  inputFocus(!(phone === "" || (phoneInfo.ok && !phoneTaken)) && !!phone)
-                )
-              }
-              onBlur={(e) =>
-                Object.assign(e.currentTarget.style, {
-                  borderColor: "#DFE3E8",
-                  boxShadow: "0 3px 14px rgba(0,0,0,.04)",
-                })
-              }
-              required
-              onKeyDown={(e) => {
-                if (e.key === " ") e.preventDefault();
-              }}
-            />
-            <div style={{ marginTop: -6, marginBottom: 8, fontSize: 12 }}>
-              {!phone && (
-                <span style={{ color: "#888" }}>
-                  Enter phone starting with 05 or +9665
-                </span>
-              )}
-              {phone && !phoneInfo.ok && (
-                <span style={{ color: "#b91c1c" }}>{phoneInfo.reason}</span>
-              )}
-              {phone && phoneInfo.ok && !phoneTaken && (
-                <span style={{ color: "#065f46" }}>
-                  ✓ Valid phone number
-                  {phoneChecking && " • checking..."}
-                </span>
-              )}
-              {phone && phoneInfo.ok && phoneTaken && (
-                <span style={{ color: "#b91c1c" }}>
-                  Already registered
-                </span>
-              )}
-            </div>
+            <Label required>Phone</Label>
+<div style={{ position: "relative" }}>
+  <input
+    value={phone}
+    onChange={(e) => {
+      let val = e.target.value;
+      
+      // ✅ إزالة +966 من القيمة المدخلة (إذا حاول المستخدم حذفها نرجعها)
+      if (!val.startsWith('+966')) {
+        val = '+966' + val.replace(/^\+?966?/, '');
+      }
+      
+      // ✅ منع العربي
+      if (hasArabic(val)) return;
+      
+      // ✅ إزالة المسافات
+      val = val.replace(/\s/g, '');
+      
+      // ✅ التأكد من أن ما بعد +966 هو أرقام فقط
+      const afterPrefix = val.slice(4); // كل شي بعد +966
+      if (afterPrefix && !/^[0-9]*$/.test(afterPrefix)) return;
+      
+      // ✅ الحد الأقصى: +966 + 9 أرقام (5 + 8 أرقام)
+      if (val.length > 13) return;
+      
+      setPhone(val);
+    }}
+    onPaste={(e) => {
+      e.preventDefault();
+      const paste = e.clipboardData.getData('text').trim();
+      if (hasArabic(paste)) return;
+      
+      // ✅ إذا لصق رقم كامل مثل 0512345678 أو 512345678
+      let cleaned = paste.replace(/\s/g, '');
+      
+      if (cleaned.startsWith('05')) {
+        // تحويل 05xxxxxxxx إلى +9665xxxxxxxx
+        setPhone('+966' + cleaned.slice(1));
+      } else if (cleaned.startsWith('5')) {
+        // إضافة +966 مباشرة
+        setPhone('+966' + cleaned);
+      } else if (cleaned.startsWith('+9665')) {
+        setPhone(cleaned);
+      } else if (cleaned.match(/^9665\d{8}$/)) {
+        setPhone('+' + cleaned);
+      } else {
+        // محاولة إضافة +966 إذا كان أرقام فقط
+        setPhone('+966' + cleaned.replace(/^\+?966?5?/, ''));
+      }
+    }}
+    placeholder="+966 5xxxxxxxx"
+    style={{ 
+      ...inputBase, 
+      ...inputCompact,
+      paddingLeft: '14px',
+    }}
+    onFocus={(e) => {
+      // ✅ إذا كان فاضي، نضيف +966 تلقائياً
+      if (!phone || phone === '') {
+        setPhone('+966');
+      }
+      Object.assign(
+        e.currentTarget.style,
+        inputFocus(!(phone === "" || phone === "+966" || (phoneInfo.ok && !phoneTaken)) && !!phone)
+      );
+    }}
+    onBlur={(e) => {
+      // ✅ إذا ترك الحقل بس فيه +966 بدون أرقام، نمسحه
+      if (phone === '+966') {
+        setPhone('');
+      }
+      Object.assign(e.currentTarget.style, {
+        borderColor: "#DFE3E8",
+        boxShadow: "0 3px 14px rgba(0,0,0,.04)",
+      });
+    }}
+    required
+    onKeyDown={(e) => {
+      const allowedControl = ["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"];
+      
+      if (e.key === " ") {
+        e.preventDefault();
+        return;
+      }
+      
+      if (allowedControl.includes(e.key)) {
+        // ✅ منع حذف +966
+        if ((e.key === "Backspace" || e.key === "Delete") && phone.length <= 4) {
+          e.preventDefault();
+          return;
+        }
+        return;
+      }
+      
+      // ✅ السماح بالأرقام فقط
+      if (!/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        return;
+      }
+      
+      // ✅ أول رقم بعد +966 يجب أن يكون 5
+      if (phone === '+966' && e.key !== '5') {
+        e.preventDefault();
+        return;
+      }
+    }}
+  />
+</div>
+<div style={{ marginTop: -6, marginBottom: 8, fontSize: 12 }}>
+  {(!phone || phone === '+966') && (
+    <span style={{ color: "#888" }}>
+      Enter phone: +966 5xxxxxxxx (9 digits after +966)
+    </span>
+  )}
+  {phone && phone !== '+966' && !phoneInfo.ok && (
+    <span style={{ color: "#b91c1c" }}>{phoneInfo.reason}</span>
+  )}
+  {phone && phone !== '+966' && phoneInfo.ok && !phoneTaken && (
+    <span style={{ color: "#065f46" }}>
+      ✓ Valid phone number
+      {phoneChecking && " • checking..."}
+    </span>
+  )}
+  {phone && phoneInfo.ok && phoneTaken && (
+    <span style={{ color: "#b91c1c" }}>
+      Already registered
+    </span>
+  )}
+</div>
 
-            <Label>Full name</Label>
-            <input
-              value={name}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (hasArabic(val)) return;
-                setName(val);
-              }}
-              onPaste={(e) => {
-                const paste = e.clipboardData.getData('text');
-                if (hasArabic(paste)) {
-                  e.preventDefault();
-                  return;
-                }
-              }}
-              placeholder="Full name"
-              style={{ ...inputBase, ...inputCompact }}
-              onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
-              onBlur={(e) =>
-                Object.assign(e.currentTarget.style, {
-                  borderColor: "#DFE3E8",
-                  boxShadow: "0 3px 14px rgba(0,0,0,.04)",
-                })
-              }
-              required
-            />
+            <Label required>Full name</Label>
+<input
+  value={name}
+  onChange={(e) => {
+    const val = e.target.value;
+    if (hasArabic(val)) return;
+    
+    // ✅ منع الأرقام والرموز - حروف فقط
+    if (!/^[A-Za-z\s]*$/.test(val)) {
+      setNameErr("Letters only (no numbers or symbols)");
+      return;
+    }
+    
+    // ✅ حد أقصى 50 حرف
+    if (val.length > 50) {
+      setNameErr("Maximum 50 characters");
+      return;
+    }
+    
+    setName(val);
+    setNameErr("");
+  }}
+  onPaste={(e) => {
+    const paste = e.clipboardData.getData('text');
+    if (hasArabic(paste)) {
+      e.preventDefault();
+      return;
+    }
+    // التحقق من الأحرف فقط
+    if (!/^[A-Za-z\s]*$/.test(paste)) {
+      e.preventDefault();
+      setNameErr("Letters only (no numbers or symbols)");
+      return;
+    }
+  }}
+  placeholder="Full name (letters only, max 50 chars)"
+  style={{
+    ...inputBase,
+    ...inputCompact,
+    ...(nameErr ? { borderColor: TD.err, boxShadow: "0 0 0 4px rgba(220,38,38,.08)" } : {}),
+  }}
+  onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(!!nameErr))}
+  onBlur={(e) =>
+    Object.assign(e.currentTarget.style, {
+      borderColor: "#DFE3E8",
+      boxShadow: "0 3px 14px rgba(0,0,0,.04)",
+    })
+  }
+  required
+  maxLength={50}
+/>
+{nameErr && (
+  <div style={{ marginTop: -6, marginBottom: 8, fontSize: 12, color: "#b91c1c" }}>
+    {nameErr}
+  </div>
+)}
+{!nameErr && name.length > 0 && (
+  <div style={{ marginTop: -6, marginBottom: 8, fontSize: 11, color: "#888", textAlign: "right" }}>
+    {name.length}/50 characters
+  </div>
+)}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div>
-                <Label>Gender</Label>
+                <Label required>Gender</Label>
                 <Select
                   name="gender"
                   value={gender}
@@ -1370,7 +1530,7 @@ else if (!verified) {
               </div>
 
               <div>
-                <Label>Birth date</Label>
+                <Label required>Birth date</Label>
                 <input
                   type="date"
                   value={birthDate}
@@ -1409,7 +1569,7 @@ else if (!verified) {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div>
-                <Label>City</Label>
+                <Label required>City</Label>
                 <Select
                   name="city"
                   value={city}
@@ -1426,7 +1586,7 @@ else if (!verified) {
               </div>
 
               <div>
-                <Label>District</Label>
+                <Label required>District</Label>
                 <Select
                   name="district"
                   value={district}
@@ -1446,7 +1606,7 @@ else if (!verified) {
 
             {district === "__OTHER__" && (
               <div>
-                <Label>District (Other)</Label>
+                <Label required>District (Other)</Label>
                 <input
                   value={districtOther}
                   onChange={(e) => {
@@ -1481,7 +1641,7 @@ else if (!verified) {
               </div>
             )}
 
-            <Label>Password</Label>
+            <Label required>Password</Label>
             <div style={{ position: "relative" }}>
               <input
                 type={showPw ? "text" : "password"}
@@ -1568,7 +1728,7 @@ else if (!verified) {
               </div>
             )}
 
-            <Label>Confirm Password</Label>
+            <Label required>Confirm Password</Label>
             <div style={{ position: "relative" }}>
               <input
                 type={showPwConfirm ? "text" : "password"}
