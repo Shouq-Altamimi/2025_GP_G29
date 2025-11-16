@@ -18,7 +18,7 @@ const RX_STATUS = { DELIVERY_REQUESTED: "DELIVERY_REQUESTED", PHARM_ACCEPTED: "P
 const PAGE_SIZE = 6;
 
 // ======== عقد DeliveryAccept ========
-const DELIVERY_ACCEPT_ADDRESS = "0x2f022100DEdAb2C142E6f2b52d56CBD1609CcC59";
+const DELIVERY_ACCEPT_ADDRESS = "0xe187f0A32259058E0051cb164Ca24f44fB20629D";
 const DELIVERY_ACCEPT_ABI = DELIVERY_ACCEPT?.abi ?? [];
 
 /* ========== helpers ========== */
@@ -109,7 +109,7 @@ export default function DeliveryOrders({ pharmacyId }) {
         return;
       }
 
-      const data = snap.docs.map((d) => {
+      const rawData = snap.docs.map((d) => {
         const x = d.data() || {};
         const displayId = x.prescriptionID || d.id;
 
@@ -122,9 +122,9 @@ export default function DeliveryOrders({ pharmacyId }) {
 
         return {
           _docId: d.id,
-          prescriptionId: displayId, // للعرض فقط (a1001 مثلاً)
+          prescriptionId: displayId, // للعرض فقط
           prescriptionNum: typeof x.prescriptionNum === "number" ? x.prescriptionNum : null,
-          onchainId,                 // هذا الذي سنرسله للعقد
+          onchainId,
           patientName: x.patientName || "-",
           patientId: String(x.nationalID ?? x.patientDisplayId ?? "-"),
           doctorName: x.doctorName || "-",
@@ -141,14 +141,18 @@ export default function DeliveryOrders({ pharmacyId }) {
           createdAt: formatFsTimestamp(x.createdAt),
           updatedAt: formatFsTimestamp(x.updatedAt),
           dispensed: !!x.dispensed,
+          acceptDelivery: !!x.acceptDelivery,
         };
       });
 
-      // ======== ترتيب حسب وقت الإنشاء ثم رقم الوصفة (الأحدث / الأكبر أولاً) ========
-      data.sort((a, b) => {
+      // لا نعرض اللي already acceptDelivery = true
+      const filtered = rawData.filter((r) => !r.acceptDelivery);
+
+      // ترتيب إضافي (اختياري)
+      filtered.sort((a, b) => {
         const aTime = a.createdAtTS instanceof Date ? a.createdAtTS.getTime() : 0;
         const bTime = b.createdAtTS instanceof Date ? b.createdAtTS.getTime() : 0;
-        if (bTime !== aTime) return bTime - aTime; // الأحدث أولاً
+        if (bTime !== aTime) return bTime - aTime;
 
         const aNum =
           typeof a.prescriptionNum === "number"
@@ -166,11 +170,11 @@ export default function DeliveryOrders({ pharmacyId }) {
                 return Number.isNaN(n) ? 0 : n;
               })();
 
-        return bNum - aNum; // الأكبر فوق
+        return bNum - aNum;
       });
 
       if (mounted) {
-        setRows(data);
+        setRows(filtered);
         setLoading(false);
         setPage(0);
       }
@@ -200,51 +204,51 @@ export default function DeliveryOrders({ pharmacyId }) {
     setPending((s) => ({ ...s, [key]: true }));
 
     try {
-      // تأكيد من Firestore
       const ref = doc(db, "prescriptions", r._docId);
       const fresh = await getDoc(ref);
       if (!fresh.exists()) throw new Error("Prescription doc not found");
 
       const freshData = fresh.data();
+
       if (freshData.dispensed === true) {
         alert("This prescription was already dispensed. You cannot accept delivery.");
-        // نحدّث الستيت عشان لو رجع dispensed=true ما تنعرض
-        setRows((arr) =>
-          arr.map((x) => (x._docId === r._docId ? { ...x, dispensed: true } : x))
-        );
+        setRows((arr) => arr.filter((x) => x._docId !== r._docId));
         return;
       }
 
-      if (r.onchainId == null) {
-        alert("Missing on-chain ID (onchainId). Please ensure the doctor's page stores it from the blockchain event.");
+      if (freshData.acceptDelivery === true) {
+        setRows((arr) => arr.filter((x) => x._docId !== r._docId));
         return;
       }
 
-      // نداء العقد
-      const provider = getDeliveryAcceptProvider();
-      await provider.send("eth_requestAccounts", []);
-      const signer = await provider.getSigner();
-      const contract = new ethers.Contract(DELIVERY_ACCEPT_ADDRESS, DELIVERY_ACCEPT_ABI, signer);
+      // لو عندنا onchainId نستدعي العقد، لو ما عندنا نكمل بدون بلوك تشين
+      let txHash = null;
+      if (r.onchainId != null) {
+        const provider = getDeliveryAcceptProvider();
+        await provider.send("eth_requestAccounts", []);
+        const signer = await provider.getSigner();
+        const contract = new ethers.Contract(DELIVERY_ACCEPT_ADDRESS, DELIVERY_ACCEPT_ABI, signer);
 
-      const tx = await contract.accept(r.onchainId); // BigInt جاهز
-      await tx.wait();
+        const tx = await contract.accept(r.onchainId);
+        await tx.wait();
+        txHash = tx.hash;
+      }
 
-      // نحدّث Firestore -> dispensed = true
-      await updateDoc(ref, {
-        dispensed: true,
-        dispensedAt: serverTimestamp(),
+      // ✅ نحدّث Firestore -> acceptDelivery فقط (dispensed تبقى false)
+      const updatePayload = {
         acceptDelivery: true,
-      });
+        acceptDeliveryAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      if (txHash) {
+        updatePayload.acceptDeliveryTx = txHash;
+      }
+      await updateDoc(ref, updatePayload);
 
+      // نشيل الكارد من الستيت
+      setRows((arr) => arr.filter((x) => x._docId !== r._docId));
 
-      // نحدّث الستيت المحلي -> dispensed=true => الكارد يختفي
-      setRows((arr) =>
-        arr.map((x) =>
-          x._docId === r._docId ? { ...x, dispensed: true } : x
-        )
-      );
-
-      console.log("Accepted on-chain & marked dispensed");
+      console.log("Marked acceptDelivery", txHash ? "with tx " + txHash : "without on-chain tx");
     } catch (err) {
       console.error(err);
       alert(err?.message || "Accept failed");
@@ -277,8 +281,7 @@ export default function DeliveryOrders({ pharmacyId }) {
         {pageItems.length > 0 && (
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {pageItems.map((r) => {
-              // لو dispensed=true لا نعرض الكارد
-              if (r.dispensed) return null;
+              if (r.dispensed || r.acceptDelivery) return null;
 
               const prescriber = r.doctorName ? `Dr. ${r.doctorName}` : "-";
               const facility = r.doctorFacility ? ` — ${r.doctorFacility}` : "";
@@ -290,13 +293,14 @@ export default function DeliveryOrders({ pharmacyId }) {
                 : r.createdAt || "-";
 
               const isPending = !!pending[String(r.prescriptionId)];
-              const disabled = isPending || !r.onchainId;
+              const disabled = isPending;
 
               return (
                 <div
                   key={r._docId}
-                  className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between"
+                  className="p-4 border rounded-xl bg-white shadow-sm"
                 >
+                  {/* محتوى الكارد العلوي */}
                   <div>
                     <div className="text-lg font-bold text-slate-800 truncate">
                       {r.medicineLabel || "—"}
@@ -305,6 +309,7 @@ export default function DeliveryOrders({ pharmacyId }) {
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Prescription ID: <span className="font-normal">{r.prescriptionId}</span>
                     </div>
+
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Patient:{" "}
                       <span className="font-normal">
@@ -312,12 +317,16 @@ export default function DeliveryOrders({ pharmacyId }) {
                         {r.patientId ? ` — ${String(r.patientId)}` : ""}
                       </span>
                     </div>
+
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Doctor Phone: <span className="font-normal">{r.doctorPhone}</span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Prescribed by <span className="font-normal">{prescriber}{facility}</span>
+                      Prescribed by{" "}
+                      <span className="font-normal">
+                        {prescriber}{facility}
+                      </span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
@@ -328,40 +337,54 @@ export default function DeliveryOrders({ pharmacyId }) {
                     </div>
 
                     <div className="text-sm text-slate-700 mt-2 font-semibold">
-                      Medical Condition: <span className="font-normal">{r.medicalCondition || "—"}</span>
+                      Medical Condition:{" "}
+                      <span className="font-normal">{r.medicalCondition || "—"}</span>
                     </div>
 
-                    {!!r.notes && (
-                      <div className="text-sm text-slate-700 mt-2 font-semibold">
-                        Notes: <span className="font-normal">{r.notes}</span>
-                      </div>
-                    )}
-
-                    {/* زر Accept */}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        className="w-max px-4 py-2 text-sm rounded-lg transition-colors
-                                   flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
-                        style={{ backgroundColor: C.primary }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = C.primaryDark)}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = C.primary)}
-                        title={r.onchainId ? "Accept this prescription" : "Missing on-chain ID"}
-                        onClick={() => handleAccept(r)}
-                        disabled={disabled}
-                      >
-                        {isPending ? (
-                          <Loader2 size={16} className="animate-spin text-white" />
-                        ) : (
-                          <Check size={16} className="text-white" />
-                        )}
-                        <span className="text-white">
-                          {isPending ? "Processing…" : (r.onchainId ? "Accept" : "No on-chain ID")}
-                        </span>
-                      </button>
+                    {/* مساحة ثابتة للنوتس - نفس الفكرة حق PendingOrders */}
+                    <div className="mt-1 min-h-[28px]">
+                      {!!r.notes && (
+                        <div className="text-sm text-slate-700 font-semibold">
+                          Notes:{" "}
+                          <span className="font-normal">{r.notes}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div className="text-right text-xs text-gray-500 mt-3">
+                  {/* زر Accept تحت النوتس مباشرة */}
+                  <div className="mt-1">
+                    <button
+                      className="w-max px-4 py-2 text-sm rounded-lg transition-colors
+                                 flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
+                      style={{ backgroundColor: isPending ? "#D8C2E6" : C.primary }}
+                      onMouseEnter={(e) => {
+                        if (!isPending && !disabled) {
+                          e.currentTarget.style.backgroundColor = C.primaryDark;
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isPending && !disabled) {
+                          e.currentTarget.style.backgroundColor = C.primary;
+                        }
+                      }}
+                      title="Accept this prescription"
+                      onClick={() => handleAccept(r)}
+                      disabled={disabled}
+                    >
+                      {isPending ? (
+                        <Loader2 size={16} className="animate-spin text-white" />
+                      ) : (
+                        <Check size={16} className="text-white" />
+                      )}
+                      <span className="text-white">
+                        {isPending ? "Processing…" : "Accept"}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* التاريخ تحت الزر بمسافة بسيطة */}
+                  <div className="text-right text-xs text-gray-500 mt-1">
                     Prescription issued on {dateTime}
                   </div>
                 </div>

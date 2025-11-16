@@ -199,25 +199,27 @@ export default function PharmacyShell() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header hideMenu={false} onMenuClick={() => { if (isPharmacyPage && pharmacyDocId) setOpen(true); }} />
 
-      {/* Alerts (English text مثل الدكتور) */}
+      {/* Alerts (نفس صيغة الدكتور) */}
       {showEmailAlert && (
         <AlertBanner>
-          ⚠️ You haven’t added an email address yet. <br />
-          Please add your email from{" "}
-          <button onClick={() => setShowAccount(true)} style={{ fontWeight: 700, color: C.primary }}>
-            My Profile
-          </button>{" "}
-          to activate your account and receive notifications.
+          ⚠️ Verify your email now — your temporary pharmacy password expires in 24h.{" "}
+          <button
+            onClick={() => setShowAccount(true)}
+            style={{ fontWeight: 700, color: C.primary }}
+          >
+            Open My Profile
+          </button>
         </AlertBanner>
       )}
       {showResetAlert && (
         <AlertBanner>
-          ⚠️ You need to set your password. <br />
-          Please open{" "}
-          <button onClick={() => setShowAccount(true)} style={{ fontWeight: 700, color: C.primary }}>
-            My Profile
-          </button>{" "}
-          and change your password to continue.
+          ⚠️ Set your password now to keep access — temporary access ends in 24h.{" "}
+          <button
+            onClick={() => setShowAccount(true)}
+            style={{ fontWeight: 700, color: C.primary }}
+          >
+            Open My Profile
+          </button>
         </AlertBanner>
       )}
 

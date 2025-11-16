@@ -12,8 +12,8 @@ import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
-const PRESCRIPTION_ADDRESS = "0xf2eBEbCbed6f8195bf294b55f5af095e5139E21E";
-const DISPENSE_ADDRESS     = "0x76bbE12f1073136170073e7421D795EEBa1e9987";
+const PRESCRIPTION_ADDRESS = "0x9BA5C1C36C58B7BCd0b90E3914E217b806061034";
+const DISPENSE_ADDRESS     = "0xc8dAf48d795a54D528ab6f6a8586777C1035B02B";
 
 // ===== Pagination size =====
 const PAGE_SIZE = 6;
@@ -570,16 +570,17 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
                       Medical Condition: <span className="font-normal">{r.medicalCondition || "—"}</span>
                     </div>
 
-                    {!!r.notes && (
-                      <div className="text-sm text-slate-700 mt-2 font-semibold">
-                        Notes: <span className="font-normal">{r.notes}</span>
-                      </div>
-                    )}
+                    {/* 🔹 مساحة ثابتة للنوتس – حتى لو ما فيه Notes */}
+                    <div className="mt-1 min-h-[28px]">
+                      {!!r.notes && (
+                        <div className="text-sm text-slate-700 font-semibold">
+                          Notes: <span className="font-normal">{r.notes}</span>
+                        </div>
+                      )}
+                    </div>
 
-                    {/* Only status when dispensed */}
-                 
-                    {/* Button: left/bottom, small, white text */}
-                    <div className="mt-2 flex justify-start">
+                    {/* زر Confirm & Dispense تحت النوتس مباشرة */}
+                    <div className="mt-1 flex justify-start">
                       <button
                         onClick={() => markDispensed(r)}
                         disabled={!eligible || r.dispensed || isThisLoading}
@@ -616,7 +617,8 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
                     </div>
                   </div>
 
-                  <div className="text-right text-xs text-gray-500 mt-3">
+                  {/* التاريخ تحت الزر بمسافة بسيطة وثابتة */}
+                  <div className="text-right text-xs text-gray-500 mt-1">
                     Prescription issued on {dateTime}
                   </div>
                 </div>
