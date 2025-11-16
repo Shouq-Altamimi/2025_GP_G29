@@ -20,6 +20,8 @@ import PharmacyShell from "./pages/PharmacyShell";
 import Pharmacy from "./pages/pharmacy.jsx";
 // ✅ صفحة طلبات التوصيل الحسّاسة
 import DeliveryOrders from "./pages/DeliveryOrders.jsx";
+// ✅ صفحة الطلبات المعلّقة (بانتظار اللوجستكس)
+import PendingOrders from "./pages/PendingOrders.jsx";
 
 // البريد / إعادة تعيين
 import AuthEmailHandler from "./pages/AuthEmailHandler";
@@ -102,10 +104,15 @@ export default function App() {
           }
         >
           <Route index element={<Pharmacy />} />
-          {/* ✅ /pharmacy/delivery */}
+          {/* طلبات التوصيل الحسّاسة */}
           <Route
             path="delivery"
             element={<DeliveryOrders pharmacyId="pharma_001" />}
+          />
+          {/* الطلبات المعلّقة بانتظار اللوجستكس */}
+          <Route
+            path="pending"
+            element={<PendingOrders pharmacyId="pharma_001" />}
           />
         </Route>
 
