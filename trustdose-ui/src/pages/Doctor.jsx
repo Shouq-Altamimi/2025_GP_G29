@@ -1,3 +1,4 @@
+// src/pages/Doctor.jsx
 "use client";
 
 import React, { useMemo, useState, useEffect, useRef } from "react";
@@ -12,7 +13,7 @@ import { ethers } from "ethers";
 import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "lucide-react";
 import PRESCRIPTION from "../contracts/Prescription.json";
 
-const C = { primary: "#B08CC1", primaryDark: "#9F76B4", ink: "#4A2C59", pale: "#F6F1FA" };
+const C = { primary: "#B08CC1", primaryDark: "#B08CC1", ink: "#4A2C59", pale: "#F6F1FA" };
 const CONTRACT_ADDRESS = "0xf2eBEbCbed6f8195bf294b55f5af095e5139E21E";
 
 const OTHER_MAX = 20; 
@@ -291,7 +292,7 @@ export default function Doctor() {
       const generatedId = await generateSequentialPrescriptionId(); 
       const generatedNum = parseInt(generatedId.slice(1), 10);    
 
-        const payload = {
+      const payload = {
         [F.createdAt]: serverTimestamp(),
         [F.doctorId]: doctorAddress,
         [F.doctorName]: welcome?.name || "",
@@ -316,7 +317,6 @@ export default function Doctor() {
         dispensed: false,
         acceptDelivery: false,   
       };
-
 
       if (selectedMed?.sensitivity) payload[F.sensitivity] = selectedMed.sensitivity;
 
@@ -355,7 +355,7 @@ export default function Doctor() {
   if (!welcome) return null;
 
   return (
-   <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-6 py-6 md:py-8">
+    <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-6 py-6 md:py-8">
       {(welcome.name || welcome.healthFacility || welcome.speciality) && (
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -528,12 +528,11 @@ export default function Doctor() {
                   onBlur={() => setMcTouched(true)}
                 />
                 <div className="mt-1 flex items-center justify-between text-xs">
-                {mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min && (
-                  <span className="text-rose-600">Please enter at least {LIMITS.medicalCondition.min} characters.</span>
-                )}
-                <span className="text-gray-500">{`${medicalCondition.length}/${LIMITS.medicalCondition.max}`}</span>
-              </div>
-
+                  {mcTouched && medicalCondition.trim().length < LIMITS.medicalCondition.min && (
+                    <span className="text-rose-600">Please enter at least {LIMITS.medicalCondition.min} characters.</span>
+                  )}
+                  <span className="text-gray-500">{`${medicalCondition.length}/${LIMITS.medicalCondition.max}`}</span>
+                </div>
               </div>
 
               <div className="mb-4">
@@ -700,6 +699,7 @@ function SelectField({
 }) {
   const [isCustomMode, setIsCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
+  const [touched, setTouched] = useState(false);
 
   useEffect(() => {
     const optionHit = options?.includes?.(value);
@@ -714,6 +714,7 @@ function SelectField({
 
   const selectValue = isCustomMode ? "__OTHER__" : (value || "");
   const missing = required && (isCustomMode ? customText.trim() === "" : selectValue === "");
+  const showError = missing && touched;
 
   return (
     <div>
@@ -724,11 +725,12 @@ function SelectField({
       <div className="relative">
         <select
           className={`w-full pl-4 pr-10 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all appearance-none bg-white ${
-            missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+            showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
           }`}
-          style={{ outlineColor: missing ? "#f87171" : C.primary }}
+          style={{ outlineColor: showError ? "#f87171" : C.primary }}
           value={selectValue}
           onChange={(e) => {
+            setTouched(true);
             const v = e.target.value;
             if (allowOther && v === "__OTHER__") {
               setIsCustomMode(true);
@@ -739,6 +741,7 @@ function SelectField({
               onChange(v);
             }
           }}
+          onBlur={() => setTouched(true)}
         >
           <option value="" disabled hidden>{placeholder}</option>
           {options.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -751,25 +754,25 @@ function SelectField({
         <div className="mt-2">
           <input
             className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
-              missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+              showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
             }`}
-            style={{ outlineColor: missing ? "#f87171" : C.primary }}
+            style={{ outlineColor: showError ? "#f87171" : C.primary }}
             placeholder={`Enter custom ${label.toLowerCase()}`}
             value={customText}
             maxLength={OTHER_MAX}
             onChange={(e) => {
+              setTouched(true);
               const clean = e.target.value.replace(/[^A-Za-z0-9 ]/g, "").slice(0, OTHER_MAX);
               setCustomText(clean);
               onChange(clean); 
             }}
           />
-          {missing && <div className="mt-1 text-xs text-rose-600">This field is required.</div>}
+          {showError && <div className="mt-1 text-xs text-rose-600">This field is required.</div>}
         </div>
       )}
     </div>
   );
 }
-
 
 function DosageSelect({
   value,
@@ -781,6 +784,7 @@ function DosageSelect({
 }) {
   const [isCustomMode, setIsCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
+  const [touched, setTouched] = useState(false);
 
   useEffect(() => {
     const optionHit = options?.includes?.(value);
@@ -795,6 +799,7 @@ function DosageSelect({
 
   const selectValue = isCustomMode ? "__OTHER__" : (value || "");
   const missing = required && (isCustomMode ? customText.trim() === "" : selectValue === "");
+  const showError = missing && touched;
 
   return (
     <div>
@@ -805,11 +810,12 @@ function DosageSelect({
       <div className="relative">
         <select
           className={`w-full pl-4 pr-10 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all appearance-none bg-white ${
-            missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+            showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
           }`}
-          style={{ outlineColor: missing ? "#f87171" : C.primary }}
+          style={{ outlineColor: showError ? "#f87171" : C.primary }}
           value={selectValue}
           onChange={(e) => {
+            setTouched(true);
             const v = e.target.value;
             if (allowOther && v === "__OTHER__") {
               setIsCustomMode(true);
@@ -820,6 +826,7 @@ function DosageSelect({
               onChange(v);
             }
           }}
+          onBlur={() => setTouched(true)}
         >
           <option value="" disabled hidden>{placeholder}</option>
           {options.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -832,31 +839,32 @@ function DosageSelect({
         <div className="mt-2">
           <input
             className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
-              missing ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+              showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
             }`}
-            style={{ outlineColor: missing ? "#f87171" : C.primary }}
+            style={{ outlineColor: showError ? "#f87171" : C.primary }}
             placeholder="Enter custom dosage"
             value={customText}
             maxLength={OTHER_MAX}
             onChange={(e) => {
+              setTouched(true);
               const clean = e.target.value.replace(/[^A-Za-z0-9 ]/g, "").slice(0, OTHER_MAX);
               setCustomText(clean);
               onChange(clean); 
             }}
           />
-          {missing && <div className="mt-1 text-xs text-rose-600">Please enter dosage.</div>}
+          {showError && <div className="mt-1 text-xs text-rose-600">Please enter dosage.</div>}
         </div>
       )}
     </div>
   );
 }
 
-
 function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine name" }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState(value || "");
   const [cursor, setCursor] = useState(-1);
   const [invalid, setInvalid] = useState(false);
+  const [touched, setTouched] = useState(false);
 
   useEffect(() => setQ(value || ""), [value]);
 
@@ -888,9 +896,11 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
     setOpen(false);
     setCursor(-1);
     setInvalid(false);
+    setTouched(true);
   }
 
   function handleBlur() {
+    setTouched(true);
     const match = base.find((m) => m.label === q);
     if (!match) {
       setQ(value || "");
@@ -904,16 +914,25 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
     if (!open) return;
     if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.min(c + 1, suggestions.length - 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => Math.max(c - 1, 0)); }
-    else if (e.key === "Enter") { e.preventDefault(); if (cursor >= 0 && suggestions[cursor]) choose(suggestions[cursor]); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      if (cursor >= 0 && suggestions[cursor]) choose(suggestions[cursor]);
+    }
     else if (e.key === "Escape") { setOpen(false); }
   }
 
+  const showError = invalid || (touched && !value);
+
   return (
     <div className="relative">
-      <label className="block text-sm font-medium text-gray-700 mb-1">Search Medicine</label>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        Search Medicine <span className="text-rose-500">*</span>
+      </label>
       <input
-        className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${invalid ? "border-rose-400 focus:ring-rose-200" : "border-gray-300 focus:border-transparent"}`}
-        style={{ outlineColor: invalid ? "#f87171" : C.primary }}
+        className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
+          showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300 focus:border-transparent"
+        }`}
+        style={{ outlineColor: showError ? "#f87171" : C.primary }}
         placeholder={placeholder}
         value={q}
         onChange={(e) => { setQ(e.target.value); setOpen(true); setInvalid(false); }}
@@ -923,7 +942,11 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
         aria-autocomplete="list"
         role="combobox"
       />
-      {invalid && <div className="mt-1 text-xs text-rose-600">Please choose a medicine from the list.</div>}
+      {showError && (
+        <div className="mt-1 text-xs text-rose-600">
+          Please choose a medicine from the list.
+        </div>
+      )}
 
       {open && (
         <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-80 overflow-y-auto" role="listbox">
