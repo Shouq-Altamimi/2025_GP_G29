@@ -1,5 +1,5 @@
 {
-  "contractName": "IPrescription",
+  "contractName": "IDeliveryAccept",
   "abi": [
     {
       "inputs": [
@@ -9,7 +9,7 @@
           "type": "uint256"
         }
       ],
-      "name": "isValid",
+      "name": "isAccepted",
       "outputs": [
         {
           "internalType": "bool",
@@ -21,7 +21,7 @@
       "type": "function"
     }
   ],
-  "metadata": "{\"compiler\":{\"version\":\"0.8.19+commit.7dd6d404\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"id\",\"type\":\"uint256\"}],\"name\":\"isValid\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"project:/contracts/contracts/LogisticsReceive.sol\":\"IPrescription\"},\"evmVersion\":\"paris\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[]},\"sources\":{\"project:/contracts/contracts/LogisticsReceive.sol\":{\"keccak256\":\"0xbdde16f8c65b43a9f1a85a1463001d003f8154ac78e4d1ed1afc0b9a36e5c724\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://61570bff48fff44fa632fe2ec01faf60da0eb888aae3de43fb7f0123b02a99f4\",\"dweb:/ipfs/QmP5QvP5spcRwwR9gHM81KZSENAX5eKokJoaoT1jGNhCrG\"]}},\"version\":1}",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.19+commit.7dd6d404\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"id\",\"type\":\"uint256\"}],\"name\":\"isAccepted\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"project:/contracts/contracts/LogisticsReceive.sol\":\"IDeliveryAccept\"},\"evmVersion\":\"paris\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[]},\"sources\":{\"project:/contracts/contracts/LogisticsReceive.sol\":{\"keccak256\":\"0xbdde16f8c65b43a9f1a85a1463001d003f8154ac78e4d1ed1afc0b9a36e5c724\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://61570bff48fff44fa632fe2ec01faf60da0eb888aae3de43fb7f0123b02a99f4\",\"dweb:/ipfs/QmP5QvP5spcRwwR9gHM81KZSENAX5eKokJoaoT1jGNhCrG\"]}},\"version\":1}",
   "bytecode": "0x",
   "deployedBytecode": "0x",
   "immutableReferences": {},
@@ -3787,7 +3787,7 @@
   },
   "networks": {},
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-11-17T16:54:10.636Z",
+  "updatedAt": "2025-11-17T16:54:10.653Z",
   "devdoc": {
     "kind": "dev",
     "methods": {},

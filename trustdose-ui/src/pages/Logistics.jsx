@@ -15,6 +15,7 @@ import {
   updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
+
 import { Loader2, Check } from "lucide-react";
 import { ethers } from "ethers";
 import DELIVERY_ACCEPT from "../contracts/DeliveryAccept.json";
@@ -25,12 +26,14 @@ const C = {
   teal: "#52B9C4",
   ink: "#4A2C59",
 };
+
 const PAGE_SIZE = 6;
 
 const DELIVERY_ACCEPT_ADDRESS =
   "0x2f022100DEdAb2C142E6f2b52d56CBD1609CcC59";
 const DELIVERY_ACCEPT_ABI = DELIVERY_ACCEPT?.abi ?? [];
 
+/* Format Timestamps */
 function formatFsTimestamp(v) {
   if (!v) return "-";
   try {
@@ -61,6 +64,7 @@ export default function Logistics() {
     vehicleId: "",
   });
 
+  /* Load header info */
   React.useEffect(() => {
     async function loadHeader() {
       try {
@@ -72,18 +76,29 @@ export default function Logistics() {
 
         if (!lgId) return;
 
-        const col = collection(db, "logistics");
-        const snap = await getDocs(
-          query(col, where("LogisticsID", "==", String(lgId)))
-        );
+        let data = null;
 
-        if (!snap.empty) {
-          const data = snap.docs[0].data() || {};
-          setHeader({
-            companyName: data.companyName || data.name || "",
-            vehicleId: data.vehicleId || data.VehicleID || "",
-          });
+        // 1) جرّب نجيب الدوكيومنت بالـ docId نفسه
+        const byIdSnap = await getDoc(doc(db, "logistics", String(lgId)));
+        if (byIdSnap.exists()) {
+          data = byIdSnap.data() || {};
+        } else {
+          // 2) لو ما لقيناه، نبحث بالـ field LogisticsID (زي LG-001 اللي عندك)
+          const col = collection(db, "logistics");
+          const qs = await getDocs(
+            query(col, where("LogisticsID", "==", String(lgId)))
+          );
+          if (!qs.empty) {
+            data = qs.docs[0].data() || {};
+          }
         }
+
+        if (!data) return;
+
+        setHeader({
+          companyName: data.companyName || data.name || "",
+          vehicleId: data.vehicleId || data.vehicleID || "",
+        });
       } catch (e) {
         console.error("Failed to load logistics header", e);
       }
@@ -92,6 +107,7 @@ export default function Logistics() {
     loadHeader();
   }, []);
 
+  /* Load prescriptions */
   React.useEffect(() => {
     let mounted = true;
 
@@ -109,8 +125,7 @@ export default function Logistics() {
             : query(col, ...wheres);
           return await getDocs(q1);
         } catch {
-          const q2 = query(col, ...wheres);
-          return await getDocs(q2);
+          return await getDocs(query(col, ...wheres));
         }
       }
 
@@ -136,7 +151,6 @@ export default function Logistics() {
       if (!snap || snap.empty) {
         if (mounted) {
           setMsg("No delivery orders found.");
-          setRows([]);
           setLoading(false);
         }
         return;
@@ -145,22 +159,20 @@ export default function Logistics() {
       const data = snap.docs
         .map((d) => {
           const x = d.data() || {};
-          const displayId = x.prescriptionID || d.id;
-
           let onchainId = null;
-          const raw = x.onchainId;
-          if (raw !== undefined && raw !== null && String(raw).trim() !== "") {
+
+          if (x.onchainId) {
             try {
-              onchainId = ethers.toBigInt(String(raw));
+              onchainId = ethers.toBigInt(String(x.onchainId));
             } catch {}
           }
 
           return {
             _docId: d.id,
-            prescriptionId: displayId,
+            prescriptionId: x.prescriptionID || d.id,
             onchainId,
             patientName: x.patientName || "-",
-            patientId: String(x.nationalID ?? x.patientDisplayId ?? "-"),
+            patientId: String(x.nationalID ?? "-"),
             medicineLabel: x.medicineLabel || x.medicineName || "-",
             createdAtTS: x?.createdAt?.toDate?.()
               ? x.createdAt.toDate()
@@ -173,11 +185,9 @@ export default function Logistics() {
           };
         })
         .sort((a, b) => {
-          const aTime =
-            a.createdAtTS instanceof Date ? a.createdAtTS.getTime() : 0;
-          const bTime =
-            b.createdAtTS instanceof Date ? b.createdAtTS.getTime() : 0;
-          return bTime - aTime;
+          const aT = a.createdAtTS?.getTime?.() || 0;
+          const bT = b.createdAtTS?.getTime?.() || 0;
+          return bT - aT;
         });
 
       if (mounted) {
@@ -203,11 +213,13 @@ export default function Logistics() {
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = visible.slice(start, end);
 
+  /* Ethers provider */
   function getDeliveryAcceptProvider() {
     if (!window.ethereum) throw new Error("MetaMask is not available");
     return new ethers.BrowserProvider(window.ethereum);
   }
 
+  /* Handle accept */
   async function handleAccept(r) {
     const key = String(r.prescriptionId);
     if (pending[key]) return;
@@ -217,25 +229,27 @@ export default function Logistics() {
     try {
       const ref = doc(db, "prescriptions", r._docId);
       const fresh = await getDoc(ref);
-      if (!fresh.exists()) throw new Error("Prescription doc not found");
+
+      if (!fresh.exists()) throw new Error("Prescription not found");
 
       const freshData = fresh.data();
-      if (freshData.dispensed === true) {
-        alert("Already dispensed.");
+
+      if (freshData.dispensed) {
+        alert("Already dispensed");
         return;
       }
 
-      if (freshData.logisticsAccepted === true) {
-        alert("Already accepted by logistics.");
+      if (freshData.logisticsAccepted) {
+        alert("Already accepted by logistics");
         return;
       }
 
-      if (freshData.acceptDelivery !== true) {
-        alert("Pharmacy has not requested delivery.");
+      if (!freshData.acceptDelivery) {
+        alert("Pharmacy has not requested delivery");
         return;
       }
 
-      if (r.onchainId == null) {
+      if (!r.onchainId) {
         alert("Missing on-chain ID.");
         return;
       }
@@ -243,6 +257,7 @@ export default function Logistics() {
       const provider = getDeliveryAcceptProvider();
       await provider.send("eth_requestAccounts", []);
       const signer = await provider.getSigner();
+
       const contract = new ethers.Contract(
         DELIVERY_ACCEPT_ADDRESS,
         DELIVERY_ACCEPT_ABI,
@@ -252,14 +267,11 @@ export default function Logistics() {
       const tx = await contract.accept(r.onchainId);
       await tx.wait();
 
-      const courierWallet = await signer.getAddress();
-      const courierId = localStorage.getItem("userId") || null;
-
       await updateDoc(ref, {
         logisticsAccepted: true,
         logisticsAcceptedAt: serverTimestamp(),
-        courierWallet,
-        courierId,
+        courierWallet: await signer.getAddress(),
+        courierId: localStorage.getItem("userId") || null,
       });
 
       setRows((arr) =>
@@ -294,38 +306,39 @@ export default function Logistics() {
   return (
     <div className="p-6">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
-        {/* الهيدر بعد حذف النصوص */}
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img
-              src="/Images/TrustDose-pill.png"
-              alt="TrustDose Capsule"
-              style={{ width: 64, height: "auto" }}
-            />
-            <div>
-              <div
-                className="font-extrabold text-2xl"
-                style={{ color: "#334155" }}
+
+        {/* HEADER */}
+        <div className="mb-6 flex items-center gap-3">
+          <img
+            src="/Images/TrustDose-pill.png"
+            alt="TrustDose Capsule"
+            style={{ width: 64, height: "auto" }}
+          />
+
+          <div>
+            <h1
+              className="font-extrabold text-[22px]"
+              style={{ color: "#334155" }}
+            >
+              {header.companyName
+                ? `Welcome, ${header.companyName}`
+                : "Welcome, Logistics Partner"}
+            </h1>
+
+            {/* Subtitle */}
+            <div className="mt-3 pt-3 border-t border-gray-200">
+              <p
+                className="text-[15px] font-medium"
+                style={{ color: "#64748b" }}
               >
-                {header.companyName
-                  ? `Welcome, ${header.companyName}`
-                  : "Welcome, Logistics partner"}
-              </div>
+                Delivery Requests Awaiting Your Acceptance
+              </p>
             </div>
           </div>
-
-          {header.vehicleId && (
-            <div className="text-xs md:text-sm text-slate-600 text-right">
-              Vehicle ID:{" "}
-              <span className="font-semibold">{header.vehicleId}</span>
-            </div>
-          )}
         </div>
 
-        {msg && <p className="text-gray-600">{msg}</p>}
-
         {pageItems.length > 0 && (
-          <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             {pageItems.map((r) => {
               const dateTime = r.createdAtTS
                 ? r.createdAtTS.toLocaleString("en-GB", {
@@ -335,81 +348,68 @@ export default function Logistics() {
                     hour: "2-digit",
                     minute: "2-digit",
                   })
-                : r.createdAt || "-";
+                : r.createdAt;
 
-              const isPending = !!pending[String(r.prescriptionId)];
+              const isPending = !!pending[r.prescriptionId];
               const disabled = isPending || !r.onchainId;
 
               return (
-                <div
-                  key={r._docId}
-                  className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between"
-                >
-                  <div>
-                    {/* اسم الدواء */}
-                    <div className="text-lg font-bold text-slate-800">
-                      {r.medicineLabel}
-                    </div>
+                <div key={r._docId}
+            className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between"
+          >
+            <div>
+              <div className="text-lg font-bold text-slate-800">
+                {r.medicineLabel}
+              </div>
 
-                    {/* Prescription ID */}
-                    <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Prescription ID:{" "}
-                      <span className="font-normal">{r.prescriptionId}</span>
-                    </div>
+              <div className="text-sm text-slate-700 mt-1 font-semibold">
+                Prescription ID:{" "}
+                <span className="font-normal">{r.prescriptionId}</span>
+              </div>
 
-                    {/* Patient */}
-                    <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Patient:{" "}
-                      <span className="font-normal">
-                        {r.patientName || "—"}
-                        {r.patientId ? ` — ${String(r.patientId)}` : ""}
-                      </span>
-                    </div>
+              <div className="text-sm text-slate-700 mt-1 font-semibold">
+                Patient:{" "}
+                <span className="font-normal">
+                  {r.patientName || "—"}
+                  {r.patientId ? ` — ${r.patientId}` : ""}
+                </span>
+              </div>
 
-                    {/* زر Accept */}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        className="w-max px-4 py-2 text-sm rounded-lg transition-colors
-                                flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
-                        style={{ backgroundColor: C.primary }}
-                        onMouseEnter={(e) =>
-                          (e.currentTarget.style.backgroundColor =
-                            C.primaryDark)
-                        }
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.backgroundColor = C.primary)
-                        }
-                        title={
-                          r.onchainId
-                            ? "Accept this delivery"
-                            : "Missing on-chain ID"
-                        }
-                        onClick={() => handleAccept(r)}
-                        disabled={disabled}
-                      >
-                        {isPending ? (
-                          <Loader2
-                            size={16}
-                            className="animate-spin text-white"
-                          />
-                        ) : (
-                          <Check size={16} className="text-white" />
-                        )}
-                        <span className="text-white">
-                          {isPending
-                            ? "Processing…"
-                            : r.onchainId
-                            ? "Accept Delivery"
-                            : "No on-chain ID"}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <button
+            className="w-max px-4 py-2 text-sm rounded-lg transition-colors
+              flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
+            style={{ backgroundColor: C.primary }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.backgroundColor = C.primaryDark)
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.backgroundColor = C.primary)
+            }
+            onClick={() => handleAccept(r)}
+            disabled={disabled}
+          >
+            {isPending ? (
+              <Loader2 size={16} className="animate-spin text-white" />
+            ) : (
+              <Check size={16} className="text-white" />
+            )}
+            <span className="text-white">
+              {isPending
+                ? "Processing…"
+                : r.onchainId
+                ? "Accept Delivery"
+                : "No on-chain ID"}
+            </span>
+          </button>
+        </div>
+      </div>
 
-                  <div className="text-right text-xs text-gray-500 mt-3">
-                    Prescription issued on {dateTime}
-                  </div>
-                </div>
+      <div className="text-right text-xs text-gray-500 mt-4">
+        Prescription issued on {dateTime}
+      </div>
+    </div>
+
               );
             })}
           </section>
@@ -425,6 +425,7 @@ export default function Logistics() {
               <span className="text-xs text-gray-500">
                 Page {page + 1} of {pageCount}
               </span>
+
               <div className="flex gap-2">
                 <button
                   className="px-4 py-2 rounded-lg border text-sm disabled:opacity-50"
@@ -433,6 +434,7 @@ export default function Logistics() {
                 >
                   ← Prev
                 </button>
+
                 <button
                   className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
                   style={{ background: C.primary }}
@@ -449,8 +451,10 @@ export default function Logistics() {
         )}
 
         {total === 0 && !msg && (
-          <p className="text-gray-600">No active delivery orders.</p>
+          <p className="text-gray-600 mt-4">No active delivery orders.</p>
         )}
+
+        {msg && <p className="text-gray-600">{msg}</p>}
       </div>
     </div>
   );
