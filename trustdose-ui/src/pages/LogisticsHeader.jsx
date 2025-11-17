@@ -282,44 +282,34 @@ export default function LogisticsHeader() {
               </button>
             </div>
 
-            <nav className="px-3">
-              <DrawerItem
-                active={location.pathname === "/logistics"}
-                onClick={() => {
-                  navigate("/logistics");
-                  setOpen(false);
-                }}
-              >
-                <Package size={18} />
-                <span>Delivery Orders</span>
-              </DrawerItem>
+           <nav className="px-3">
+            <DrawerItem
+              active={location.pathname === "/logistics"}
+              onClick={() => {
+                navigate("/logistics");
+                setOpen(false);
+              }}
+            >
+              <Package size={18} />
+              <span>Delivery Orders</span>
+            </DrawerItem>
 
-              <DrawerItem
-                active={location.pathname.startsWith("/logistics/pending")}
-                onClick={() => {
-                  navigate("/logistics/pending");
-                  setOpen(false);
-                }}
-              >
-                <Clock size={18} />
-                <span>Pending Orders</span>
-              </DrawerItem>
+            <DrawerItem
+              onClick={() => {
+                setShowAccount(true);
+                setOpen(false);
+              }}
+            >
+              <User size={18} />
+              <span>My Profile</span>
+            </DrawerItem>
 
-              <DrawerItem
-                onClick={() => {
-                  setShowAccount(true);
-                  setOpen(false);
-                }}
-              >
-                <User size={18} />
-                <span>My Profile</span>
-              </DrawerItem>
+            <DrawerItem onClick={signOut} variant="ghost">
+              <LogOut size={18} />
+              <span>Sign out</span>
+            </DrawerItem>
+          </nav>
 
-              <DrawerItem onClick={signOut} variant="ghost">
-                <LogOut size={18} />
-                <span>Sign out</span>
-              </DrawerItem>
-            </nav>
           </aside>
         </>
       )}
