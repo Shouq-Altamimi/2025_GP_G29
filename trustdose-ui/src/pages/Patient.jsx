@@ -322,9 +322,9 @@ function Row({ label, value }) {
 function WelcomeHeader({ name }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-      <img src="/Images/TrustDose-pill.png" alt="TrustDose pill" style={{ width: 60, height: 60, objectFit: "contain" }} />
+      <img src="/Images/TrustDose-pill.png" alt="TrustDose pill" style={{ width: 64, height: "auto", objectFit: "contain" }} />
       <div>
-        <div style={{ fontSize: 22, fontWeight: 800, color: TD.brand.ink }}>Welcome, {name || "there"}</div>
+        <div style={{ fontSize: 24, fontWeight: 800, color: TD.brand.ink }}>Welcome, {name || "there"}</div>
         <div style={{ color: TD.brand.sub, marginTop: 2 }}>Wishing you good health.</div>
       </div>
     </div>

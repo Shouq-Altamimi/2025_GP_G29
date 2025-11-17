@@ -234,7 +234,7 @@ export default function LogisticsHeader() {
       {/* Alert: verify email only */}
       {showEmailAlert && (
         <AlertBanner>
-          ⚠️ Please verify your email so you can manage your password later.{" "}
+          ⚠️ Please verify your email so you can change your password later.{" "}
           <button
             onClick={() => setShowAccount(true)}
             style={{ fontWeight: 700, color: C.primary }}

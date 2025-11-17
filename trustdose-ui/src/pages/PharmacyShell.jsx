@@ -227,9 +227,9 @@ export default function PharmacyShell() {
       {isPharmacyPage && (
         <div className="mx-auto w-full max-w-6xl px-4 md:px-6 mt-4">
           <div className="mb-4 flex items-center gap-3">
-            <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 48, height: "auto" }} />
+            <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 64, height: "auto" }} />
             <div>
-              <div className="font-extrabold text-[22px]" style={{ color: "#334155" }}>
+              <div className="font-extrabold text-[24px]" style={{ color: "#334155" }}>
                 {pharmacy?.pharmacyName || pharmacy?.name
                   ? `Welcome, ${pharmacy.pharmacyName || pharmacy.name} `
                   : "Welcome, Pharmacy"}

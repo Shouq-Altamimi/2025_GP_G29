@@ -78,12 +78,10 @@ export default function Logistics() {
 
         let data = null;
 
-        // 1) جرّب نجيب الدوكيومنت بالـ docId نفسه
         const byIdSnap = await getDoc(doc(db, "logistics", String(lgId)));
         if (byIdSnap.exists()) {
           data = byIdSnap.data() || {};
         } else {
-          // 2) لو ما لقيناه، نبحث بالـ field LogisticsID (زي LG-001 اللي عندك)
           const col = collection(db, "logistics");
           const qs = await getDocs(
             query(col, where("LogisticsID", "==", String(lgId)))
@@ -317,7 +315,7 @@ export default function Logistics() {
 
           <div>
             <h1
-              className="font-extrabold text-[22px]"
+              className="font-extrabold text-[24px]"
               style={{ color: "#334155" }}
             >
               {header.companyName
