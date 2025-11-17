@@ -387,20 +387,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
         return;
       }
 
-      // تأكد الإيميل غير مستخدم من لوجستيك ثاني
-      const q1 = query(
-        collection(db, "logistics"),
-        where("email", "==", raw),
-        fsLimit(1)
-      );
-      const snap = await getDocs(q1);
-      if (!snap.empty && snap.docs[0]?.id !== docId) {
-        setEmailMsg(
-          "This email is already used by another logistics user. Please use a different email."
-        );
-        return;
-      }
-
       const BASE = window.location.origin;
       const params = new URLSearchParams({
         col: "logistics",
@@ -496,8 +482,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
               ) : (
                 <>
                   <p className="text-gray-600 mb-2">
-                    Add and verify your email so you can manage your password
-                    later.
                   </p>
                   <div className="flex gap-2">
                     <input
@@ -671,7 +655,6 @@ function PasswordResetSection({ user, docId, onSaved }) {
         return;
       }
 
-      // نخزنها بنفس شكل الدكتور (sha256 جديدة + اغلاق التمب باسورد)
       await updateDoc(docRef, {
         password: await sha256Hex(newPass),
         passwordUpdatedAt: serverTimestamp(),
