@@ -17,8 +17,6 @@ import {
 } from "firebase/firestore";
 
 import { Loader2, Check } from "lucide-react";
-import { ethers } from "ethers";
-import DELIVERY_ACCEPT from "../contracts/DeliveryAccept.json";
 
 const C = {
   primary: "#B08CC1",
@@ -28,10 +26,6 @@ const C = {
 };
 
 const PAGE_SIZE = 6;
-
-const DELIVERY_ACCEPT_ADDRESS =
-  "0x2f022100DEdAb2C142E6f2b52d56CBD1609CcC59";
-const DELIVERY_ACCEPT_ABI = DELIVERY_ACCEPT?.abi ?? [];
 
 /* Format Timestamps */
 function formatFsTimestamp(v) {
@@ -161,7 +155,7 @@ export default function Logistics() {
 
           if (x.onchainId) {
             try {
-              onchainId = ethers.toBigInt(String(x.onchainId));
+              onchainId = BigInt(String(x.onchainId));
             } catch {}
           }
 
@@ -211,82 +205,10 @@ export default function Logistics() {
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = visible.slice(start, end);
 
-  /* Ethers provider */
-  function getDeliveryAcceptProvider() {
-    if (!window.ethereum) throw new Error("MetaMask is not available");
-    return new ethers.BrowserProvider(window.ethereum);
-  }
-
-  /* Handle accept */
+  /* Handle accept (UI only for now – contract not implemented) */
   async function handleAccept(r) {
-    const key = String(r.prescriptionId);
-    if (pending[key]) return;
-
-    setPending((s) => ({ ...s, [key]: true }));
-
-    try {
-      const ref = doc(db, "prescriptions", r._docId);
-      const fresh = await getDoc(ref);
-
-      if (!fresh.exists()) throw new Error("Prescription not found");
-
-      const freshData = fresh.data();
-
-      if (freshData.dispensed) {
-        alert("Already dispensed");
-        return;
-      }
-
-      if (freshData.logisticsAccepted) {
-        alert("Already accepted by logistics");
-        return;
-      }
-
-      if (!freshData.acceptDelivery) {
-        alert("Pharmacy has not requested delivery");
-        return;
-      }
-
-      if (!r.onchainId) {
-        alert("Missing on-chain ID.");
-        return;
-      }
-
-      const provider = getDeliveryAcceptProvider();
-      await provider.send("eth_requestAccounts", []);
-      const signer = await provider.getSigner();
-
-      const contract = new ethers.Contract(
-        DELIVERY_ACCEPT_ADDRESS,
-        DELIVERY_ACCEPT_ABI,
-        signer
-      );
-
-      const tx = await contract.accept(r.onchainId);
-      await tx.wait();
-
-      await updateDoc(ref, {
-        logisticsAccepted: true,
-        logisticsAcceptedAt: serverTimestamp(),
-        courierWallet: await signer.getAddress(),
-        courierId: localStorage.getItem("userId") || null,
-      });
-
-      setRows((arr) =>
-        arr.map((x) =>
-          x._docId === r._docId ? { ...x, logisticsAccepted: true } : x
-        )
-      );
-    } catch (err) {
-      console.error(err);
-      alert(err?.message || "Accept failed");
-    } finally {
-      setPending((s) => {
-        const t = { ...s };
-        delete t[key];
-        return t;
-      });
-    }
+    // لاحقًا لما تسوين عقد البلوك تشين ترجعي تكمّلين المنطق هنا
+    alert("Accept Delivery is not available yet (smart contract not implemented).");
   }
 
   if (loading) {
@@ -304,7 +226,6 @@ export default function Logistics() {
   return (
     <div className="p-6">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
-
         {/* HEADER */}
         <div className="mb-6 flex items-center gap-3">
           <img
@@ -349,65 +270,60 @@ export default function Logistics() {
                 : r.createdAt;
 
               const isPending = !!pending[r.prescriptionId];
-              const disabled = isPending || !r.onchainId;
+              const disabled = false;
 
               return (
-                <div key={r._docId}
-            className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between"
-          >
-            <div>
-              <div className="text-lg font-bold text-slate-800">
-                {r.medicineLabel}
-              </div>
+                <div
+                  key={r._docId}
+                  className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="text-lg font-bold text-slate-800">
+                      {r.medicineLabel}
+                    </div>
 
-              <div className="text-sm text-slate-700 mt-1 font-semibold">
-                Prescription ID:{" "}
-                <span className="font-normal">{r.prescriptionId}</span>
-              </div>
+                    <div className="text-sm text-slate-700 mt-1 font-semibold">
+                      Prescription ID:{" "}
+                      <span className="font-normal">{r.prescriptionId}</span>
+                    </div>
 
-              <div className="text-sm text-slate-700 mt-1 font-semibold">
-                Patient:{" "}
-                <span className="font-normal">
-                  {r.patientName || "—"}
-                  {r.patientId ? ` — ${r.patientId}` : ""}
-                </span>
-              </div>
+                    <div className="text-sm text-slate-700 mt-1 font-semibold">
+                      Patient:{" "}
+                      <span className="font-normal">
+                        {r.patientName || "—"}
+                        {r.patientId ? ` — ${r.patientId}` : ""}
+                      </span>
+                    </div>
 
-        <div className="mt-6 flex flex-wrap gap-2">
-          <button
-            className="w-max px-4 py-2 text-sm rounded-lg transition-colors
-              flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
-            style={{ backgroundColor: C.primary }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.backgroundColor = C.primaryDark)
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.backgroundColor = C.primary)
-            }
-            onClick={() => handleAccept(r)}
-            disabled={disabled}
-          >
-            {isPending ? (
-              <Loader2 size={16} className="animate-spin text-white" />
-            ) : (
-              <Check size={16} className="text-white" />
-            )}
-            <span className="text-white">
-              {isPending
-                ? "Processing…"
-                : r.onchainId
-                ? "Accept Delivery"
-                : "No on-chain ID"}
-            </span>
-          </button>
-        </div>
-      </div>
+                    <div className="mt-6 flex flex-wrap gap-2">
+                      <button
+                        className="w-max px-4 py-2 text-sm rounded-lg transition-colors
+                          flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60 cursor-not-allowed"
+                        style={{ backgroundColor: C.primary }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.backgroundColor =
+                            C.primaryDark)
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.backgroundColor = C.primary)
+                        }
+                        onClick={() => handleAccept(r)}
+                        disabled={disabled}
+                      >
+                        {isPending ? (
+                          <Loader2 size={16} className="animate-spin text-white" />
+                        ) : (
+                          <Check size={16} className="text-white" />
+                        )}
+                        <span className="text-white">Accept Delivery</span>
+                      </button>
+                    </div>
+                  </div>
 
-      <div className="text-right text-xs text-gray-500 mt-4">
-        Prescription issued on {dateTime}
-      </div>
-    </div>
-
+                  <div className="text-right text-xs text-gray-500 mt-4">
+                    Prescription issued on {dateTime}
+                  </div>
+                </div>
               );
             })}
           </section>

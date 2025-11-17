@@ -129,13 +129,13 @@ export default function Doctor() {
     })();
   }, [location.search]);
 
-    const [welcome] = useState(() => readWelcomeSync());
+  const [welcome] = useState(() => readWelcomeSync());
   const [doctorProfile, setDoctorProfile] = useState(null);
 
   useEffect(() => {
     (async () => {
       const role = localStorage.getItem("userRole");
-      const userDoctorID = localStorage.getItem("userId"); 
+      const userDoctorID = localStorage.getItem("userId");
 
       if (role !== "doctor" || !userDoctorID) {
         setDoctorProfile(welcome);
@@ -175,7 +175,6 @@ export default function Doctor() {
       }
     })();
   }, [welcome]);
-
 
   const profile = doctorProfile || welcome || {};
 
@@ -357,7 +356,7 @@ export default function Doctor() {
         [F.doctorId]: doctorAddress,
         [F.doctorName]: profile.name || "",
         [F.doctorPhone]: profile.phone || "",
-        [F.doctorFacility]: profile.facility   || "",
+        [F.doctorFacility]: profile.facility || "",
         [F.medicineLabel]: selectedMed.label,
         [F.medicineName]: selectedMed.name,
         [F.dosageForm]: selectedMed.dosageForm || "",
@@ -393,10 +392,13 @@ export default function Doctor() {
 
       (async () => {
         const pidHash = "0x" + (await sha256Hex(natId));
-        sessionStorage.setItem("td_patient", JSON.stringify({
-          id: selectedPatient.id,
-          name: selectedPatient.name,
-        }));
+        sessionStorage.setItem(
+          "td_patient",
+          JSON.stringify({
+            id: selectedPatient.id,
+            name: selectedPatient.name,
+          })
+        );
         navigate(`/prescriptions?pid=${pidHash}`, {
           replace: true,
           state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
@@ -523,7 +525,10 @@ export default function Doctor() {
           <>
             {/* Patient info */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 relative">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
+              <h2
+                className="text-xl font-semibold mb-4 flex items-center gap-2"
+                style={{ color: C.ink }}
+              >
                 <ClipboardList size={20} style={{ color: C.primary }} />
                 Patient Information
               </h2>
@@ -561,7 +566,10 @@ export default function Doctor() {
 
             {/* Create prescription */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
+              <h2
+                className="text-xl font-semibold mb-4 flex items-center gap-2"
+                style={{ color: C.ink }}
+              >
                 <FileText size={20} style={{ color: C.primary }} />
                 Create New Prescription
               </h2>
@@ -885,6 +893,9 @@ function SelectField({
               onChange(clean);
             }}
           />
+          <div className="text-xs text-gray-500 mt-1">
+            {customText.length}/{OTHER_MAX}
+          </div>
           {showError && <div className="mt-1 text-xs text-rose-600">This field is required.</div>}
         </div>
       )}
@@ -978,6 +989,9 @@ function DosageSelect({
               onChange(clean);
             }}
           />
+          <div className="text-xs text-gray-500 mt-1">
+            {customText.length}/{OTHER_MAX}
+          </div>
           {showError && (
             <div className="mt-1 text-xs text-rose-600">Please enter dosage.</div>
           )}
@@ -1013,9 +1027,7 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
     return base
       .map((m) => ({ m, s: score(m) }))
       .filter((x) => x.s > 0)
-      .sort(
-        (a, b) => b.s - a.s || String(a.m.label).localeCompare(String(b.m.label))
-      )
+      .sort((a, b) => b.s - a.s || String(a.m.label).localeCompare(String(b.m.label)))
       .map((x) => x.m)
       .slice(0, 15);
   }, [q, data]);
