@@ -23,7 +23,7 @@ export default function AuthEmailHandler() {
 
         // ===== Params (with doctors, pharmacies, patients support) =====
         const colParam = (searchParams.get("col") || "doctors").trim().toLowerCase();
-        const safeCol = ["doctors", "pharmacies", "patients"].includes(colParam)
+        const safeCol = ["doctors", "pharmacies", "patients" ,  "logistics"].includes(colParam)
           ? colParam
           : "doctors";
 

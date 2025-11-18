@@ -391,6 +391,7 @@ function AccountModal({ user, docId, onClose, onSaved }) {
       };
       setEmailLoading(true);
       await sendSignInLinkToEmail(getAuth(), raw, settings);
+      await updateDoc(doc(db, "logistics", docId), { email: raw });
 
       localStorage.setItem(
         "td_email_pending",

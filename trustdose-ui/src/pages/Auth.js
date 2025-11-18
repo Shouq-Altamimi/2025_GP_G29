@@ -486,6 +486,7 @@ if (!user && /^LG-\d{3}$/i.test(id)) {
     if (!snap.empty) {
       user = snap.docs[0].data();
       userDocId = snap.docs[0].id;
+       coll = "logistics";
     }
   } catch {}
 }
@@ -1913,7 +1914,7 @@ else if (!verified) {
                       return;
                     }
                   }}
-                  placeholder="DoctorID / PharmacyID / NationalID"
+                  placeholder="DoctorID / PharmacyID / NationalID / LogisticID"
                   style={inputBase}
                   onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
                   onBlur={(e) =>
