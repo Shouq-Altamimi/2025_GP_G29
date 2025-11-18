@@ -15,11 +15,28 @@ import {
 } from "lucide-react";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useNavigate, useLocation } from "react-router-dom";
 
 const C = { primary: "#B08CC1", teal: "#52B9C4", ink: "#4A2C59" };
+
+/* ======== helpers for temp password reset (لا تلمسين الباقي) ======== */
+async function hashPasswordSHA256(password) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function generateTempPassword() {
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const a = letters[Math.floor(Math.random() * letters.length)];
+  const b = letters[Math.floor(Math.random() * letters.length)];
+  const num = Math.floor(1000 + Math.random() * 9000);
+  return `${a}${b}-${num}`;
+}
 
 /* ================= Sidebar ================ */
 function Sidebar({ open, setOpen, onNav, onLogout }) {
@@ -245,23 +262,52 @@ const normalize = {
     };
   },
 
-  doctor: (id, d) => ({
-    id,
-    accessId: d.accessId || d.doctorId || d.DoctorID || "—",
-    name: d.name || d.fullName || "—",
-    specialty: d.specialty || d.speciality || "",
-    license: d.licenseNumber || d.license || "",
-    facility: d.facility || d.hospital || "",
-    wallet: d.walletAddress || d.address || "",
-    status:
+  doctor: (id, d) => {
+    const temp = d.tempPassword || {};
+    let tempExpired = false;
+
+    try {
+      let expMs = null;
+      if (typeof temp.expiresAtMs === "number") {
+        expMs = temp.expiresAtMs;
+      } else if (temp.expiresAtMs?.toMillis) {
+        expMs = temp.expiresAtMs.toMillis();
+      } else if (temp.expiresAtMs?.seconds) {
+        expMs = temp.expiresAtMs.seconds * 1000;
+      }
+      if (expMs && Date.now() > expMs) {
+        tempExpired = true;
+      }
+    } catch {
+      tempExpired = false;
+    }
+
+    let status =
       d.status ??
       (d.isActive === true
         ? "Active"
         : d.isActive === false
         ? "Inactive"
-        : ""),
-    createdAt: d.createdAt || d.created_at || d.created || null,
-  }),
+        : "");
+
+    // لو التمب باسورد منتهية نخليها Inactive في الواجهة
+    if (tempExpired) {
+      status = "Inactive";
+    }
+
+    return {
+      id,
+      accessId: d.accessId || d.doctorId || d.DoctorID || "—",
+      name: d.name || d.fullName || "—",
+      specialty: d.specialty || d.speciality || "",
+      license: d.licenseNumber || d.license || "",
+      facility: d.facility || d.hospital || "",
+      wallet: d.walletAddress || d.address || "",
+      status,
+      createdAt: d.createdAt || d.created_at || d.created || null,
+      tempExpired,
+    };
+  },
 
   // Pharmacy: Access ID من branchId / BranchID + Address بدال Wallet في الجدول
   pharmacy: (id, d) => ({
@@ -389,8 +435,8 @@ export default function Admin() {
       try {
         const snap = await getDocs(collection(db, "patients"));
         const rows = [];
-        snap.forEach((doc) =>
-          rows.push(normalize.patient(doc.id, doc.data() || {}))
+        snap.forEach((docSnap) =>
+          rows.push(normalize.patient(docSnap.id, docSnap.data() || {}))
         );
         rows.sort(
           (a, b) =>
@@ -405,8 +451,8 @@ export default function Admin() {
       try {
         const snap = await getDocs(collection(db, "doctors"));
         const rows = [];
-        snap.forEach((doc) =>
-          rows.push(normalize.doctor(doc.id, doc.data() || {}))
+        snap.forEach((docSnap) =>
+          rows.push(normalize.doctor(docSnap.id, docSnap.data() || {}))
         );
         rows.sort(
           (a, b) =>
@@ -421,8 +467,8 @@ export default function Admin() {
       try {
         const snap = await getDocs(collection(db, "pharmacies"));
         const rows = [];
-        snap.forEach((doc) =>
-          rows.push(normalize.pharmacy(doc.id, doc.data() || {}))
+        snap.forEach((docSnap) =>
+          rows.push(normalize.pharmacy(docSnap.id, docSnap.data() || {}))
         );
         rows.sort(
           (a, b) =>
@@ -437,8 +483,8 @@ export default function Admin() {
       try {
         const snap = await getDocs(collection(db, "logistics"));
         const rows = [];
-        snap.forEach((doc) =>
-          rows.push(normalize.logistics(doc.id, doc.data() || {}))
+        snap.forEach((docSnap) =>
+          rows.push(normalize.logistics(docSnap.id, docSnap.data() || {}))
         );
         rows.sort(
           (a, b) =>
@@ -451,6 +497,51 @@ export default function Admin() {
       }
     })();
   }, []);
+
+  /* ======== reset doctor temp password ======== */
+  async function handleResetDoctor(row) {
+    if (!row?.id) return;
+    const confirmReset = window.confirm(
+      `Generate a new temporary password for doctor ${row.accessId || ""}?\n\n` +
+        "The old one will be replaced and the new one will be valid for 24 hours."
+    );
+    if (!confirmReset) return;
+
+    try {
+      const plain = generateTempPassword();
+      const hash = await hashPasswordSHA256(plain);
+      const now = Date.now();
+      const expiresAtMs = now + 24 * 60 * 60 * 1000;
+
+      await updateDoc(doc(db, "doctors", row.id), {
+        passwordHash: hash,
+        isActive: true,
+        status: "Active",
+        tempPassword: {
+          value: plain,
+          valid: true,
+          generatedAtMs: now,
+          expiresAtMs,
+        },
+      });
+
+      // حدثي الحالة في الواجهة
+      setDoctors((prev) =>
+        prev.map((d) =>
+          d.id === row.id
+            ? { ...d, status: "Active", tempExpired: false }
+            : d
+        )
+      );
+
+      alert(
+        `New temporary password for ${row.accessId || row.name || ""}:\n\n${plain}\n\nValid for 24 hours.`
+      );
+    } catch (e) {
+      console.error(e);
+      alert("Failed to reset password: " + (e?.message || e));
+    }
+  }
 
   /* filters + dynamic columns + paging */
 
@@ -574,7 +665,8 @@ export default function Admin() {
       {/* Header مع زر المينيو للسايدبار */}
       <Header hideMenu={false} onMenuClick={() => setOpen(true)} />
 
-      <section className="mx-auto w-full max-w-6xl px-6 mt-10">
+      {/* ⭐ التعديل الوحيد هنا: كبرنا الماكس و زدنا الـ padding شوي */}
+      <section className="mx-auto w-full max-w-[1500px] px-8 mt-10">
         <div className="flex items-center gap-3">
           <img
             src="/Images/TrustDose-pill.png"
@@ -743,7 +835,7 @@ export default function Admin() {
 
           {/* Doctors */}
           {active === "doctors" && (
-            <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
+            <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-8">
               <SectionHeader
                 title="Doctors"
                 search={qDoctors}
@@ -776,13 +868,14 @@ export default function Admin() {
                       {fDoctors.flags.hasCreated && (
                         <th className="text-left px-4 py-3">Created</th>
                       )}
+                      <th className="text-left px-4 py-3">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading.doctors ? (
                       <tr>
                         <td
-                          colSpan={8}
+                          colSpan={9}
                           className="px-4 py-6 text-center text-gray-500"
                         >
                           Loading…
@@ -791,7 +884,7 @@ export default function Admin() {
                     ) : fDoctors.rows.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={8}
+                          colSpan={9}
                           className="px-4 py-6 text-center text-gray-500"
                         >
                           No doctors found.
@@ -829,7 +922,15 @@ export default function Admin() {
                           )}
                           {fDoctors.flags.hasStatus && (
                             <td className="px-4 py-3">
-                              <span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs ${
+                                  r.status === "Active"
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : r.status === "Inactive"
+                                    ? "bg-rose-50 text-rose-700"
+                                    : "bg-gray-50 text-gray-700"
+                                }`}
+                              >
                                 {r.status || "—"}
                               </span>
                             </td>
@@ -839,6 +940,18 @@ export default function Admin() {
                               {fmtDate(r.createdAt)}
                             </td>
                           )}
+                          <td className="px-4 py-3">
+                            {r.status === "Inactive" ? (
+                              <button
+                                onClick={() => handleResetDoctor(r)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#B08CC1] text-white hover:bg-[#9A7EAF] shadow-sm"
+                              >
+                                Reset temp password
+                              </button>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td>
                         </tr>
                       ))
                     )}

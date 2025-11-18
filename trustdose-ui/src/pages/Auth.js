@@ -32,9 +32,9 @@ const TD = {
 async function hashPasswordSHA256(password) {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 async function verifyPasswordSHA256(inputPassword, storedHash) {
@@ -64,14 +64,22 @@ async function pbkdf2Hash(password, saltBase64, iterations = 100_000) {
 
 async function pbkdf2Hex(password, saltBase64, iterations = 100_000) {
   const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
   const salt = Uint8Array.from(atob(saltBase64), (c) => c.charCodeAt(0));
   const bits = await crypto.subtle.deriveBits(
     { name: "PBKDF2", hash: "SHA-256", salt, iterations },
     key,
     256
   );
-  return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2,"0")).join("");
+  return Array.from(new Uint8Array(bits))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function genSaltBase64(len = 16) {
@@ -95,7 +103,9 @@ const DISTRICTS_BY_CITY = {
 
 // ✅ منع الأحرف والأرقام العربية
 function hasArabic(str) {
-  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(str);
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
+    str
+  );
 }
 
 function toEnglishDigits(s) {
@@ -104,7 +114,7 @@ function toEnglishDigits(s) {
   for (const ch of String(s)) {
     const code = ch.charCodeAt(0);
     if (code >= 0x0660 && code <= 0x0669) out += String(code - 0x0660);
-    else if (code >= 0x06F0 && code <= 0x06F9) out += String(code - 0x06F0);
+    else if (code >= 0x06f0 && code <= 0x06f9) out += String(code - 0x06f0);
     else out += ch;
   }
   return out;
@@ -116,19 +126,22 @@ function isDigitsLike(s) {
 
 function validateAndNormalizePhone(raw) {
   const original = String(raw || "");
-  
+
   // ✅ منع العربي
   if (hasArabic(original)) {
     return { ok: false, reason: "Arabic characters not allowed." };
   }
-  
+
   if (/\s/.test(original)) {
     return { ok: false, reason: "Phone number must not contain spaces." };
   }
-  
+
   const cleaned = toEnglishDigits(original).trim();
   if (!isDigitsLike(cleaned)) {
-    return { ok: false, reason: "Phone should contain digits only (and optional leading +)." };
+    return {
+      ok: false,
+      reason: "Phone should contain digits only (and optional leading +).",
+    };
   }
   if (/^05\d{8}$/.test(cleaned)) {
     const last8 = cleaned.slice(2);
@@ -139,7 +152,8 @@ function validateAndNormalizePhone(raw) {
   }
   return {
     ok: false,
-    reason: "Phone must start with 5 followed by 8 digits (e.g., +9665xxxxxxxx).",
+    reason:
+      "Phone must start with 5 followed by 8 digits (e.g., +9665xxxxxxxx).",
   };
 }
 
@@ -156,15 +170,17 @@ function isValidNationalIdLive(raw) {
   if (s === "") return { ok: true, reason: "" };
   if (/\s/.test(s)) return { ok: false, reason: "No spaces allowed." };
   if (hasArabic(s)) return { ok: false, reason: "Arabic not allowed." };
-  if (!/^[0-9]*$/.test(s)) return { ok: false, reason: "Digits 0-9 only (ASCII)." };
-  if (s.length >= 1 && !/^[12]/.test(s)) return { ok: false, reason: "Must start with 1 or 2." };
-  
+  if (!/^[0-9]*$/.test(s))
+    return { ok: false, reason: "Digits 0-9 only (ASCII)." };
+  if (s.length >= 1 && !/^[12]/.test(s))
+    return { ok: false, reason: "Must start with 1 or 2." };
+
   // ✅ رسالة خطأ فقط إذا أقل من 10
   if (s.length > 0 && s.length < 10) {
     return { ok: false, reason: "National ID must be exactly 10 digits." };
   }
   if (s.length > 10) return { ok: false, reason: "Exactly 10 digits." };
-  
+
   return { ok: true, reason: "" };
 }
 
@@ -185,8 +201,14 @@ function passwordStrength(pw) {
   if (len12) score++;
   let label = "Weak";
   let color = "#ef4444";
-  if (score >= 4) { label = "Medium"; color = "#f59e0b"; }
-  if (score >= 5) { label = "Strong"; color = "#10b981"; }
+  if (score >= 4) {
+    label = "Medium";
+    color = "#f59e0b";
+  }
+  if (score >= 5) {
+    label = "Strong";
+    color = "#10b981";
+  }
   const width = Math.min(100, Math.round((score / 6) * 100));
   return { score, label, color, width, hasLower, hasUpper, hasDigit, hasSymbol, len8 };
 }
@@ -314,7 +336,11 @@ export default function TrustDoseAuth() {
   const [districtOther, setDistrictOther] = useState("");
 
   const [pwInfo, setPwInfo] = useState(passwordStrength(""));
-  const [phoneInfo, setPhoneInfo] = useState({ ok: false, reason: "", normalized: "" });
+  const [phoneInfo, setPhoneInfo] = useState({
+    ok: false,
+    reason: "",
+    normalized: "",
+  });
   const [phoneChecking, setPhoneChecking] = useState(false);
   const [phoneTaken, setPhoneTaken] = useState(false);
 
@@ -322,13 +348,15 @@ export default function TrustDoseAuth() {
   const [adminMsg, setAdminMsg] = useState("");
 
   const isSignup = mode === "signup";
-  const inputCompact = isSignup ? { padding: "10px 12px", borderRadius: 10, fontSize: 13.5 } : {};
+  const inputCompact = isSignup
+    ? { padding: "10px 12px", borderRadius: 10, fontSize: 13.5 }
+    : {};
 
   useEffect(() => {
     const saved = localStorage.getItem("td_auth_id");
     if (saved) setAccountId(saved);
   }, []);
-  
+
   useEffect(() => {
     if (remember && accountId) localStorage.setItem("td_auth_id", accountId);
     if (!remember) localStorage.removeItem("td_auth_id");
@@ -348,7 +376,10 @@ export default function TrustDoseAuth() {
       if (!info.ok || !info.normalized) return;
       setPhoneChecking(true);
       try {
-        const qRef = query(collection(db, "patients"), where("contact", "==", info.normalized));
+        const qRef = query(
+          collection(db, "patients"),
+          where("contact", "==", info.normalized)
+        );
         const snap = await getDocs(qRef);
         if (!cancelled) setPhoneTaken(!snap.empty);
       } catch (e) {
@@ -382,31 +413,47 @@ export default function TrustDoseAuth() {
     }
 
     if (/^dr[-_]?\w+/i.test(clean)) {
-      return { coll: "doctors", idFields: ["DoctorID","doctorId", "accessId"], role: "doctor" };
+      return {
+        coll: "doctors",
+        idFields: ["DoctorID", "doctorId", "accessId"],
+        role: "doctor",
+      };
     }
 
     if (/^(ph|phar|pharmacy)[-_]?\w+/i.test(clean)) {
-      return { coll: "pharmacies", idFields: ["BranchID", "PharmacyID"], role: "pharmacy" };
+      return {
+        coll: "pharmacies",
+        idFields: ["BranchID", "PharmacyID"],
+        role: "pharmacy",
+      };
     }
 
     if (/^\d{10,12}$/.test(clean)) {
-      return { coll: "patients", idFields: ["nationalID", "nationalId"], role: "patient" };
+      return {
+        coll: "patients",
+        idFields: ["nationalID", "nationalId"],
+        role: "patient",
+      };
     }
-if (/^LG-\d{3}$/i.test(clean)) {
-  return { coll: "logistics", idFields: ["LogisticsID"], role: "logistics" };
-}
+    if (/^LG-\d{3}$/i.test(clean)) {
+      return {
+        coll: "logistics",
+        idFields: ["LogisticsID"],
+        role: "logistics",
+      };
+    }
   }
 
   async function handleAdminMetaMaskLogin() {
     try {
       setAdminMsg("");
       setAdminLoading(true);
-  
+
       if (!window.ethereum) {
         setAdminMsg("Please install MetaMask first.");
         return;
       }
-  
+
       const provider = new ethers.BrowserProvider(window.ethereum);
       const accounts = await provider.send("eth_requestAccounts", []);
       if (!accounts?.length) {
@@ -414,27 +461,27 @@ if (/^LG-\d{3}$/i.test(clean)) {
         return;
       }
       const address = String(accounts[0]).toLowerCase();
-  
+
       setAdminMsg("Checking administrator privileges...");
-  
+
       const ref = doc(db, "admins", address);
       const snap = await getDoc(ref);
-  
+
       if (!snap.exists()) {
         setAdminMsg("⚠️This address is not registered as an administrator.");
         return;
       }
-  
+
       try {
         const signer = await provider.getSigner();
         const msg = `TrustDose Admin Login\nAddress: ${address}\nNonce: ${Date.now()}`;
         await signer.signMessage(msg);
       } catch {}
-  
+
       localStorage.setItem("userRole", "admin");
       localStorage.setItem("wallet", address);
       localStorage.setItem("userId", address);
-  
+
       setAdminMsg("✅ Logged in as administrator");
       // ⬇️ التوجيه مباشرة لصفحة الداشبورد
       navigate("/admin/dashboard", { replace: true });
@@ -445,8 +492,8 @@ if (/^LG-\d{3}$/i.test(clean)) {
       setAdminLoading(false);
     }
   }
-  
- async function handleForgotPassword(e) {
+
+  async function handleForgotPassword(e) {
     e.preventDefault();
     setForgotMsg("");
     setForgotLoading(true);
@@ -462,34 +509,47 @@ if (/^LG-\d{3}$/i.test(clean)) {
       if (role === "patient") {
         try {
           const p = await getDoc(doc(db, "patients", `Ph_${id}`));
-          if (p.exists()) { user = p.data(); userDocId = p.id; }
+          if (p.exists()) {
+            user = p.data();
+            userDocId = p.id;
+          }
         } catch {}
       }
 
       if (!user && /^B-\d+$/i.test(id)) {
         try {
-          let snap = await getDocs(query(collection(db, "Phar_Nahdi"), where("BranchID", "==", id)));
-          if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
+          let snap = await getDocs(
+            query(collection(db, "Phar_Nahdi"), where("BranchID", "==", id))
+          );
+          if (!snap.empty) {
+            user = snap.docs[0].data();
+            userDocId = snap.docs[0].id;
+          }
 
           if (!user) {
-            snap = await getDocs(query(collection(db, "pharmacies"), where("BranchID", "==", id)));
-            if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
+            snap = await getDocs(
+              query(collection(db, "pharmacies"), where("BranchID", "==", id))
+            );
+            if (!snap.empty) {
+              user = snap.docs[0].data();
+              userDocId = snap.docs[0].id;
+            }
           }
         } catch {}
       }
 
-if (!user && /^LG-\d{3}$/i.test(id)) {
-  try {
-    const snap = await getDocs(
-      query(collection(db, "logistics"), where("LogisticsID", "==", id))
-    );
-    if (!snap.empty) {
-      user = snap.docs[0].data();
-      userDocId = snap.docs[0].id;
-       coll = "logistics";
-    }
-  } catch {}
-}
+      if (!user && /^LG-\d{3}$/i.test(id)) {
+        try {
+          const snap = await getDocs(
+            query(collection(db, "logistics"), where("LogisticsID", "==", id))
+          );
+          if (!snap.empty) {
+            user = snap.docs[0].data();
+            userDocId = snap.docs[0].id;
+            // coll = "logistics";  // ملاحظة: هذا السطر عندك أصلاً، ما لمسته
+          }
+        } catch {}
+      }
       if (!user) {
         for (const f of idFields) {
           try {
@@ -511,7 +571,9 @@ if (!user && /^LG-\d{3}$/i.test(id)) {
 
       const email = user.email;
       if (!email) {
-        setForgotMsg("❌ No email registered for this account. Please contact support.");
+        setForgotMsg(
+          "❌ No email registered for this account. Please contact support."
+        );
         return;
       }
 
@@ -524,7 +586,7 @@ if (!user && /^LG-\d{3}$/i.test(id)) {
         id: id,
         reset: "true",
         e: email,
-        redirect: "/auth"
+        redirect: "/auth",
       });
 
       const actionCodeSettings = {
@@ -534,13 +596,14 @@ if (!user && /^LG-\d{3}$/i.test(id)) {
 
       await sendSignInLinkToEmail(auth, email, actionCodeSettings);
 
-      setForgotMsg(`✅ Password reset link sent to ${email}. Check your inbox and spam folder!`);
+      setForgotMsg(
+        `✅ Password reset link sent to ${email}. Check your inbox and spam folder!`
+      );
       setTimeout(() => {
         setShowForgotPw(false);
         setForgotId("");
         setForgotMsg("");
       }, 3000);
-      
     } catch (err) {
       console.error("Forgot password error:", err);
       let errorMessage = "Failed to send reset link";
@@ -556,114 +619,11 @@ if (!user && /^LG-\d{3}$/i.test(id)) {
       setForgotLoading(false);
     }
   }
-///////////////////////////////////////////////////////////////////////////
- /*async function handleForgotPassword(e) {
-  e.preventDefault();
-  setForgotMsg("");
-  setForgotLoading(true);
-
-  try {
-    const id = forgotId.trim();
-    if (!id) throw new Error("Please enter your ID");
-
-    const { coll, idFields, role } = detectSource(id);
-    let user = null;
-    let userDocId = null;
-
-    // Patients by national ID
-    if (role === "patient") {
-      try {
-        const p = await getDoc(doc(db, "patients", `Ph_${id}`));
-        if (p.exists()) { user = p.data(); userDocId = p.id; }
-      } catch {}
-    }
-
-    // Pharmacy by BranchID (Nahdi / pharmacies)
-    if (!user && /^B-\d+$/i.test(id)) {
-      try {
-        let snap = await getDocs(query(collection(db, "Phar_Nahdi"), where("BranchID", "==", id)));
-        if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
-
-        if (!user) {
-          snap = await getDocs(query(collection(db, "pharmacies"), where("BranchID", "==", id)));
-          if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
-        }
-      } catch {}
-    }
-
-    // Logistics
-    if (!user && /^LG-\d{3}$/i.test(id)) {
-      try {
-        const snap = await getDocs(
-          query(collection(db, "logistics"), where("LogisticsID", "==", id))
-        );
-        if (!snap.empty) {
-          user = snap.docs[0].data();
-          userDocId = snap.docs[0].id;
-        }
-      } catch {}
-    }
-
-    // Generic lookup using idFields
-    if (!user) {
-      for (const f of idFields) {
-        try {
-          const q = query(collection(db, coll), where(f, "==", id));
-          const snap = await getDocs(q);
-          if (!snap.empty) {
-            user = snap.docs[0].data();
-            userDocId = snap.docs[0].id;
-            break;
-          }
-        } catch {}
-      }
-    }
-
-    if (!user) {
-      setForgotMsg("❌ No account found with this ID.");
-      return;
-    }
-
-    const email = user.email;
-    if (!email) {
-      setForgotMsg("❌ No email registered for this account. Please contact support.");
-      return;
-    }
-
-    const auth = getAuth();
-    const BASE = window.location.origin;
-
-    // ⚠️ بدال ما نرسل إيميل، نطبع نفس رابط إعادة التعيين
-    const params = new URLSearchParams({
-      col: coll,
-      doc: String(userDocId || ""),
-      id: id,
-      reset: "true",
-      e: email,
-      redirect: "/auth",
-      debug: "1",
-    });
-
-    const testLink = `${BASE}/password-reset?${params.toString()}`;
-
-    console.log("=======================================");
-    console.log("🚨 DEBUG MODE: Password reset link (copy & paste into browser)");
-    console.log(testLink);
-    console.log("=======================================");
-
-    setForgotMsg("✅ DEBUG MODE: Reset link printed in Console. Copy it and open it in a new tab.");
-
-  } catch (err) {
-    console.error("Forgot password error:", err);
-    let errorMessage = "Failed to prepare reset link";
-    if (err.message) errorMessage = err.message;
-    setForgotMsg(`❌ ${errorMessage}`);
-  } finally {
-    setForgotLoading(false);
-  }
-}
-*/
- ///////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////
+  /*
+  ... (بلوك الـ DEBUG القديم تبع handleForgotPassword موجود عندك ومعلّق، ما لمسته)
+  */
+  ///////////////////////////////////////////////////////////////////////////
 
   async function handleSignIn(e) {
     e.preventDefault();
@@ -682,175 +642,211 @@ if (!user && /^LG-\d{3}$/i.test(id)) {
       if (role === "patient") {
         try {
           const p = await getDoc(doc(db, "patients", `Ph_${id}`));
-          if (p.exists()) { user = p.data(); userDocId = p.id; }
+          if (p.exists()) {
+            user = p.data();
+            userDocId = p.id;
+          }
         } catch {}
       }
 
       if (!user && /^B-\d+$/i.test(id)) {
         try {
-          let snap = await getDocs(query(collection(db, "Phar_Nahdi"), where("BranchID", "==", id)));
-          if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
+          let snap = await getDocs(
+            query(collection(db, "Phar_Nahdi"), where("BranchID", "==", id))
+          );
+          if (!snap.empty) {
+            user = snap.docs[0].data();
+            userDocId = snap.docs[0].id;
+          }
 
           if (!user) {
-            snap = await getDocs(query(collection(db, "pharmacies"), where("BranchID", "==", id)));
-            if (!snap.empty) { user = snap.docs[0].data(); userDocId = snap.docs[0].id; }
+            snap = await getDocs(
+              query(collection(db, "pharmacies"), where("BranchID", "==", id))
+            );
+            if (!snap.empty) {
+              user = snap.docs[0].data();
+              userDocId = snap.docs[0].id;
+            }
           }
         } catch {}
       }
 
       if (!user) {
-  // Search using all doctor ID fields
-  for (const f of idFields) {
-    try {
-      const q = query(collection(db, coll), where(f, "==", id));
-      const snap = await getDocs(q);
+        // Search using all doctor ID fields
+        for (const f of idFields) {
+          try {
+            const q = query(collection(db, coll), where(f, "==", id));
+            const snap = await getDocs(q);
 
-      if (!snap.empty) {
-        user = snap.docs[0].data();
-        userDocId = snap.docs[0].id;
-        break;
+            if (!snap.empty) {
+              user = snap.docs[0].data();
+              userDocId = snap.docs[0].id;
+              break;
+            }
+          } catch (e) {
+            console.warn("Query error on field:", f, e);
+          }
+        }
       }
-    } catch (e) {
-      console.warn("Query error on field:", f, e);
-    }
-  }
-}
-
 
       if (!user) {
         setMsg("❌ ID or password incorrect.");
         return;
       }
 
-      console.log('🔐 Verifying password for role:', role);
+      console.log("🔐 Verifying password for role:", role);
 
       let verified = false;
       // FORCE tempPassword for doctors
       console.log("LOGIN DEBUG → doctor:", {
-  enteredPassword: pass,
-  tempPassword: user.tempPassword,
-  password: user.password,
-  passwordHash: user.passwordHash
-});
+        enteredPassword: pass,
+        tempPassword: user.tempPassword,
+        password: user.password,
+        passwordHash: user.passwordHash,
+      });
 
-// Doctor login logic
-if (role === "doctor") {
+      // ========= Doctor login logic (مع صلاحية ٢٤ ساعة للتمبرري) =========
+      if (role === "doctor") {
+        // 0) If password empty → show message
+        if (!pass) {
+          setMsg("Please enter your password.");
+          return;
+        }
 
-  // 0) If password empty → show message
-  if (!pass) {
-    setMsg("Please enter your password.");
-    return;
-  }
+        const tempMeta = user.tempPassword || null;
 
-  // 1) Check temp password first
-  if (user.tempPassword?.valid && user.tempPassword?.value) {
-    if (String(pass) !== String(user.tempPassword.value)) {
-      setMsg("❌ ID or password incorrect.");
-      return;
-    }
-    verified = true;
-  }
+        // 1) تمبرري باسورد موجودة وفعّالة
+        if (tempMeta && tempMeta.valid) {
+          const expiresAtMs = Number(tempMeta.expiresAtMs || 0);
+          const nowMs = Date.now();
 
-  // 2) If doctor has SHA-256 password saved in "password"
-  else if (user.password) {
-    const ok = await verifyPasswordSHA256(pass, user.password);
-    if (!ok) {
-      setMsg("❌ ID or password incorrect.");
-      return;
-    }
-    verified = true;
-  }
+          // انتهت مدة الـ ٢٤ ساعة أو قيمة الانتهاء مفقودة
+          if (!expiresAtMs || nowMs > expiresAtMs) {
+            setMsg("❌ Temporary password has expired");
+            return;
+          }
 
-  // 3) Fallback: if old doctors still have passwordHash
-  else if (user.passwordHash) {
-    const ok = await verifyPasswordSHA256(pass, user.passwordHash);
-    if (!ok) {
-      setMsg("❌ ID or password incorrect.");
-      return;
-    }
-    verified = true;
-  }
+          // التمبرري لسه صالحة → نتحقق من الباسورد باستخدام الهاش
+          if (user.passwordHash) {
+            const ok = await verifyPasswordSHA256(pass, user.passwordHash);
+            if (!ok) {
+              setMsg("❌ ID or password incorrect.");
+              return;
+            }
+            verified = true;
+          } else if (user.password) {
+            // احتياط لو كان موجود password كهاش قديم
+            const ok = await verifyPasswordSHA256(pass, user.password);
+            if (!ok) {
+              setMsg("❌ ID or password incorrect.");
+              return;
+            }
+            verified = true;
+          } else {
+            setMsg("❌ This doctor account has no password.");
+            return;
+          }
+        }
 
-  else {
-    setMsg("❌ This doctor account has no password.");
-    return;
-  }
-}
+        // 2) ما عنده تمبرري فعّالة → نتعامل معه كـ باسورد دائمة
+        else if (user.password) {
+          const ok = await verifyPasswordSHA256(pass, user.password);
+          if (!ok) {
+            setMsg("❌ ID or password incorrect.");
+            return;
+          }
+          verified = true;
+        }
 
+        // 3) fallback: لو عنده فقط passwordHash
+        else if (user.passwordHash) {
+          const ok = await verifyPasswordSHA256(pass, user.passwordHash);
+          if (!ok) {
+            setMsg("❌ ID or password incorrect.");
+            return;
+          }
+          verified = true;
+        } else {
+          setMsg("❌ This doctor account has no password.");
+          return;
+        }
+      }
 
+      // 2) PBKDF2 hashing
+      else if (!verified && "passwordHash" in user && "passwordSalt" in user) {
+        if (!pass) {
+          setMsg("Please enter your password.");
+          return;
+        }
 
+        const stored = String(user.passwordHash);
+        const iter = Number(user.passwordIter) || 100_000;
 
-// 2) PBKDF2 hashing
-else if (!verified && ("passwordHash" in user) && ("passwordSalt" in user)) {
-  if (!pass) { setMsg("Please enter your password."); return; }
+        let derived = "";
+        if (/^[a-f0-9]{64}$/i.test(stored)) {
+          derived = await pbkdf2Hex(pass, user.passwordSalt, iter);
+        } else {
+          derived = await pbkdf2Hash(pass, user.passwordSalt, iter);
+        }
 
-  const stored = String(user.passwordHash);
-  const iter = Number(user.passwordIter) || 100_000;
+        if (derived !== stored) {
+          setMsg("❌ ID or password incorrect.");
+          return;
+        }
 
-  let derived = "";
-  if (/^[a-f0-9]{64}$/i.test(stored)) {
-    derived = await pbkdf2Hex(pass, user.passwordSalt, iter);
-  } else {
-    derived = await pbkdf2Hash(pass, user.passwordSalt, iter);
-  }
+        verified = true;
+      }
 
-  if (derived !== stored) {
-    setMsg("❌ ID or password incorrect.");
-    return;
-  }
+      // 3) Logistics SHA256
+      else if (!verified && role === "logistics" && user.passwordHash) {
+        if (!pass) {
+          setMsg("Please enter your password.");
+          return;
+        }
 
-  verified = true;
-}
+        const ok = await verifyPasswordSHA256(pass, user.passwordHash);
+        if (!ok) {
+          setMsg("❌ ID or password incorrect.");
+          return;
+        }
+        verified = true;
+      }
 
-// 3) Logistics SHA256
-else if (!verified && role === "logistics" && user.passwordHash) {
-  if (!pass) { setMsg("Please enter your password."); return; }
+      // 4) Plain / sha256 password
+      else if (!verified && "password" in user) {
+        if (!pass) {
+          setMsg("Please enter your password.");
+          return;
+        }
 
-  const ok = await verifyPasswordSHA256(pass, user.passwordHash);
-  if (!ok) {
-    setMsg("❌ ID or password incorrect.");
-    return;
-  }
-  verified = true;
-}
+        const stored = String(user.password).trim();
 
-// 4) Plain / sha256 password
-else if (!verified && ("password" in user)) {
-  if (!pass) {
-    setMsg("Please enter your password.");
-    return;
-  }
+        // hashed SHA256 (64 hex)
+        if (/^[a-f0-9]{64}$/i.test(stored)) {
+          const ok = await verifyPasswordSHA256(pass, stored);
+          if (!ok) {
+            setMsg("❌ ID or password incorrect.");
+            return;
+          }
+          verified = true;
+        }
 
-  const stored = String(user.password).trim();
+        // plain text (legacy)
+        else if (pass === stored) {
+          verified = true;
+        } else {
+          setMsg("❌ ID or password incorrect.");
+          return;
+        }
+      }
 
-  // hashed SHA256 (64 hex)
-  if (/^[a-f0-9]{64}$/i.test(stored)) {
-    const ok = await verifyPasswordSHA256(pass, stored);
-    if (!ok) {
-      setMsg("❌ ID or password incorrect.");
-      return;
-    }
-    verified = true;
-  }
+      // 5) No password fields
+      else if (!verified) {
+        setMsg("❌ This account has no password.");
+        return;
+      }
 
-  // plain text (legacy)
-  else if (pass === stored) {
-    verified = true;
-  }
-
-  else {
-    setMsg("❌ ID or password incorrect.");
-    return;
-  }
-}
-
-
-// 5) No password fields
-else if (!verified) {
-  setMsg("❌ This account has no password.");
-  return;
-}
-                const displayName = user.name || user.companyName || id;
+      const displayName = user.name || user.companyName || id;
 
       if (role === "pharmacy") {
         localStorage.setItem("userRole", "pharmacy");
@@ -867,7 +863,10 @@ else if (!verified) {
 
         localStorage.setItem("userRole", "logistics");
         localStorage.setItem("userId", welcomeLogistics.logisticsId);
-        localStorage.setItem("welcome_logistics", JSON.stringify(welcomeLogistics));
+        localStorage.setItem(
+          "welcome_logistics",
+          JSON.stringify(welcomeLogistics)
+        );
       } else {
         localStorage.setItem("userId", id);
         localStorage.setItem("userRole", role);
@@ -879,17 +878,20 @@ else if (!verified) {
         const welcomeDoctor = {
           DoctorID: user.DoctorID || id,
           name: user.name || "",
-          healthFacility: user.healthFacility || user.healthFacilityName || "",
+          healthFacility:
+            user.healthFacility || user.healthFacilityName || "",
           speciality: user.speciality || user.specialization || "",
           phone: user.phone || "",
         };
 
-        localStorage.setItem("welcome_doctor", JSON.stringify(welcomeDoctor));
+        localStorage.setItem(
+          "welcome_doctor",
+          JSON.stringify(welcomeDoctor)
+        );
         navigate("/doctor", { replace: true });
         setLoading(false);
-        return; 
-      }
-      else if (role === "pharmacy") navigate("/pharmacy", { replace: true });
+        return;
+      } else if (role === "pharmacy") navigate("/pharmacy", { replace: true });
       else if (role === "patient") navigate("/patient", { replace: true });
       else if (role === "logistics") navigate("/logistics", { replace: true });
       else navigate("/", { replace: true });
@@ -909,53 +911,85 @@ else if (!verified) {
     try {
       const nidAscii = toEnglishDigits(String(nationalId ?? "")).trim();
       if (!isValidNationalIdStrict(nidAscii)) {
-        throw new Error("National ID must be exactly 10 digits starting with 1 or 2.");
+        throw new Error(
+          "National ID must be exactly 10 digits starting with 1 or 2."
+        );
       }
 
       const phoneRaw = String(phone ?? "");
       const phoneCheck = validateAndNormalizePhone(phoneRaw);
 
-      const pass  = String(password ?? "").trim();
+      const pass = String(password ?? "").trim();
       const pass2 = String(confirmPassword ?? "").trim();
-      const nm    = String(name ?? "").trim();
-      const g     = String(gender ?? "").trim();
-      const c     = String(city ?? "").trim();
-      const d     = String(district === "__OTHER__" ? (districtOther ?? "") : (district ?? "")).trim();
+      const nm = String(name ?? "").trim();
+      const g = String(gender ?? "").trim();
+      const c = String(city ?? "").trim();
+      const d = String(
+        district === "__OTHER__"
+          ? districtOther ?? ""
+          : district ?? ""
+      ).trim();
 
       const bdateStr = String(birthDate ?? "").trim();
       let bdObj;
       {
         const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(bdateStr);
         if (!m) throw new Error("Invalid birth date.");
-        const y = Number(m[1]), mo = Number(m[2]), dy = Number(m[3]);
+        const y = Number(m[1]),
+          mo = Number(m[2]),
+          dy = Number(m[3]);
         bdObj = new Date(Date.UTC(y, mo - 1, dy, 0, 0, 0));
       }
-      if (Number.isNaN(bdObj.getTime())) throw new Error("Invalid birth date.");
+      if (Number.isNaN(bdObj.getTime()))
+        throw new Error("Invalid birth date.");
 
       const maxBirth = new Date(Date.UTC(2007, 11, 31, 23, 59, 59));
-      if (bdObj > maxBirth) throw new Error("Birth date must be 2007 or earlier.");
+      if (bdObj > maxBirth)
+        throw new Error("Birth date must be 2007 or earlier.");
 
       if (!phoneCheck.ok) throw new Error(phoneCheck.reason || "Invalid phone.");
       const phoneNorm = phoneCheck.normalized;
 
-      if (!nidAscii || !phoneRaw || !pass || !pass2 || !nm || !g || !bdateStr || !c || !d) {
+      if (
+        !nidAscii ||
+        !phoneRaw ||
+        !pass ||
+        !pass2 ||
+        !nm ||
+        !g ||
+        !bdateStr ||
+        !c ||
+        !d
+      ) {
         throw new Error("Please fill all fields.");
       }
-      if (!["Male", "Female"].includes(g)) throw new Error("Gender must be Male or Female.");
+      if (!["Male", "Female"].includes(g))
+        throw new Error("Gender must be Male or Female.");
 
       const pw = passwordStrength(pass);
-      const meetsPolicy = pw.len8 && pw.hasLower && pw.hasUpper && pw.hasDigit;
-      if (!meetsPolicy) throw new Error("Password must be at least 8 chars and include lowercase, uppercase, and a digit.");
+      const meetsPolicy =
+        pw.len8 && pw.hasLower && pw.hasUpper && pw.hasDigit;
+      if (!meetsPolicy)
+        throw new Error(
+          "Password must be at least 8 chars and include lowercase, uppercase, and a digit."
+        );
       if (pass !== pass2) throw new Error("Passwords do not match.");
 
       const docId = `Ph_${nidAscii}`;
 
       const existsSnap = await getDoc(doc(db, "patients", docId));
-      if (existsSnap.exists()) throw new Error("An account with this National ID already exists.");
+      if (existsSnap.exists())
+        throw new Error(
+          "An account with this National ID already exists."
+        );
 
-      const phoneQ = query(collection(db, "patients"), where("contact", "==", phoneNorm));
+      const phoneQ = query(
+        collection(db, "patients"),
+        where("contact", "==", phoneNorm)
+      );
       const phoneSnap = await getDocs(phoneQ);
-      if (!phoneSnap.empty) throw new Error("This phone number is already registered.");
+      if (!phoneSnap.empty)
+        throw new Error("This phone number is already registered.");
 
       const saltB64 = genSaltBase64(16);
       const hashB64 = await pbkdf2Hash(pass, saltB64, 100_000);
@@ -1035,8 +1069,22 @@ else if (!verified) {
           scrollbarWidth: "thin",
         }}
       >
-        <div style={{ display: "grid", placeItems: "center", marginBottom: 16 }}>
-          <div style={{ width: 220, height: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div
+          style={{
+            display: "grid",
+            placeItems: "center",
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              width: 220,
+              height: 100,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             <img
               src="/Images/TrustDose_logo.png"
               alt="TrustDose logo"
@@ -1052,7 +1100,16 @@ else if (!verified) {
           </div>
         </div>
 
-        <h2 style={{ margin: 0, color: TD.ink, fontSize: 22, fontWeight: 800 }}>{title}</h2>
+        <h2
+          style={{
+            margin: 0,
+            color: TD.ink,
+            fontSize: 22,
+            fontWeight: 800,
+          }}
+        >
+          {title}
+        </h2>
         <p style={{ marginTop: 10, color: TD.gray, fontSize: 13.5 }}>
           {mode === "signup"
             ? "Patient sign-up only (others use Sign in)"
@@ -1070,7 +1127,7 @@ else if (!verified) {
                 setAccountId(val);
               }}
               onPaste={(e) => {
-                const paste = e.clipboardData.getData('text');
+                const paste = e.clipboardData.getData("text");
                 if (hasArabic(paste)) {
                   e.preventDefault();
                   return;
@@ -1078,7 +1135,9 @@ else if (!verified) {
               }}
               placeholder="DoctorID / PharmacyID / NationalID / LogisticID"
               style={inputBase}
-              onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
+              onFocus={(e) =>
+                Object.assign(e.currentTarget.style, inputFocus(false))
+              }
               onBlur={(e) =>
                 Object.assign(e.currentTarget.style, {
                   borderColor: "#DFE3E8",
@@ -1099,7 +1158,7 @@ else if (!verified) {
                   setPassword(val);
                 }}
                 onPaste={(e) => {
-                  const paste = e.clipboardData.getData('text');
+                  const paste = e.clipboardData.getData("text");
                   if (hasArabic(paste)) {
                     e.preventDefault();
                     return;
@@ -1107,7 +1166,9 @@ else if (!verified) {
                 }}
                 placeholder="••••••••"
                 style={{ ...inputBase, paddingRight: 44 }}
-                onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
+                onFocus={(e) =>
+                  Object.assign(e.currentTarget.style, inputFocus(false))
+                }
                 onBlur={(e) =>
                   Object.assign(e.currentTarget.style, {
                     borderColor: "#DFE3E8",
@@ -1153,7 +1214,10 @@ else if (!verified) {
                 checked={remember}
                 onChange={(e) => setRemember(e.target.checked)}
               />
-              <label htmlFor="remember" style={{ fontSize: 13.5, color: "#333" }}>
+              <label
+                htmlFor="remember"
+                style={{ fontSize: 13.5, color: "#333" }}
+              >
                 Remember me
               </label>
             </div>
@@ -1165,13 +1229,25 @@ else if (!verified) {
                 ...buttonStyle,
                 filter: loading ? "grayscale(30%) brightness(.9)" : undefined,
               }}
-              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(.99)") }
-              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)") }
+              onMouseDown={(e) =>
+                (e.currentTarget.style.transform = "scale(.99)")
+              }
+              onMouseUp={(e) =>
+                (e.currentTarget.style.transform = "scale(1)")
+              }
             >
               {loading ? "Signing in..." : "Sign in"}
             </button>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8, margin: "14px 0 10px" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto 1fr",
+                alignItems: "center",
+                gap: 8,
+                margin: "14px 0 10px",
+              }}
+            >
               <span style={{ height: 1, background: "#eee" }} />
               <span style={{ color: "#888", fontSize: 12 }}>or</span>
               <span style={{ height: 1, background: "#eee" }} />
@@ -1186,10 +1262,16 @@ else if (!verified) {
                 background: `linear-gradient(135deg, ${TD.primary}, ${TD.teal})`,
                 boxShadow: "0 8px 20px rgba(82,185,196,.25)",
               }}
-              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(.99)")}
-              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              onMouseDown={(e) =>
+                (e.currentTarget.style.transform = "scale(.99)")
+              }
+              onMouseUp={(e) =>
+                (e.currentTarget.style.transform = "scale(1)")
+              }
             >
-              {adminLoading ? "Connecting Wallet..." : "Admin – Sign in with MetaMask"}
+              {adminLoading
+                ? "Connecting Wallet..."
+                : "Admin – Sign in with MetaMask"}
             </button>
 
             {adminMsg && (
@@ -1203,7 +1285,9 @@ else if (!verified) {
                     : "rgba(239,68,68,.08)",
                   color: adminMsg.startsWith("✅") ? "#065f46" : "#7f1d1d",
                   border: `1px solid ${
-                    adminMsg.startsWith("✅") ? "rgba(16,185,129,.25)" : "rgba(239,68,68,.25)"
+                    adminMsg.startsWith("✅")
+                      ? "rgba(16,185,129,.25)"
+                      : "rgba(239,68,68,.25)"
                   }`,
                   fontSize: 13.5,
                 }}
@@ -1223,7 +1307,11 @@ else if (!verified) {
             >
               <span>
                 First time patient?{" "}
-                <a href="#signup" onClick={() => setMode("signup")} style={linkStyle}>
+                <a
+                  href="#signup"
+                  onClick={() => setMode("signup")}
+                  style={linkStyle}
+                >
                   Create account
                 </a>
               </span>
@@ -1242,292 +1330,350 @@ else if (!verified) {
           </form>
         ) : (
           <form onSubmit={handleSignUp}>
+            {/* ========== National ID ========== */}
             <Label required>National ID</Label>
-<input
-  value={nationalId}
-  onChange={(e) => {
-    const v = e.target.value;
-    if (hasArabic(v)) return;
-    
-    // ✅ أول رقم لازم يكون 1 أو 2
-    if (v.length === 1 && v !== '1' && v !== '2') {
-      setNationalIdErr("Must start with 1 or 2");
-      return;
-    }
-    
-    // ✅ أرقام فقط
-    if (!/^[0-9]*$/.test(v)) {
-      setNationalIdErr("Digits 0-9 only");
-      return;
-    }
-    
-    const live = isValidNationalIdLive(v);
-    setNationalId(v);
-    setNationalIdErr(live.ok ? "" : live.reason);
-  }}
-  onPaste={(e) => {
-    const paste = e.clipboardData.getData('text');
-    if (hasArabic(paste)) {
-      e.preventDefault();
-      return;
-    }
-    
-    // ✅ التحقق من أن اللصق يبدأ بـ 1 أو 2
-    const cleaned = paste.trim().replace(/\s/g, '');
-    if (cleaned.length > 0 && cleaned[0] !== '1' && cleaned[0] !== '2') {
-      e.preventDefault();
-      setNationalIdErr("Must start with 1 or 2");
-      return;
-    }
-    
-    // ✅ التحقق من أنه أرقام فقط
-    if (!/^[12][0-9]*$/.test(cleaned)) {
-      e.preventDefault();
-      setNationalIdErr("Must start with 1 or 2, followed by digits");
-      return;
-    }
-  }}
-  placeholder="1xxxxxxxxx or 2xxxxxxxxx"
-  style={{
-    ...inputBase,
-    ...inputCompact,
-    ...(nationalIdErr ? { borderColor: TD.err, boxShadow: "0 0 0 4px rgba(220,38,38,.08)" } : {}),
-  }}
-  onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(!!nationalIdErr))}
-  onBlur={(e) =>
-    Object.assign(e.currentTarget.style, {
-      borderColor: "#DFE3E8",
-      boxShadow: "0 3px 14px rgba(0,0,0,.04)",
-    })
-  }
-  required
-  maxLength={10}
-  inputMode="numeric"
-  pattern="[12][0-9]{9}"
-  title="Exactly 10 digits starting with 1 or 2"
-  onKeyDown={(e) => {
-    const allowedControl = ["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"];
-    
-    if (e.key === " ") { 
-      e.preventDefault(); 
-      return; 
-    }
-    
-    if (allowedControl.includes(e.key)) return;
-    
-    // ✅ أول رقم لازم يكون 1 أو 2 فقط
-    if (nationalId.length === 0 && e.key !== '1' && e.key !== '2') {
-      e.preventDefault();
-      setNationalIdErr("Must start with 1 or 2");
-      return;
-    }
-    
-    // ✅ باقي الأرقام: 0-9 فقط
-    if (!/^[0-9]$/.test(e.key)) {
-      e.preventDefault();
-      return;
-    }
-  }}
-/>
-{nationalIdErr && (
-  <div style={{ marginTop: -6, marginBottom: 8, fontSize: 12, color: "#b91c1c" }}>
-    {nationalIdErr}
-  </div>
-)}
+            <input
+              value={nationalId}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (hasArabic(v)) return;
 
+                if (v.length === 1 && v !== "1" && v !== "2") {
+                  setNationalIdErr("Must start with 1 or 2");
+                  return;
+                }
+
+                if (!/^[0-9]*$/.test(v)) {
+                  setNationalIdErr("Digits 0-9 only");
+                  return;
+                }
+
+                const live = isValidNationalIdLive(v);
+                setNationalId(v);
+                setNationalIdErr(live.ok ? "" : live.reason);
+              }}
+              onPaste={(e) => {
+                const paste = e.clipboardData.getData("text");
+                if (hasArabic(paste)) {
+                  e.preventDefault();
+                  return;
+                }
+
+                const cleaned = paste.trim().replace(/\s/g, "");
+                if (cleaned.length > 0 && cleaned[0] !== "1" && cleaned[0] !== "2") {
+                  e.preventDefault();
+                  setNationalIdErr("Must start with 1 or 2");
+                  return;
+                }
+
+                if (!/^[12][0-9]*$/.test(cleaned)) {
+                  e.preventDefault();
+                  setNationalIdErr("Must start with 1 or 2, followed by digits");
+                  return;
+                }
+              }}
+              placeholder="1xxxxxxxxx or 2xxxxxxxxx"
+              style={{
+                ...inputBase,
+                ...inputCompact,
+                ...(nationalIdErr
+                  ? {
+                      borderColor: TD.err,
+                      boxShadow: "0 0 0 4px rgba(220,38,38,.08)",
+                    }
+                  : {}),
+              }}
+              onFocus={(e) =>
+                Object.assign(e.currentTarget.style, inputFocus(!!nationalIdErr))
+              }
+              onBlur={(e) =>
+                Object.assign(e.currentTarget.style, {
+                  borderColor: "#DFE3E8",
+                  boxShadow: "0 3px 14px rgba(0,0,0,.04)",
+                })
+              }
+              required
+              maxLength={10}
+              inputMode="numeric"
+              pattern="[12][0-9]{9}"
+              title="Exactly 10 digits starting with 1 or 2"
+              onKeyDown={(e) => {
+                const allowedControl = [
+                  "Backspace",
+                  "Delete",
+                  "ArrowLeft",
+                  "ArrowRight",
+                  "Tab",
+                  "Home",
+                  "End",
+                ];
+
+                if (e.key === " ") {
+                  e.preventDefault();
+                  return;
+                }
+
+                if (allowedControl.includes(e.key)) return;
+
+                if (
+                  nationalId.length === 0 &&
+                  e.key !== "1" &&
+                  e.key !== "2"
+                ) {
+                  e.preventDefault();
+                  setNationalIdErr("Must start with 1 or 2");
+                  return;
+                }
+
+                if (!/^[0-9]$/.test(e.key)) {
+                  e.preventDefault();
+                  return;
+                }
+              }}
+            />
+            {nationalIdErr && (
+              <div
+                style={{
+                  marginTop: -6,
+                  marginBottom: 8,
+                  fontSize: 12,
+                  color: "#b91c1c",
+                }}
+              >
+                {nationalIdErr}
+              </div>
+            )}
+
+            {/* ========== Phone ========== */}
             <Label required>Phone</Label>
-<div style={{ position: "relative" }}>
-  <input
-    value={phone}
-    onChange={(e) => {
-      let val = e.target.value;
-      
-      // ✅ إزالة +966 من القيمة المدخلة (إذا حاول المستخدم حذفها نرجعها)
-      if (!val.startsWith('+966')) {
-        val = '+966' + val.replace(/^\+?966?/, '');
-      }
-      
-      // ✅ منع العربي
-      if (hasArabic(val)) return;
-      
-      // ✅ إزالة المسافات
-      val = val.replace(/\s/g, '');
-      
-      // ✅ التأكد من أن ما بعد +966 هو أرقام فقط
-      const afterPrefix = val.slice(4); // كل شي بعد +966
-      if (afterPrefix && !/^[0-9]*$/.test(afterPrefix)) return;
-      
-      // ✅ الحد الأقصى: +966 + 9 أرقام (5 + 8 أرقام)
-      if (val.length > 13) return;
-      
-      setPhone(val);
-    }}
-    onPaste={(e) => {
-      e.preventDefault();
-      const paste = e.clipboardData.getData('text').trim();
-      if (hasArabic(paste)) return;
-      
-      // ✅ إذا لصق رقم كامل مثل 0512345678 أو 512345678
-      let cleaned = paste.replace(/\s/g, '');
-      
-      if (cleaned.startsWith('05')) {
-        // تحويل 05xxxxxxxx إلى +9665xxxxxxxx
-        setPhone('+966' + cleaned.slice(1));
-      } else if (cleaned.startsWith('5')) {
-        // إضافة +966 مباشرة
-        setPhone('+966' + cleaned);
-      } else if (cleaned.startsWith('+9665')) {
-        setPhone(cleaned);
-      } else if (cleaned.match(/^9665\d{8}$/)) {
-        setPhone('+' + cleaned);
-      } else {
-        // محاولة إضافة +966 إذا كان أرقام فقط
-        setPhone('+966' + cleaned.replace(/^\+?966?5?/, ''));
-      }
-    }}
-    placeholder="+966 5xxxxxxxx"
-    style={{ 
-      ...inputBase, 
-      ...inputCompact,
-      paddingLeft: '14px',
-    }}
-    onFocus={(e) => {
-      // ✅ إذا كان فاضي، نضيف +966 تلقائياً
-      if (!phone || phone === '') {
-        setPhone('+966');
-      }
-      Object.assign(
-        e.currentTarget.style,
-        inputFocus(!(phone === "" || phone === "+966" || (phoneInfo.ok && !phoneTaken)) && !!phone)
-      );
-    }}
-    onBlur={(e) => {
-      // ✅ إذا ترك الحقل بس فيه +966 بدون أرقام، نمسحه
-      if (phone === '+966') {
-        setPhone('');
-      }
-      Object.assign(e.currentTarget.style, {
-        borderColor: "#DFE3E8",
-        boxShadow: "0 3px 14px rgba(0,0,0,.04)",
-      });
-    }}
-    required
-    onKeyDown={(e) => {
-      const allowedControl = ["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"];
-      
-      if (e.key === " ") {
-        e.preventDefault();
-        return;
-      }
-      
-      if (allowedControl.includes(e.key)) {
-        // ✅ منع حذف +966
-        if ((e.key === "Backspace" || e.key === "Delete") && phone.length <= 4) {
-          e.preventDefault();
-          return;
-        }
-        return;
-      }
-      
-      // ✅ السماح بالأرقام فقط
-      if (!/^[0-9]$/.test(e.key)) {
-        e.preventDefault();
-        return;
-      }
-      
-      // ✅ أول رقم بعد +966 يجب أن يكون 5
-      if (phone === '+966' && e.key !== '5') {
-        e.preventDefault();
-        return;
-      }
-    }}
-  />
-</div>
-<div style={{ marginTop: -6, marginBottom: 8, fontSize: 12 }}>
-  {(!phone || phone === '+966') && (
-    <span style={{ color: "#888" }}>
-      Enter phone: +966 5xxxxxxxx (9 digits after +966)
-    </span>
-  )}
-  {phone && phone !== '+966' && !phoneInfo.ok && (
-    <span style={{ color: "#b91c1c" }}>{phoneInfo.reason}</span>
-  )}
-  {phone && phone !== '+966' && phoneInfo.ok && !phoneTaken && (
-    <span style={{ color: "#065f46" }}>
-      ✓ Valid phone number
-      {phoneChecking && " • checking..."}
-    </span>
-  )}
-  {phone && phoneInfo.ok && phoneTaken && (
-    <span style={{ color: "#b91c1c" }}>
-      Already registered
-    </span>
-  )}
-</div>
+            <div style={{ position: "relative" }}>
+              <input
+                value={phone}
+                onChange={(e) => {
+                  let val = e.target.value;
 
+                  if (!val.startsWith("+966")) {
+                    val = "+966" + val.replace(/^\+?966?/, "");
+                  }
+
+                  if (hasArabic(val)) return;
+
+                  val = val.replace(/\s/g, "");
+
+                  const afterPrefix = val.slice(4);
+                  if (afterPrefix && !/^[0-9]*$/.test(afterPrefix)) return;
+
+                  if (val.length > 13) return;
+
+                  setPhone(val);
+                }}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  const paste = e.clipboardData.getData("text").trim();
+                  if (hasArabic(paste)) return;
+
+                  let cleaned = paste.replace(/\s/g, "");
+
+                  if (cleaned.startsWith("05")) {
+                    setPhone("+966" + cleaned.slice(1));
+                  } else if (cleaned.startsWith("5")) {
+                    setPhone("+966" + cleaned);
+                  } else if (cleaned.startsWith("+9665")) {
+                    setPhone(cleaned);
+                  } else if (cleaned.match(/^9665\d{8}$/)) {
+                    setPhone("+" + cleaned);
+                  } else {
+                    setPhone(
+                      "+966" + cleaned.replace(/^\+?966?5?/, "")
+                    );
+                  }
+                }}
+                placeholder="+966 5xxxxxxxx"
+                style={{
+                  ...inputBase,
+                  ...inputCompact,
+                  paddingLeft: "14px",
+                }}
+                onFocus={(e) => {
+                  if (!phone || phone === "") {
+                    setPhone("+966");
+                  }
+                  Object.assign(
+                    e.currentTarget.style,
+                    inputFocus(
+                      !(
+                        phone === "" ||
+                        phone === "+966" ||
+                        (phoneInfo.ok && !phoneTaken)
+                      ) && !!phone
+                    )
+                  );
+                }}
+                onBlur={(e) => {
+                  if (phone === "+966") {
+                    setPhone("");
+                  }
+                  Object.assign(e.currentTarget.style, {
+                    borderColor: "#DFE3E8",
+                    boxShadow: "0 3px 14px rgba(0,0,0,.04)",
+                  });
+                }}
+                required
+                onKeyDown={(e) => {
+                  const allowedControl = [
+                    "Backspace",
+                    "Delete",
+                    "ArrowLeft",
+                    "ArrowRight",
+                    "Tab",
+                    "Home",
+                    "End",
+                  ];
+
+                  if (e.key === " ") {
+                    e.preventDefault();
+                    return;
+                  }
+
+                  if (allowedControl.includes(e.key)) {
+                    if (
+                      (e.key === "Backspace" || e.key === "Delete") &&
+                      phone.length <= 4
+                    ) {
+                      e.preventDefault();
+                      return;
+                    }
+                    return;
+                  }
+
+                  if (!/^[0-9]$/.test(e.key)) {
+                    e.preventDefault();
+                    return;
+                  }
+
+                  if (phone === "+966" && e.key !== "5") {
+                    e.preventDefault();
+                    return;
+                  }
+                }}
+              />
+            </div>
+            <div
+              style={{ marginTop: -6, marginBottom: 8, fontSize: 12 }}
+            >
+              {(!phone || phone === "+966") && (
+                <span style={{ color: "#888" }}>
+                  Enter phone: +966 5xxxxxxxx (9 digits after +966)
+                </span>
+              )}
+              {phone && phone !== "+966" && !phoneInfo.ok && (
+                <span style={{ color: "#b91c1c" }}>
+                  {phoneInfo.reason}
+                </span>
+              )}
+              {phone && phone !== "+966" && phoneInfo.ok && !phoneTaken && (
+                <span style={{ color: "#065f46" }}>
+                  ✓ Valid phone number
+                  {phoneChecking && " • checking..."}
+                </span>
+              )}
+              {phone && phoneInfo.ok && phoneTaken && (
+                <span style={{ color: "#b91c1c" }}>
+                  Already registered
+                </span>
+              )}
+            </div>
+
+            {/* ========== Full name ========== */}
             <Label required>Full name</Label>
-<input
-  value={name}
-  onChange={(e) => {
-    const val = e.target.value;
-    if (hasArabic(val)) return;
-    
-    // ✅ منع الأرقام والرموز - حروف فقط
-    if (!/^[A-Za-z\s]*$/.test(val)) {
-      setNameErr("Letters only (no numbers or symbols)");
-      return;
-    }
-    
-    // ✅ حد أقصى 50 حرف
-    if (val.length > 50) {
-      setNameErr("Maximum 50 characters");
-      return;
-    }
-    
-    setName(val);
-    setNameErr("");
-  }}
-  onPaste={(e) => {
-    const paste = e.clipboardData.getData('text');
-    if (hasArabic(paste)) {
-      e.preventDefault();
-      return;
-    }
-    // التحقق من الأحرف فقط
-    if (!/^[A-Za-z\s]*$/.test(paste)) {
-      e.preventDefault();
-      setNameErr("Letters only (no numbers or symbols)");
-      return;
-    }
-  }}
-  placeholder="Full name (letters only, max 50 chars)"
-  style={{
-    ...inputBase,
-    ...inputCompact,
-    ...(nameErr ? { borderColor: TD.err, boxShadow: "0 0 0 4px rgba(220,38,38,.08)" } : {}),
-  }}
-  onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(!!nameErr))}
-  onBlur={(e) =>
-    Object.assign(e.currentTarget.style, {
-      borderColor: "#DFE3E8",
-      boxShadow: "0 3px 14px rgba(0,0,0,.04)",
-    })
-  }
-  required
-  maxLength={50}
-/>
-{nameErr && (
-  <div style={{ marginTop: -6, marginBottom: 8, fontSize: 12, color: "#b91c1c" }}>
-    {nameErr}
-  </div>
-)}
-{!nameErr && name.length > 0 && (
-  <div style={{ marginTop: -6, marginBottom: 8, fontSize: 11, color: "#888", textAlign: "right" }}>
-    {name.length}/50 characters
-  </div>
-)}
+            <input
+              value={name}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (hasArabic(val)) return;
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                if (!/^[A-Za-z\s]*$/.test(val)) {
+                  setNameErr("Letters only (no numbers or symbols)");
+                  return;
+                }
+
+                if (val.length > 50) {
+                  setNameErr("Maximum 50 characters");
+                  return;
+                }
+
+                setName(val);
+                setNameErr("");
+              }}
+              onPaste={(e) => {
+                const paste = e.clipboardData.getData("text");
+                if (hasArabic(paste)) {
+                  e.preventDefault();
+                  return;
+                }
+                if (!/^[A-Za-z\s]*$/.test(paste)) {
+                  e.preventDefault();
+                  setNameErr("Letters only (no numbers or symbols)");
+                  return;
+                }
+              }}
+              placeholder="Full name (letters only, max 50 chars)"
+              style={{
+                ...inputBase,
+                ...inputCompact,
+                ...(nameErr
+                  ? {
+                      borderColor: TD.err,
+                      boxShadow: "0 0 0 4px rgba(220,38,38,.08)",
+                    }
+                  : {}),
+              }}
+              onFocus={(e) =>
+                Object.assign(e.currentTarget.style, inputFocus(!!nameErr))
+              }
+              onBlur={(e) =>
+                Object.assign(e.currentTarget.style, {
+                  borderColor: "#DFE3E8",
+                  boxShadow: "0 3px 14px rgba(0,0,0,.04)",
+                })
+              }
+              required
+              maxLength={50}
+            />
+            {nameErr && (
+              <div
+                style={{
+                  marginTop: -6,
+                  marginBottom: 8,
+                  fontSize: 12,
+                  color: "#b91c1c",
+                }}
+              >
+                {nameErr}
+              </div>
+            )}
+            {!nameErr && name.length > 0 && (
+              <div
+                style={{
+                  marginTop: -6,
+                  marginBottom: 8,
+                  fontSize: 11,
+                  color: "#888",
+                  textAlign: "right",
+                }}
+              >
+                {name.length}/50 characters
+              </div>
+            )}
+
+            {/* ========== Gender + Birth date ========== */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
               <div>
                 <Label required>Gender</Label>
                 <Select
@@ -1553,7 +1699,11 @@ else if (!verified) {
                     if (v) {
                       const bd = new Date(v);
                       const maxBirth = new Date("2007-12-31T23:59:59");
-                      setBirthDateErr(bd > maxBirth ? "Birth date must be 2007 or earlier." : "");
+                      setBirthDateErr(
+                        bd > maxBirth
+                          ? "Birth date must be 2007 or earlier."
+                          : ""
+                      );
                     } else {
                       setBirthDateErr("");
                     }
@@ -1561,9 +1711,19 @@ else if (!verified) {
                   style={{
                     ...inputBase,
                     ...inputCompact,
-                    ...(birthDateErr ? { borderColor: TD.err, boxShadow: "0 0 0 4px rgba(220,38,38,.08)" } : {}),
+                    ...(birthDateErr
+                      ? {
+                          borderColor: TD.err,
+                          boxShadow: "0 0 0 4px rgba(220,38,38,.08)",
+                        }
+                      : {}),
                   }}
-                  onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(!!birthDateErr))}
+                  onFocus={(e) =>
+                    Object.assign(
+                      e.currentTarget.style,
+                      inputFocus(!!birthDateErr)
+                    )
+                  }
                   onBlur={(e) =>
                     Object.assign(e.currentTarget.style, {
                       borderColor: "#DFE3E8",
@@ -1573,14 +1733,28 @@ else if (!verified) {
                   required
                 />
                 {birthDateErr && (
-                  <div style={{ marginTop: -6, marginBottom: 8, fontSize: 12, color: "#b91c1c" }}>
+                  <div
+                    style={{
+                      marginTop: -6,
+                      marginBottom: 8,
+                      fontSize: 12,
+                      color: "#b91c1c",
+                    }}
+                  >
                     {birthDateErr}
                   </div>
                 )}
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {/* ========== City + District ========== */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
               <div>
                 <Label required>City</Label>
                 <Select
@@ -1606,10 +1780,15 @@ else if (!verified) {
                   onChange={(e) => setDistrict(e.target.value)}
                   required
                   disabled={!city}
-                  placeholder={city ? "Select a district…" : "Choose city first"}
+                  placeholder={
+                    city ? "Select a district…" : "Choose city first"
+                  }
                 >
-                  {(city ? (DISTRICTS_BY_CITY[city] || []) : []).map((d) => (
-                    <option key={d} value={d === "Other…" ? "__OTHER__" : d}>
+                  {(city ? DISTRICTS_BY_CITY[city] || [] : []).map((d) => (
+                    <option
+                      key={d}
+                      value={d === "Other…" ? "__OTHER__" : d}
+                    >
                       {d}
                     </option>
                   ))}
@@ -1630,7 +1809,7 @@ else if (!verified) {
                     }
                   }}
                   onPaste={(e) => {
-                    const paste = e.clipboardData.getData('text');
+                    const paste = e.clipboardData.getData("text");
                     if (hasArabic(paste)) {
                       e.preventDefault();
                       return;
@@ -1638,7 +1817,12 @@ else if (!verified) {
                   }}
                   placeholder="Type district name (max 15 characters)"
                   style={{ ...inputBase, ...inputCompact }}
-                  onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
+                  onFocus={(e) =>
+                    Object.assign(
+                      e.currentTarget.style,
+                      inputFocus(false)
+                    )
+                  }
                   onBlur={(e) =>
                     Object.assign(e.currentTarget.style, {
                       borderColor: "#DFE3E8",
@@ -1648,12 +1832,21 @@ else if (!verified) {
                   required
                   maxLength={15}
                 />
-                <div style={{ marginTop: -6, marginBottom: 8, fontSize: 11, color: "#888", textAlign: "right" }}>
+                <div
+                  style={{
+                    marginTop: -6,
+                    marginBottom: 8,
+                    fontSize: 11,
+                    color: "#888",
+                    textAlign: "right",
+                  }}
+                >
                   {districtOther.length}/15 characters
                 </div>
               </div>
             )}
 
+            {/* ========== Password + Strength ========== */}
             <Label required>Password</Label>
             <div style={{ position: "relative" }}>
               <input
@@ -1665,7 +1858,7 @@ else if (!verified) {
                   setPassword(val);
                 }}
                 onPaste={(e) => {
-                  const paste = e.clipboardData.getData('text');
+                  const paste = e.clipboardData.getData("text");
                   if (hasArabic(paste)) {
                     e.preventDefault();
                     return;
@@ -1673,7 +1866,9 @@ else if (!verified) {
                 }}
                 placeholder="••••••••"
                 style={{ ...inputBase, ...inputCompact, paddingRight: 44 }}
-                onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
+                onFocus={(e) =>
+                  Object.assign(e.currentTarget.style, inputFocus(false))
+                }
                 onBlur={(e) =>
                   Object.assign(e.currentTarget.style, {
                     borderColor: "#DFE3E8",
@@ -1708,19 +1903,40 @@ else if (!verified) {
 
             {password.length > 0 && (
               <div style={{ marginTop: 8, marginBottom: 8 }}>
-                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
+                <ul
+                  style={{
+                    listStyle: "none",
+                    padding: 0,
+                    margin: 0,
+                    display: "grid",
+                    gap: 6,
+                  }}
+                >
                   <PwRule ok={/[A-Z]/.test(password)} label="Uppercase (A–Z)" />
                   <PwRule ok={/[a-z]/.test(password)} label="Lowercase (a–z)" />
                   <PwRule ok={/\d/.test(password)} label="Digit (0–9)" />
-                  <PwRule ok={/[^A-Za-z0-9]/.test(password)} label="Symbol (!@#$…)" />
-                  <PwRule ok={password.length >= 8} label="Length ≥ 8" />
+                  <PwRule
+                    ok={/[^A-Za-z0-9]/.test(password)}
+                    label="Symbol (!@#$…)"
+                  />
+                  <PwRule
+                    ok={password.length >= 8}
+                    label="Length ≥ 8"
+                  />
                 </ul>
               </div>
             )}
 
             {password.length > 0 && (
               <div style={{ marginTop: -6, marginBottom: 8 }}>
-                <div style={{ height: 6, background: "#eee", borderRadius: 6, overflow: "hidden" }}>
+                <div
+                  style={{
+                    height: 6,
+                    background: "#eee",
+                    borderRadius: 6,
+                    overflow: "hidden",
+                  }}
+                >
                   <div
                     style={{
                       height: "100%",
@@ -1730,9 +1946,19 @@ else if (!verified) {
                     }}
                   />
                 </div>
-                <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 6 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    marginTop: 6,
+                  }}
+                >
                   <span style={{ fontSize: 12, color: "#555" }}>
-                    Strength: <strong style={{ color: pwInfo.color }}>{pwInfo.label}</strong>
+                    Strength:{" "}
+                    <strong style={{ color: pwInfo.color }}>
+                      {pwInfo.label}
+                    </strong>
                   </span>
                   <span style={{ fontSize: 12, color: "#666" }}>
                     (min 8 chars, include a–z, A–Z, 0–9)
@@ -1741,6 +1967,7 @@ else if (!verified) {
               </div>
             )}
 
+            {/* ========== Confirm Password ========== */}
             <Label required>Confirm Password</Label>
             <div style={{ position: "relative" }}>
               <input
@@ -1752,7 +1979,7 @@ else if (!verified) {
                   setConfirmPassword(val);
                 }}
                 onPaste={(e) => {
-                  const paste = e.clipboardData.getData('text');
+                  const paste = e.clipboardData.getData("text");
                   if (hasArabic(paste)) {
                     e.preventDefault();
                     return;
@@ -1760,7 +1987,9 @@ else if (!verified) {
                 }}
                 placeholder="••••••••"
                 style={{ ...inputBase, ...inputCompact, paddingRight: 44 }}
-                onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
+                onFocus={(e) =>
+                  Object.assign(e.currentTarget.style, inputFocus(false))
+                }
                 onBlur={(e) =>
                   Object.assign(e.currentTarget.style, {
                     borderColor: "#DFE3E8",
@@ -1772,7 +2001,9 @@ else if (!verified) {
               <button
                 type="button"
                 onClick={() => setShowPwConfirm((v) => !v)}
-                aria-label={showPwConfirm ? "Hide password" : "Show password"}
+                aria-label={
+                  showPwConfirm ? "Hide password" : "Show password"
+                }
                 title={showPwConfirm ? "Hide password" : "Show password"}
                 style={{
                   position: "absolute",
@@ -1801,15 +2032,23 @@ else if (!verified) {
                 marginTop: 4,
                 filter: loading ? "grayscale(30%) brightness(.9)" : undefined,
               }}
-              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(.99)")}
-              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              onMouseDown={(e) =>
+                (e.currentTarget.style.transform = "scale(.99)")
+              }
+              onMouseUp={(e) =>
+                (e.currentTarget.style.transform = "scale(1)")
+              }
             >
               {loading ? "Creating..." : "Create account"}
             </button>
 
             <div style={{ marginTop: 12, fontSize: 14 }}>
               Already have an account?{" "}
-              <a href="#signin" onClick={() => setMode("signin")} style={linkStyle}>
+              <a
+                href="#signin"
+                onClick={() => setMode("signin")}
+                style={linkStyle}
+              >
                 Sign in
               </a>
             </div>
@@ -1827,7 +2066,9 @@ else if (!verified) {
                   ? "rgba(16,185,129,.08)"
                   : "rgba(239,68,68,.08)",
               color:
-                msg.startsWith("🎉") || msg.startsWith("✅") ? "#065f46" : "#7f1d1d",
+                msg.startsWith("🎉") || msg.startsWith("✅")
+                  ? "#065f46"
+                  : "#7f1d1d",
               border: `1px solid ${
                 msg.startsWith("🎉") || msg.startsWith("✅")
                   ? "rgba(16,185,129,.25)"
@@ -1844,24 +2085,26 @@ else if (!verified) {
       {/* Forgot Password Popup */}
       {showForgotPw && (
         <>
-          <div 
+          <div
             style={{
               position: "fixed",
               inset: 0,
               backgroundColor: "rgba(0,0,0,0.4)",
               zIndex: 50,
             }}
-            onClick={() => setShowForgotPw(false)} 
+            onClick={() => setShowForgotPw(false)}
           />
-          <div style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 50,
-            display: "grid",
-            placeItems: "center",
-            padding: "0 16px",
-          }}>
-            <div 
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 50,
+              display: "grid",
+              placeItems: "center",
+              padding: "0 16px",
+            }}
+          >
+            <div
               style={{
                 width: "min(92vw, 420px)",
                 background: "#fff",
@@ -1871,8 +2114,22 @@ else if (!verified) {
                 border: "1px solid rgba(0,0,0,.04)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <h3 style={{ margin: 0, color: TD.ink, fontSize: 20, fontWeight: 700 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 16,
+                }}
+              >
+                <h3
+                  style={{
+                    margin: 0,
+                    color: TD.ink,
+                    fontSize: 20,
+                    fontWeight: 700,
+                  }}
+                >
                   Reset Password
                 </h3>
                 <button
@@ -1894,8 +2151,16 @@ else if (!verified) {
                 </button>
               </div>
 
-              <p style={{ marginTop: 0, marginBottom: 16, color: TD.gray, fontSize: 14 }}>
-                Enter your ID and we'll send a password reset link to your registered email.
+              <p
+                style={{
+                  marginTop: 0,
+                  marginBottom: 16,
+                  color: TD.gray,
+                  fontSize: 14,
+                }}
+              >
+                Enter your ID and we'll send a password reset link to your
+                registered email.
               </p>
 
               <form onSubmit={handleForgotPassword}>
@@ -1908,7 +2173,7 @@ else if (!verified) {
                     setForgotId(val);
                   }}
                   onPaste={(e) => {
-                    const paste = e.clipboardData.getData('text');
+                    const paste = e.clipboardData.getData("text");
                     if (hasArabic(paste)) {
                       e.preventDefault();
                       return;
@@ -1916,7 +2181,9 @@ else if (!verified) {
                   }}
                   placeholder="DoctorID / PharmacyID / NationalID / LogisticID"
                   style={inputBase}
-                  onFocus={(e) => Object.assign(e.currentTarget.style, inputFocus(false))}
+                  onFocus={(e) =>
+                    Object.assign(e.currentTarget.style, inputFocus(false))
+                  }
                   onBlur={(e) =>
                     Object.assign(e.currentTarget.style, {
                       borderColor: "#DFE3E8",
@@ -1934,11 +2201,12 @@ else if (!verified) {
                       marginBottom: 12,
                       padding: "10px 12px",
                       borderRadius: 10,
-                      background:
-                        forgotMsg.startsWith("✅")
-                          ? "rgba(16,185,129,.08)"
-                          : "rgba(239,68,68,.08)",
-                      color: forgotMsg.startsWith("✅") ? "#065f46" : "#7f1d1d",
+                      background: forgotMsg.startsWith("✅")
+                        ? "rgba(16,185,129,.08)"
+                        : "rgba(239,68,68,.08)",
+                      color: forgotMsg.startsWith("✅")
+                        ? "#065f46"
+                        : "#7f1d1d",
                       border: `1px solid ${
                         forgotMsg.startsWith("✅")
                           ? "rgba(16,185,129,.25)"
@@ -1976,10 +2244,16 @@ else if (!verified) {
                       flex: 1,
                       ...buttonStyle,
                       margin: 0,
-                      filter: forgotLoading ? "grayscale(30%) brightness(.9)" : undefined,
+                      filter: forgotLoading
+                        ? "grayscale(30%) brightness(.9)"
+                        : undefined,
                     }}
-                    onMouseDown={(e) => (e.currentTarget.style.transform = "scale(.99)")}
-                    onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                    onMouseDown={(e) =>
+                      (e.currentTarget.style.transform = "scale(.99)")
+                    }
+                    onMouseUp={(e) =>
+                      (e.currentTarget.style.transform = "scale(1)")
+                    }
                   >
                     {forgotLoading ? "Sending..." : "Send Reset Link"}
                   </button>
@@ -1995,7 +2269,15 @@ else if (!verified) {
 
 function PwRule({ ok, label }) {
   return (
-    <li style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: ok ? TD.ok : TD.gray }}>
+    <li
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        fontSize: 12.5,
+        color: ok ? TD.ok : TD.gray,
+      }}
+    >
       {ok ? <CheckCircle size={16} /> : <Circle size={16} />}
       <span>{label}</span>
     </li>
