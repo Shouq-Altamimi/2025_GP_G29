@@ -203,7 +203,7 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
 
           <SidebarItem variant="ghost" onClick={() => { setOpen(false); onLogout?.(); }}>
             <LogOut size={18} />
-            <span>Logout</span>
+            <span>Sign out</span>
           </SidebarItem>
         </nav>
       </aside>

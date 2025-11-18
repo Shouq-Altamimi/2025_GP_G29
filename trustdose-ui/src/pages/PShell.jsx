@@ -415,7 +415,7 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
       <div className="fixed inset-0 z-50 grid place-items-center px-4 overflow-y-auto py-8">
         <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold" style={{ color: C.ink }}>
+            <h3 className="text-lg font-semibold mb-2" style={{ color: C.ink }}>
               My Profile
             </h3>
             <button onClick={onClose} className="h-8 w-8 grid place-items-center rounded-lg hover:bg-gray-100" aria-label="Close">
@@ -423,19 +423,34 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
             </button>
           </div>
 
-          <div className="space-y-3 text-sm">
+          {/*<div className="space-y-3 text-sm">
             <Row label="Full Name" value={P.fullName} />
             <Row label="National ID" value={P.nationalId} />
             <Row label="Phone" value={P.phone} />
             <Row label="Gender" value={P.gender} />
             <Row label="Location" value={P.location} />
-          </div>
+          </div>*/}
+          <div className="rounded-xl border bg-white p-4 mb-4">
+  <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
+    Patient Info
+  </div>
+  <div className="space-y-2 text-sm">
+    <Row label="Full Name" value={P.fullName} />
+    <Row label="National ID" value={P.nationalId} />
+    <Row label="Phone" value={P.phone} />
+    <Row label="Gender" value={P.gender} />
+    <Row label="Location" value={P.location} />
+  </div>
+</div>
 
-          <div className="mt-4">
-            <label className="block text-sm text-gray-700 mb-1">Email</label>
+
+          <div className="rounded-xl border bg-white p-4 mb-4">
+            <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
+    Email
+  </div>
 
             {hasEmail ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 text-sm">
                 <span className="font-medium text-gray-800">{P.email}</span>
                 {P.emailVerifiedAt ? (
                   <span
@@ -489,11 +504,12 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
           </div>
 
           {hasEmail && (
-            <PatientPasswordSection patientDocId={patientDocId} onSaved={() => {}} color={C.primary} />
+            <PatientPasswordSection patientDocId={patientDocId} onSaved={() => {}} color={C.primary} />    
           )}
 
           <div className="mt-4 flex items-center justify-end">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg border">
+            <button onClick={onClose}   className="px-4 py-2 rounded-lg border hover:bg-gray-100 transition"
+>
               Close
             </button>
           </div>
@@ -614,7 +630,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
   };
 
   return (
-    <div className="mt-6 pt-6 border-t border-gray-200">
+    <div className="rounded-xl border bg-white p-4 shadow-sm mt-6">
       <div className="flex items-center gap-2 mb-4">
         <Lock size={18} style={{ color }} />
         <h4 className="font-semibold text-gray-800">Change Password</h4>

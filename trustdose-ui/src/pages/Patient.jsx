@@ -486,8 +486,8 @@ export default function PatientPage() {
               fontWeight: 500,
             }}
           >
-            ⚠️ You haven’t added an email address yet. <br />
-            Please add your email from{" "}
+⚠️ Please verify your email so you can change your password later. Open My Profile
+{" "}
             <button
               type="button"
               onClick={openProfile}
@@ -503,7 +503,6 @@ export default function PatientPage() {
             >
               My Profile
             </button>{" "}
-            to activate your account and receive notifications.
           </div>
         </div>
       )}

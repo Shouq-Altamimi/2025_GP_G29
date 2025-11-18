@@ -93,7 +93,7 @@ function Sidebar({ open, setOpen, onNav, onLogout }) {
             className="w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium text-white/90 hover:bg-white/10"
           >
             <LogOut size={18} />
-            <span>Logout</span>
+            <span>Sign out</span>
           </button>
         </nav>
       </aside>
