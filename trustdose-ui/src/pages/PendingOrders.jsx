@@ -323,7 +323,7 @@ export default function PendingOrders({ pharmacyId }) {
                       onClick={() => handleMarkReceived(r)}
                       disabled={!hasOnchainId || isProcessing}
                     >
-                      {isProcessing ? "Processing…" : "Mark as Received"}
+                      {isProcessing ? "Processing…" : "Mark as picked up"}
                     </button>
                   </div>
 
