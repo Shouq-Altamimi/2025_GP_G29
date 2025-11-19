@@ -197,6 +197,12 @@ export default function Doctor() {
   const mcRef = useRef(null);
   const [mcTouched, setMcTouched] = useState(false);
 
+  // ✅ popup state
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+
+  // ✅ key لإعادة تهيئة السيرتش بعد reset
+  const [medSearchKey, setMedSearchKey] = useState(0);
+
   useEffect(() => {
     (async () => {
       const snap = await getDocs(collection(db, "medicines"));
@@ -381,29 +387,22 @@ export default function Doctor() {
 
       await addDoc(collection(db, "prescriptions"), payload);
 
+      // نظف الفورم
       setSelectedMed(null);
       setDose("");
       setTimesPerDay("");
       setDurationDays("");
       setMedicalCondition("");
       setNotes("");
+      setMcTouched(false);
+      // ✅ إعادة تهيئة السيرتش عشان يختفي الإطار الأحمر
+      setMedSearchKey((k) => k + 1);
+
       setRxMsg("Prescription created & confirmed on-chain ✓");
       setTimeout(() => setRxMsg(""), 3000);
 
-      (async () => {
-        const pidHash = "0x" + (await sha256Hex(natId));
-        sessionStorage.setItem(
-          "td_patient",
-          JSON.stringify({
-            id: selectedPatient.id,
-            name: selectedPatient.name,
-          })
-        );
-        navigate(`/prescriptions?pid=${pidHash}`, {
-          replace: true,
-          state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
-        });
-      })();
+      // ✅ اظهر البوب اب – التنقل بيكون من زر OK
+      setShowSuccessPopup(true);
     } catch (e) {
       console.error("createPrescription failed:", e);
       setRxMsg(
@@ -490,12 +489,11 @@ export default function Doctor() {
 
             <button
               onClick={() => runSearch()}
-              disabled={q.length === 0}
-              className="px-6 py-3 text-white rounded-xl font-medium transition-all flex items-center gap-2"
+              disabled={q.length === 0 || isLoading}
+              className="px-6 py-3 text-white rounded-xl font-medium transition-all flex items-center gap-2 disabled:opacity-60"
               style={{
                 backgroundColor: q.length > 0 ? C.primary : "rgba(176, 140, 193, 0.4)",
                 cursor: q.length > 0 ? "pointer" : "not-allowed",
-                opacity: q.length > 0 ? 1 : 0.6,
               }}
             >
               <Search size={18} /> Search
@@ -628,6 +626,7 @@ export default function Doctor() {
 
               <div className="mb-4">
                 <MedicineSearch
+                  key={medSearchKey}
                   value={selectedMed?.label || ""}
                   data={medList}
                   placeholder="Type medicine name"
@@ -769,6 +768,7 @@ export default function Doctor() {
                     setNotes("");
                     setRxMsg("");
                     setMcTouched(false);
+                    setMedSearchKey((k) => k + 1); // ✅ reset للسيرتش
                   }}
                   className="px-6 py-3 rounded-xl font-medium"
                   style={{ background: "#F3F4F6", color: "#374151" }}
@@ -780,6 +780,63 @@ export default function Doctor() {
           </>
         )}
       </section>
+
+      {/* ✅ Success popup */}
+      {showSuccessPopup && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+          <div
+            className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border"
+            style={{
+              background: C.pale,
+              borderColor: C.primary,
+            }}
+          >
+            <div className="flex flex-col items-center text-center">
+              <div
+                className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
+                style={{ backgroundColor: "#ECFDF3" }}
+              >
+                <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
+              </div>
+
+              <h3 className="text-lg font-semibold mb-1" style={{ color: C.ink }}>
+                Prescription created successfully
+              </h3>
+
+              <p className="text-sm mb-4" style={{ color: "#4B5563" }}>
+                The prescription has been confirmed on-chain and saved to the system.
+              </p>
+
+              <button
+                onClick={async () => {
+                  setShowSuccessPopup(false);
+                  if (!selectedPatient?.id) return;
+
+                  const pidHash = "0x" + (await sha256Hex(selectedPatient.id.toString()));
+                  sessionStorage.setItem(
+                    "td_patient",
+                    JSON.stringify({
+                      id: selectedPatient.id,
+                      name: selectedPatient.name,
+                    })
+                  );
+                  navigate(`/prescriptions?pid=${pidHash}`, {
+                    replace: true,
+                    state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
+                  });
+                }}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
+                style={{
+                  backgroundColor: C.primary,
+                  color: "#FFFFFF",
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
