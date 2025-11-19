@@ -798,7 +798,7 @@ export default function TrustDoseAuth() {
       }
 
       // 3) Logistics SHA256
-      else if (!verified && role === "logistics" && user.passwordHash) {
+      /*else if (!verified && role === "logistics" && user.passwordHash) {
         if (!pass) {
           setMsg("Please enter your password.");
           return;
@@ -810,10 +810,39 @@ export default function TrustDoseAuth() {
           return;
         }
         verified = true;
-      }
+      }*/
+     /////////////////////////////////////////////////////////////////
+     // 3) Logistics SHA256 (stored in `password`)
+else if (!verified && role === "logistics" && user.password) {
+  if (!pass) {
+    setMsg("Please enter your password.");
+    return;
+  }
+
+  const stored = String(user.password).trim();
+
+  // hashed SHA256 (64 hex) – نفس اللي نخزّنه من LogisticsHeader
+  if (/^[a-f0-9]{64}$/i.test(stored)) {
+    const ok = await verifyPasswordSHA256(pass, stored);
+    if (!ok) {
+      setMsg("❌ ID or password incorrect.");
+      return;
+    }
+    verified = true;
+  }
+  else if (pass === stored) {
+    // دعم قديم لو كان الباسورد نص عادي
+    verified = true;
+  } else {
+    setMsg("❌ ID or password incorrect.");
+    return;
+  }
+}
+
 
       // 4) Plain / sha256 password
-      else if (!verified && "password" in user) {
+      //else if (!verified && "password" in user) {
+      else if (!verified && "password" in user && role !== "logistics") {
         if (!pass) {
           setMsg("Please enter your password.");
           return;
