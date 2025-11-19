@@ -22,7 +22,7 @@ import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "luci
 import PRESCRIPTION from "../contracts/Prescription.json";
 
 const C = { primary: "#B08CC1", primaryDark: "#B08CC1", ink: "#4A2C59", pale: "#F6F1FA" };
-const CONTRACT_ADDRESS = "0x8F89CF86FaE84195F7DA725Cb157b1b90f7642Bc";
+const CONTRACT_ADDRESS = "0x5174A47B1A0f1842771B317e286f7feBE81C1395";
 
 const OTHER_MAX = 20;
 const LIMITS = Object.freeze({
