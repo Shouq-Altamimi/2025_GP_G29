@@ -310,12 +310,11 @@ export default function Logistics() {
                         onClick={() => handleAccept(r)}
                         disabled={disabled}
                       >
-                        {isPending ? (
-                          <Loader2 size={16} className="animate-spin text-white" />
-                        ) : (
-                          <Check size={16} className="text-white" />
-                        )}
-                        <span className="text-white">Accept Delivery</span>
+                        {isPending && (
+                        <Loader2 size={16} className="animate-spin text-white" />
+                      )}
+                      <span className="text-white">Accept Delivery</span>
+
                       </button>
                     </div>
                   </div>
