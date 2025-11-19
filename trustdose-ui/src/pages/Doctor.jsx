@@ -768,7 +768,7 @@ export default function Doctor() {
                     setNotes("");
                     setRxMsg("");
                     setMcTouched(false);
-                    setMedSearchKey((k) => k + 1); // ✅ reset للسيرتش
+                    setMedSearchKey((k) => k + 1); 
                   }}
                   className="px-6 py-3 rounded-xl font-medium"
                   style={{ background: "#F3F4F6", color: "#374151" }}
@@ -781,7 +781,6 @@ export default function Doctor() {
         )}
       </section>
 
-      {/* ✅ Success popup */}
       {showSuccessPopup && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
           <div
