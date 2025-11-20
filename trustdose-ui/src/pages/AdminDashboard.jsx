@@ -4,7 +4,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { X, LayoutDashboard, UserPlus, LogOut } from "lucide-react";
+import { X, LayoutDashboard, UserPlus, LogOut, AlertCircle } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
@@ -13,7 +13,7 @@ import app, { db } from "../firebase";
 import {
   collection, addDoc, serverTimestamp,
   doc, updateDoc, runTransaction,
-  query, orderBy, limit, getDocs
+  query, orderBy, limit, getDocs, where   // 👈 أضفنا where هنا
 } from "firebase/firestore";
 import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "firebase/auth";
 
@@ -89,6 +89,19 @@ async function sha256Hex(text) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/* هل الخطأ من المستخدم (كنسل ميتاماسك)؟ */
+function isUserRejectedError(e) {
+  const code = e?.code || e?.error?.code;
+  const msg = String(e?.message || e?.error?.message || "").toLowerCase();
+  return (
+    code === 4001 ||
+    code === "ACTION_REJECTED" ||
+    msg.includes("user rejected") ||
+    msg.includes("request was declined") ||
+    msg.includes("request was rejected")
+  );
+}
+
 /* =========================
    Firestore
    ========================= */
@@ -138,6 +151,15 @@ async function allocateSequentialAccessId() {
     candidate = `Dr-${String(n).padStart(3, "0")}`;
   }
   throw new Error("Failed to allocate sequential Access ID. Please try again.");
+}
+
+/* ✅ تشيك عدم تكرار License Number */
+async function isLicenseTaken(licenseNumber) {
+  if (!licenseNumber) return false;
+  const qSnap = await getDocs(
+    query(collection(db, "doctors"), where("licenseNumber", "==", licenseNumber))
+  );
+  return !qSnap.empty;
 }
 
 /* =========================
@@ -287,7 +309,7 @@ function fieldClasses(valid, dirty) {
   const neutral = "border-gray-200 focus:ring-[#B08CC1]";
   if (!dirty) return neutral;
   if (!valid) return "border-rose-500 focus:ring-rose-300";
-  return neutral; // صحيح: محايد
+  return neutral;
 }
 function ErrorMsg({ children }) {
   if (!children) return null;
@@ -309,7 +331,7 @@ export default function AdminAddDoctorOnly() {
   }
 
   const HOSPITAL_NAME = "Dr. Sulaiman Al Habib Hospital";
-  const [contractAddress, setContractAddress] = useState("0x28900a3A92C4b588990DF77e11491380B66842a8");
+  const [contractAddress, setContractAddress] = useState("0xEe83DeA7b37B086B8695193BDf740B7F417Da952");
   const [DoctorID, setDoctorID] = useState("");
   const [healthFacility] = useState(HOSPITAL_NAME);
   const [licenseNumber, setLicenseNumber] = useState("");
@@ -323,6 +345,9 @@ export default function AdminAddDoctorOnly() {
 
   const [dirty, setDirty] = useState({ contract: false, name: false, spec: false, lic: false, wallet: false });
 
+  // رسالة خطأ MetaMask
+  const [mmError, setMmError] = useState("");
+
   // Validations
   const vContract = validateContract(contractAddress);
   const vName     = validateName(name);
@@ -333,6 +358,7 @@ export default function AdminAddDoctorOnly() {
 
   async function connectMetaMask() {
     try {
+      setMmError("");
       if (!window?.ethereum) { setStatus("⚠️ Please install MetaMask first."); return; }
       await window.ethereum.request({ method: "eth_requestAccounts" });
       const provider = await getProvider();
@@ -342,7 +368,11 @@ export default function AdminAddDoctorOnly() {
       setDirty((d) => ({ ...d, wallet: true }));
       setStatus("✅ Address fetched from MetaMask.");
     } catch (e) {
-      setStatus(`❌ ${e?.message || e}`);
+      if (isUserRejectedError(e)) {
+        setMmError("MetaMask request was declined. Please try again.");
+      } else {
+        setStatus(`❌ ${e?.message || e}`);
+      }
     }
   }
 
@@ -360,9 +390,19 @@ export default function AdminAddDoctorOnly() {
 
   async function handleSave() {
     try {
+      setMmError("");
       setSaving(true);
       if (!formOk) throw new Error("Please fill all required fields correctly");
       await ensureAuthReady();
+
+      // ✅ أول شيء: تأكد أن الـ License Number غير مكرر
+      setStatus("⏳ Checking license number…");
+      const taken = await isLicenseTaken(licenseNumber);
+      if (taken) {
+        setStatus("❌ This license number is already registered for a doctor.");
+        setSaving(false);
+        return;
+      }
 
       setStatus("⏳ Allocating sequential Access ID…");
       const id = await allocateSequentialAccessId();
@@ -411,7 +451,12 @@ export default function AdminAddDoctorOnly() {
       setAccessId(previewNext);
       setDoctorID(previewNext);
     } catch (e) {
-      setStatus(`❌ ${e?.message || e}`);
+      if (isUserRejectedError(e)) {
+        setMmError("MetaMask request was declined. Please try again.");
+        setStatus("");
+      } else {
+        setStatus(`❌ ${e?.message || e}`);
+      }
     } finally {
       setSaving(false);
     }
@@ -419,8 +464,20 @@ export default function AdminAddDoctorOnly() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Header without logout button */}
+      {/* Header */}
       <Header hideMenu={false} onMenuClick={() => setOpen(true)} />
+
+      {/* 🔴 نفس الاليرت تبع PendingOrders */}
+      {mmError && (
+        <div className="w-full">
+          <div className="mx-auto w-full max-w-6xl px-4 mt-4">
+            <div className="mb-4 p-4 rounded-xl flex items-center gap-2 text-red-700 bg-red-100 border border-red-300">
+              <AlertCircle size={20} />
+              <span className="text-sm font-medium">{mmError}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <section className="mx-auto w-full max-w-5xl px-6 mt-10 mb-4">
         <div className="flex items-center gap-0">
@@ -561,7 +618,7 @@ export default function AdminAddDoctorOnly() {
               </button>
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              Please click "Use MetaMask" to automatically fill the wallet address.
+              Please click &quot;Use MetaMask&quot; to automatically fill the wallet address.
             </p>
             <ErrorMsg>{dirty.wallet && !vWallet.ok ? vWallet.err : ""}</ErrorMsg>
           </div>
