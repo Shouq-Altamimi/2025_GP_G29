@@ -3,6 +3,7 @@
 "use client";
 
 import React from "react";
+import { useOutletContext } from "react-router-dom";
 import { db } from "../firebase";
 import {
   collection, query, where, getDocs, orderBy,
@@ -18,7 +19,7 @@ const RX_STATUS = { DELIVERY_REQUESTED: "DELIVERY_REQUESTED", PHARM_ACCEPTED: "P
 const PAGE_SIZE = 6;
 
 // ======== عقد DeliveryAccept ========
-const DELIVERY_ACCEPT_ADDRESS = "0xAd3f5Ac66c4b6fce6C32E7412f57E24A55D40085";
+const DELIVERY_ACCEPT_ADDRESS = "0xb76558E558a6786CF9F3358F69ED71f4ec10E18b";
 const DELIVERY_ACCEPT_ABI = DELIVERY_ACCEPT?.abi ?? [];
 
 /* ========== helpers ========== */
@@ -47,6 +48,10 @@ export default function DeliveryOrders({ pharmacyId }) {
   // ✅ حالة البوب أب (نفس فكرة الصيدلية بس بعنوان/رسالة)
   const [successModal, setSuccessModal] = React.useState(null);
 
+  // ✅ نجيب setPageError من الـ Shell عشان نظهر البانر الأحمر فوق الـ Welcome
+  const outletCtx = useOutletContext?.() || {};
+  const setPageError = outletCtx.setPageError || (() => {});
+
   React.useEffect(() => {
     let mounted = true;
 
@@ -54,6 +59,7 @@ export default function DeliveryOrders({ pharmacyId }) {
       setLoading(true);
       setRows([]);
       setMsg("");
+      setPageError(""); // نمسح أي خطأ قديم في البانر
 
       const col = collection(db, "prescriptions");
 
@@ -161,7 +167,7 @@ export default function DeliveryOrders({ pharmacyId }) {
           typeof a.prescriptionNum === "number"
             ? a.prescriptionNum
             : (() => {
-                const n = Number(a.prescriptionId?.toString().replace(/^[a-z]/i, ""));
+                const n = Number(a.prescriptionId?.toString().replace(/^[a-z]/i, "")); // يشيل أول حرف لو موجود
                 return Number.isNaN(n) ? 0 : n;
               })();
 
@@ -169,7 +175,7 @@ export default function DeliveryOrders({ pharmacyId }) {
           typeof b.prescriptionNum === "number"
             ? b.prescriptionNum
             : (() => {
-                const n = Number(b.prescriptionId?.toString().replace(/^[a-z]/i, ""));
+                const n = Number(b.prescriptionId?.toString().replace(/^[a-z]/i, "")); // يشيل أول حرف لو موجود
                 return Number.isNaN(n) ? 0 : n;
               })();
 
@@ -185,7 +191,7 @@ export default function DeliveryOrders({ pharmacyId }) {
 
     fetchAllSensitive();
     return () => { mounted = false; };
-  }, [pharmacyId]);
+  }, [pharmacyId, setPageError]);
 
   const total = rows.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -205,6 +211,7 @@ export default function DeliveryOrders({ pharmacyId }) {
     if (pending[key]) return;
 
     setPending((s) => ({ ...s, [key]: true }));
+    setPageError(""); // نمسح الخطأ قبل ما نبدأ محاولة جديدة
 
     try {
       const ref = doc(db, "prescriptions", r._docId);
@@ -214,6 +221,7 @@ export default function DeliveryOrders({ pharmacyId }) {
       const freshData = fresh.data();
 
       if (freshData.dispensed === true) {
+        // لسه نخليه Alert لأنه حالة مختلفة عن متاماسك
         alert("This prescription was already dispensed. You cannot accept delivery.");
         setRows((arr) => arr.filter((x) => x._docId !== r._docId));
         return;
@@ -253,14 +261,21 @@ export default function DeliveryOrders({ pharmacyId }) {
 
       console.log("Marked acceptDelivery", txHash ? "with tx " + txHash : "without on-chain tx");
 
-      // ✅ بوب أب نفس اللي في PickUpSection (نفس الشكل بس نص مختلف)
+      // ✅ بوب أب نفس اللي في PendingOrders / PickUpSection
       setSuccessModal({
         title: "Sensitive prescription accepted",
         message: "If accepted by logistics, the prescription will appear in Pending Orders.",
       });
     } catch (err) {
       console.error(err);
-      alert(err?.message || "Accept failed");
+
+      // ✅ هنا نضبط رسالة متاماسك بالضبط زي الصفحات الثانية
+      let m = "Error occurred. Please try again.";
+      if (err?.code === "ACTION_REJECTED" || err?.code === 4001) {
+        m = "MetaMask request was declined. Please try again.";
+      }
+
+      setPageError(m); // تظهر كبانر أحمر فوق الـ Welcome من الـ Shell
     } finally {
       setPending((s) => {
         const t = { ...s };

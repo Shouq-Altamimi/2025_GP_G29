@@ -7,6 +7,7 @@ import {
   AlertCircle,
   CheckCircle2,
 } from "lucide-react";
+import { useOutletContext } from "react-router-dom";
 
 import { db } from "../firebase";
 import {
@@ -23,8 +24,8 @@ import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
-const PRESCRIPTION_ADDRESS = "0xC836394301102C32c44CC9EFAB382fc6Dba7Cf8c";
-const DISPENSE_ADDRESS = "0x14F49622FB1Dac0CA6C5841604d82d5ad3a84a6d";
+const PRESCRIPTION_ADDRESS = "0x8B1346cb92a09f6ad0A86f2f1C68FE530e8DB2Ad";
+const DISPENSE_ADDRESS = "0x36bb5Ed61C0E726B7a789EF0492dAD21D581330C";
 
 // ===== Pagination size =====
 const PAGE_SIZE = 6;
@@ -232,6 +233,10 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [popupRxRef, setPopupRxRef] = useState("");
 
+  // ✅ نجيب setPageError من الـ PharmacyShell عشان نطلع البانر الأحمر فوق الـ Welcome
+  const outletCtx = useOutletContext?.() || {};
+  const setPageError = outletCtx.setPageError || (() => {});
+
   const raw = String(q || "").trim();
   const isPatientIdMode = /^\d/.test(raw);
   const natDigitsAll = toEnglishDigits(raw).replace(/\D/g, "");
@@ -337,6 +342,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     setResults([]);
     setInfoMsg("");
     setPage(0); // reset to first page on new search
+    setPageError(""); // نمسح أي بانر قديم
 
     if (validationMsg) {
       setLoading(false);
@@ -465,6 +471,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       console.error(e);
       setError("Error fetching from database. Please try again.");
       setResults([]);
+      setPageError("Error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -478,6 +485,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     setInfoMsg("");
     setValidationMsg("");
     setPage(0);
+    setPageError("");
   }
 
   async function markDispensed(item) {
@@ -499,6 +507,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       setLoading(true);
       setError("");
       setInfoMsg("");
+      setPageError(""); // نمسح أي بانر خطأ قبل ما نبدأ محاولة جديدة
 
       const signer = await getSignerEnsured();
       const pharmacistAddr = await signer.getAddress();
@@ -579,7 +588,15 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       setShowSuccessPopup(true);
     } catch (e) {
       console.error(e);
-      setError(niceErr(e));
+
+      // ✅ MetaMask رفضت → نرسل نفس الرسالة للـ Shell عشان يطلع البانر الأحمر
+      if (e?.code === "ACTION_REJECTED" || e?.code === 4001) {
+        setPageError("MetaMask request was declined. Please try again.");
+        setError(""); // ما نعرض رسالة ثانية تحت
+      } else {
+        setError(niceErr(e));
+        setPageError("Error occurred. Please try again.");
+      }
     } finally {
       setLoading(false);
       setDispensingId(null);

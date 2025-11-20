@@ -2,6 +2,7 @@
 "use client";
 
 import React from "react";
+import { useOutletContext } from "react-router-dom";
 import { db } from "../firebase";
 import {
   collection,
@@ -17,9 +18,9 @@ import {
 // ===== Ethers / Contracts =====
 import { ethers } from "ethers";
 import LOGISTICS_RECEIVE from "../contracts/LogisticsReceive.json";
-import { Loader2, FileText, CheckCircle2 } from "lucide-react"; // ✅ أضفنا CheckCircle2
+import { Loader2, FileText, CheckCircle2 } from "lucide-react";
 
-const LOGISTICS_RECEIVE_ADDRESS = "0x3BE5A2b6d460310E969C4cdc2e423c5534B39E5d";
+const LOGISTICS_RECEIVE_ADDRESS = "0xD06c6AfeEB49a7eB9d8F69cEb51a208862BCb645";
 
 const C = {
   primary: "#B08CC1",
@@ -57,12 +58,16 @@ async function getSignerEnsured() {
 export default function PendingOrders({ pharmacyId }) {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState([]);
-  const [msg, setMsg] = React.useState("");
+  const [msg, setMsg] = React.useState(""); // رسالة "No pending..."
   const [page, setPage] = React.useState(0);
   const [processingId, setProcessingId] = React.useState(null);
 
-  // ✅ حالة البوب أب
+  // ✅ بوب أب النجاح
   const [successModal, setSuccessModal] = React.useState(null);
+
+  // ✅ ناخذ setPageError من الـ Shell
+  const outletCtx = useOutletContext?.() || {};
+  const setPageError = outletCtx.setPageError || (() => {});
 
   React.useEffect(() => {
     let mounted = true;
@@ -70,6 +75,8 @@ export default function PendingOrders({ pharmacyId }) {
     async function fetchPending() {
       setLoading(true);
       setRows([]);
+      setMsg("");
+      setPageError(""); // نمسح أي خطأ قديم
 
       const col = collection(db, "prescriptions");
 
@@ -89,6 +96,7 @@ export default function PendingOrders({ pharmacyId }) {
           where("sensitivity", "==", "Sensitive"),
           where("acceptDelivery", "==", true),
           where("dispensed", "==", false),
+          where("logisticsAccepted", "==", true),
         ]);
       }
 
@@ -96,6 +104,7 @@ export default function PendingOrders({ pharmacyId }) {
         where("sensitivity", "==", "Sensitive"),
         where("acceptDelivery", "==", true),
         where("dispensed", "==", false),
+        where("logisticsAccepted", "==", true),
       ]);
 
       let snap = null;
@@ -147,11 +156,14 @@ export default function PendingOrders({ pharmacyId }) {
           updatedAt: formatFsTimestamp(x.updatedAt),
           dispensed: !!x.dispensed,
           acceptDelivery: !!x.acceptDelivery,
+          logisticsAccepted: !!x.logisticsAccepted,
           onchainId,
         };
       });
 
-      const filtered = items.filter((r) => r.acceptDelivery && !r.dispensed);
+      const filtered = items.filter(
+        (r) => r.acceptDelivery && r.logisticsAccepted && !r.dispensed
+      );
 
       filtered.sort((a, b) => {
         return (b.createdAtTS?.getTime?.() ?? 0) - (a.createdAtTS?.getTime?.() ?? 0);
@@ -165,12 +177,17 @@ export default function PendingOrders({ pharmacyId }) {
 
     fetchPending();
     return () => (mounted = false);
-  }, [pharmacyId]);
+  }, [pharmacyId, setPageError]);
 
   async function handleMarkReceived(r) {
     try {
+      setMsg("");
+      setPageError("");
+
       if (!Number.isFinite(r.onchainId)) {
-        alert("Missing on-chain id.");
+        const m = "Missing on-chain id.";
+        setMsg(m);
+        setPageError(m);
         return;
       }
 
@@ -199,14 +216,21 @@ export default function PendingOrders({ pharmacyId }) {
 
       setRows((old) => old.filter((x) => x._docId !== r._docId));
 
-      // ✅ بوب أب تأكيد أن الصيدلي صرفها وسلّمها للوجستك
+      // ✅ نفس عنوان/رسالة البوب-أب
       setSuccessModal({
-        title: " Prescription dispensed successfully",
+        title: "Prescription dispensed successfully",
         message:
           "The prescription has been dispensed and handed over to logistics.",
       });
     } catch (err) {
-      alert(err.message || "On-chain error.");
+      console.error("Error:", err);
+
+      let m = "Error occurred. Please try again.";
+      if (err?.code === "ACTION_REJECTED" || err?.code === 4001) {
+        m = "MetaMask request was declined. Please try again.";
+      }
+      setMsg(m);
+      setPageError(m);
     } finally {
       setProcessingId(null);
     }
@@ -234,8 +258,7 @@ export default function PendingOrders({ pharmacyId }) {
   return (
     <div className="p-6">
       <div className="mx-auto w-full max-w-6xl px-4">
-
-        {/* ✅ نفس بوب أب الصيدلية بالضبط */}
+        {/* ✅ Success popup مطابق للصيدلية والدكتور */}
         {successModal && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
             <div
@@ -260,10 +283,7 @@ export default function PendingOrders({ pharmacyId }) {
                   {successModal.title}
                 </h3>
 
-                <p
-                  className="text-sm mb-4"
-                  style={{ color: "#4B5563" }}
-                >
+                <p className="text-sm mb-4" style={{ color: "#4B5563" }}>
                   {successModal.message}
                 </p>
 
@@ -281,8 +301,6 @@ export default function PendingOrders({ pharmacyId }) {
             </div>
           </div>
         )}
-
-        {msg && <p className="text-gray-600">{msg}</p>}
 
         {pageItems.length > 0 && (
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -307,7 +325,6 @@ export default function PendingOrders({ pharmacyId }) {
                   key={r._docId}
                   className="p-4 border rounded-xl bg-white shadow-sm"
                 >
-                  {/* أعلى الكارد */}
                   <div>
                     <div className="text-lg font-bold text-slate-800 truncate">
                       {r.medicineLabel}
@@ -351,7 +368,6 @@ export default function PendingOrders({ pharmacyId }) {
                       </span>
                     </div>
 
-                    {/* مساحة النوتس — ثابتة لجميع الكروت */}
                     <div className="mt-1 min-h-[28px]">
                       {!!r.notes && (
                         <div className="text-sm text-slate-700 font-semibold">
@@ -362,7 +378,6 @@ export default function PendingOrders({ pharmacyId }) {
                     </div>
                   </div>
 
-                  {/* زر Mark as Received بنفس ستايل Confirm & Dispense */}
                   <div className="mt-1">
                     <button
                       onClick={() => handleMarkReceived(r)}
@@ -402,7 +417,6 @@ export default function PendingOrders({ pharmacyId }) {
                     </button>
                   </div>
 
-                  {/* التاريخ */}
                   <div className="text-right text-xs text-gray-500 mt-1">
                     Prescription issued on {dateTime}
                   </div>
@@ -410,6 +424,13 @@ export default function PendingOrders({ pharmacyId }) {
               );
             })}
           </section>
+        )}
+
+        {/* No pending prescriptions message */}
+        {total === 0 && (
+          <p className="text-gray-600 mt-4">
+            {msg || "No pending delivery prescriptions."}
+          </p>
         )}
 
         {/* Pagination */}

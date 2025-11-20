@@ -14,7 +14,7 @@ import {
 } from "firebase/firestore";
 import {
   ClipboardList, PackageCheck, Clock, User, LogOut, X,
-  Eye, EyeOff, Lock, CheckCircle, XCircle, Circle
+  Eye, EyeOff, Lock, CheckCircle, XCircle, Circle, AlertCircle
 } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
@@ -156,6 +156,9 @@ export default function PharmacyShell() {
   const [showEmailAlert, setShowEmailAlert] = useState(false);
   const [showResetAlert, setShowResetAlert] = useState(false);
 
+  // ✅ هنا نمسك رسالة الخطأ الجاية من PendingOrders
+  const [pageError, setPageError] = useState("");
+
   useEffect(() => {
     if (!isPharmacyPage) return;
     (async () => {
@@ -184,6 +187,11 @@ export default function PharmacyShell() {
       );
     })();
   }, [isPharmacyPage, location.pathname]);
+
+  // ✅ كل ما تغيّرت الصفحة نمسح رسالة الخطأ
+  useEffect(() => {
+    setPageError("");
+  }, [location.pathname]);
 
   function signOut() {
     localStorage.clear();
@@ -223,6 +231,16 @@ export default function PharmacyShell() {
         </AlertBanner>
       )}
 
+      {/* ✅ بانر الخطأ الأحمر (زي اللوجستكس بالضبط) فوق الـ Welcome */}
+      {pageError && (
+        <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
+          <div className="mb-4 p-4 rounded-xl flex items-center gap-2 text-red-700 bg-red-100 border border-red-300">
+            <AlertCircle size={20} />
+            <span className="text-sm font-medium">{pageError}</span>
+          </div>
+        </div>
+      )}
+
       {/* Welcome (تحت التنبيهات وفوق المحتوى) */}
       {isPharmacyPage && (
         <div className="mx-auto w-full max-w-6xl px-4 md:px-6 mt-4">
@@ -242,7 +260,8 @@ export default function PharmacyShell() {
       )}
 
       <div className="flex-1">
-        <Outlet />
+        {/* ✅ نمرر setPageError للصفحات الداخلية (مثل PendingOrders) */}
+        <Outlet context={{ setPageError }} />
       </div>
 
       <Footer />
@@ -339,6 +358,10 @@ function Row({ label, value }) {
     </div>
   );
 }
+
+/* ================= Account Modal ================= */
+// ... (خلي باقي الكود كما هو – نفس اللي عندك في الملف فوق, ما عدلته)
+
 
 /* ================= Account Modal ================= */
 function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
