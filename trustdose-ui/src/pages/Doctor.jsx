@@ -197,10 +197,8 @@ export default function Doctor() {
   const mcRef = useRef(null);
   const [mcTouched, setMcTouched] = useState(false);
 
-  // ✅ popup state
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
-  // ✅ key لإعادة تهيئة السيرتش بعد reset
   const [medSearchKey, setMedSearchKey] = useState(0);
 
   useEffect(() => {
@@ -387,7 +385,6 @@ export default function Doctor() {
 
       await addDoc(collection(db, "prescriptions"), payload);
 
-      // نظف الفورم
       setSelectedMed(null);
       setDose("");
       setTimesPerDay("");
@@ -395,13 +392,11 @@ export default function Doctor() {
       setMedicalCondition("");
       setNotes("");
       setMcTouched(false);
-      // ✅ إعادة تهيئة السيرتش عشان يختفي الإطار الأحمر
       setMedSearchKey((k) => k + 1);
 
       setRxMsg("Prescription created & confirmed on-chain ✓");
       setTimeout(() => setRxMsg(""), 3000);
 
-      // ✅ اظهر البوب اب – التنقل بيكون من زر OK
       setShowSuccessPopup(true);
     } catch (e) {
       console.error("createPrescription failed:", e);

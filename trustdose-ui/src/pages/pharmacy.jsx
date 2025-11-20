@@ -24,7 +24,7 @@ import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
 const PRESCRIPTION_ADDRESS = "0x853A4f3FCa6105D96eC8D48CE9300f0de4Fb6299";
-const DISPENSE_ADDRESS = "0xbBeC5824104D5f95c86A6E5166C310190c0184B7";
+const DISPENSE_ADDRESS = "0xAB9CB5fb894ff87756D868fdD590DBF8133B1658";
 
 // ===== Pagination size =====
 const PAGE_SIZE = 6;
