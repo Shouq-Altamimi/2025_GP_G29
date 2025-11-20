@@ -34,12 +34,15 @@ import Admin from "./pages/Admin";
 import LogisticsHeader from "./pages/LogisticsHeader.jsx";
 import Logistics from "./pages/Logistics.jsx";
 
+// 🔥 Welcome Page (مضاف الآن)
+import Welcome from "./pages/Welcome";
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* افتراضي → auth */}
-        <Route path="/" element={<Navigate to="/auth" replace />} />
+        {/* بدل ما يروح لـ auth → الآن يفتح Welcome */}
+        <Route path="/" element={<Welcome />} />
 
         {/* صفحات عامة */}
         <Route path="/auth" element={<TrustDoseAuth />} />
