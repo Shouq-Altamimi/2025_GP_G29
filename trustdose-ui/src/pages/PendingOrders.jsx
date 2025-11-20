@@ -17,6 +17,7 @@ import {
 // ===== Ethers / Contracts =====
 import { ethers } from "ethers";
 import LOGISTICS_RECEIVE from "../contracts/LogisticsReceive.json";
+import { Loader2, FileText, CheckCircle2 } from "lucide-react"; // ✅ أضفنا CheckCircle2
 
 const LOGISTICS_RECEIVE_ADDRESS = "0xA27DF9acA8B21CcfEcF0458F7e0287d402e52c78";
 
@@ -59,6 +60,9 @@ export default function PendingOrders({ pharmacyId }) {
   const [msg, setMsg] = React.useState("");
   const [page, setPage] = React.useState(0);
   const [processingId, setProcessingId] = React.useState(null);
+
+  // ✅ حالة البوب أب
+  const [successModal, setSuccessModal] = React.useState(null);
 
   React.useEffect(() => {
     let mounted = true;
@@ -194,6 +198,13 @@ export default function PendingOrders({ pharmacyId }) {
       });
 
       setRows((old) => old.filter((x) => x._docId !== r._docId));
+
+      // ✅ بوب أب تأكيد أن الصيدلي صرفها وسلّمها للوجستك
+      setSuccessModal({
+        title: " Prescription dispensed successfully",
+        message:
+          "The prescription has been dispensed and handed over to logistics.",
+      });
     } catch (err) {
       alert(err.message || "On-chain error.");
     } finally {
@@ -223,6 +234,54 @@ export default function PendingOrders({ pharmacyId }) {
   return (
     <div className="p-6">
       <div className="mx-auto w-full max-w-6xl px-4">
+
+        {/* ✅ نفس بوب أب الصيدلية بالضبط */}
+        {successModal && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+            <div
+              className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border"
+              style={{
+                background: "#F6F1FA",
+                borderColor: C.primary,
+              }}
+            >
+              <div className="flex flex-col items-center text-center">
+                <div
+                  className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
+                  style={{ backgroundColor: "#ECFDF3" }}
+                >
+                  <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
+                </div>
+
+                <h3
+                  className="text-lg font-semibold mb-1"
+                  style={{ color: C.ink }}
+                >
+                  {successModal.title}
+                </h3>
+
+                <p
+                  className="text-sm mb-4"
+                  style={{ color: "#4B5563" }}
+                >
+                  {successModal.message}
+                </p>
+
+                <button
+                  onClick={() => setSuccessModal(null)}
+                  className="px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
+                  style={{
+                    backgroundColor: C.primary,
+                    color: "#FFFFFF",
+                  }}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {msg && <p className="text-gray-600">{msg}</p>}
 
         {pageItems.length > 0 && (
@@ -303,27 +362,43 @@ export default function PendingOrders({ pharmacyId }) {
                     </div>
                   </div>
 
-                  {/* زر Mark as Received */}
+                  {/* زر Mark as Received بنفس ستايل Confirm & Dispense */}
                   <div className="mt-1">
                     <button
-                      className="w-max px-4 py-2 text-sm rounded-lg flex items-center gap-1.5 
-                                 font-medium shadow-sm text-white disabled:opacity-50 transition-colors"
-                      style={{
-                        backgroundColor: isProcessing ? "#D8C2E6" : C.primary,
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isProcessing)
-                          e.currentTarget.style.backgroundColor =
-                            C.primaryDark;
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isProcessing)
-                          e.currentTarget.style.backgroundColor = C.primary;
-                      }}
                       onClick={() => handleMarkReceived(r)}
                       disabled={!hasOnchainId || isProcessing}
+                      className="w-max px-4 py-2 text-sm rounded-lg transition-colors
+                                 flex items-center gap-1.5 font-medium shadow-sm
+                                 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                      style={{
+                        backgroundColor: isProcessing
+                          ? "rgba(176,140,193,0.6)"
+                          : C.primary,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!e.currentTarget.disabled) {
+                          e.currentTarget.style.backgroundColor = C.primaryDark;
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!e.currentTarget.disabled) {
+                          e.currentTarget.style.backgroundColor = C.primary;
+                        }
+                      }}
                     >
-                      {isProcessing ? "Processing…" : "Mark as picked up"}
+                      {isProcessing ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin text-white" />
+                          <span className="text-white">Processing…</span>
+                        </>
+                      ) : (
+                        <>
+                          <FileText size={16} className="text-white" />
+                          <span className="text-white">
+                            {hasOnchainId ? "Confirm & Dispens" : "Not eligible"}
+                          </span>
+                        </>
+                      )}
                     </button>
                   </div>
 
@@ -364,7 +439,7 @@ export default function PendingOrders({ pharmacyId }) {
                   onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
                   disabled={page >= pageCount - 1}
                 >
-                  Next →
+                  Next →{" "}
                 </button>
               </div>
             </div>

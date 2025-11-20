@@ -202,7 +202,7 @@ export default function PharmacyShell() {
       {/* Alerts (نفس صيغة الدكتور) */}
       {showEmailAlert && (
         <AlertBanner>
-          ⚠️ Verify your email now — your temporary pharmacy password expires in 24h.{" "}
+          ⚠️Please verify your email so you can change your password later.{" "}
           <button
             onClick={() => setShowAccount(true)}
             style={{ fontWeight: 700, color: C.primary }}
