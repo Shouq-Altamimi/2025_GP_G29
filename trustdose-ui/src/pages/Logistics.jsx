@@ -259,7 +259,6 @@ export default function Logistics() {
         )
       );
 
-      setMsg("تم قبول الوصفة بنجاح ✓");
       setShowSuccessPopup(true);
     } catch (err) {
       console.error("Accept delivery failed:", err);
