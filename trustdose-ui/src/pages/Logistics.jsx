@@ -20,7 +20,6 @@ import { Loader2, Check, CheckCircle2 } from "lucide-react";
 import { ethers } from "ethers";
 import LOGISTICS_ACCEPT from "../contracts/LogisticsAccept.json";
 
-
 const C = {
   primary: "#B08CC1",
   primaryDark: "#9F76B4",
@@ -241,7 +240,6 @@ export default function Logistics() {
         signer
       );
 
-      // r.onchainId is BigInt already
       const tx = await contract.acceptDelivery(r.onchainId);
       await tx.wait();
 
@@ -366,8 +364,11 @@ export default function Logistics() {
                     <div className="mt-6 flex flex-wrap gap-2">
                       <button
                         className="w-max px-4 py-2 text-sm rounded-lg transition-colors
-                          flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60 cursor-not-allowed"
-                        style={{ backgroundColor: C.primary }}
+                          flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: C.primary,
+                          cursor: disabled ? "not-allowed" : "pointer",
+                        }}
                         onMouseEnter={(e) =>
                           (e.currentTarget.style.backgroundColor =
                             C.primaryDark)
@@ -461,11 +462,12 @@ export default function Logistics() {
               </div>
 
               <h3 className="text-lg font-semibold mb-1" style={{ color: C.ink }}>
-                تم قبول الوصفة بنجاح
+                Delivery accepted successfully
               </h3>
 
               <p className="text-sm mb-4" style={{ color: "#4B5563" }}>
-                تم تأكيد طلب التوصيل وتحديث حالة الوصفة في النظام.
+                The delivery request has been confirmed and the prescription
+                status has been updated in the system.
               </p>
 
               <button
@@ -476,7 +478,7 @@ export default function Logistics() {
                   color: "#FFFFFF",
                 }}
               >
-                موافق
+                OK
               </button>
             </div>
           </div>
