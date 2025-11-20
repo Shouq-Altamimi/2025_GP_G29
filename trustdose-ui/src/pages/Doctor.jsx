@@ -798,7 +798,6 @@ export default function Doctor() {
               </h3>
 
               <p className="text-sm mb-4" style={{ color: "#4B5563" }}>
-                The prescription has been confirmed on-chain and saved to the system.
               </p>
 
               <button

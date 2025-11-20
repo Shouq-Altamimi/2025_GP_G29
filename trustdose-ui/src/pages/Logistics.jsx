@@ -465,8 +465,6 @@ export default function Logistics() {
               </h3>
 
               <p className="text-sm mb-4" style={{ color: "#4B5563" }}>
-                The delivery request has been confirmed and the prescription
-                status has been updated in the system.
               </p>
 
               <button
