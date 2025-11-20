@@ -22,7 +22,7 @@ import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "luci
 import PRESCRIPTION from "../contracts/Prescription.json";
 
 const C = { primary: "#B08CC1", primaryDark: "#B08CC1", ink: "#4A2C59", pale: "#F6F1FA" };
-const CONTRACT_ADDRESS = "0xBc2Ff43Ae58974638F0E528490799299b2CC8585";
+const CONTRACT_ADDRESS = "0xC836394301102C32c44CC9EFAB382fc6Dba7Cf8c";
 
 const OTHER_MAX = 20;
 const LIMITS = Object.freeze({
@@ -379,6 +379,8 @@ export default function Doctor() {
         prescriptionNum: generatedNum,
         dispensed: false,
         acceptDelivery: false,
+        // ⭐ الجديد: يتسجل في الداتابيس false
+        logisticsAccepted: false,
       };
 
       if (selectedMed?.sensitivity) payload[F.sensitivity] = selectedMed.sensitivity;
@@ -400,12 +402,28 @@ export default function Doctor() {
       setShowSuccessPopup(true);
     } catch (e) {
       console.error("createPrescription failed:", e);
-      setRxMsg(
+
+      // 🔹 نجيب الرسالة الأصلية من الخطأ
+      const rawMsg =
         e?.info?.error?.message ||
-          e?.shortMessage ||
-          e?.message ||
-          "Blockchain confirmation failed."
-      );
+        e?.shortMessage ||
+        e?.message ||
+        "";
+
+      const lower = String(rawMsg).toLowerCase();
+
+      // 🔹 لو اليوزر رفض طلب ميتاماسك:
+      if (
+        lower.includes("user denied") ||
+        lower.includes("user rejected") ||
+        lower.includes("user denied transaction signature") ||
+        lower.includes("user rejected the request")
+      ) {
+        setRxMsg("MetaMask request was declined. Please try again.");
+      } else {
+        setRxMsg(rawMsg || "Blockchain confirmation failed.");
+      }
+
       setTimeout(() => setRxMsg(""), 6000);
     } finally {
       setIsLoading(false);
@@ -497,6 +515,7 @@ export default function Doctor() {
 
           {(q || selectedPatient) && (
             <div className="flex justify-end mt-2">
+              {/* ✅ تركته زي ما هو بالضبط */}
               <button
                 onClick={clearSearch}
                 className="px-6 py-3 rounded-xl font-medium"
@@ -763,7 +782,7 @@ export default function Doctor() {
                     setNotes("");
                     setRxMsg("");
                     setMcTouched(false);
-                    setMedSearchKey((k) => k + 1); 
+                    setMedSearchKey((k) => k + 1);
                   }}
                   className="px-6 py-3 rounded-xl font-medium"
                   style={{ background: "#F3F4F6", color: "#374151" }}

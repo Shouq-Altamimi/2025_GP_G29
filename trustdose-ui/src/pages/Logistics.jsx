@@ -16,7 +16,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
-import { Loader2, Check, CheckCircle2 } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { ethers } from "ethers";
 import LOGISTICS_ACCEPT from "../contracts/LogisticsAccept.json";
 
@@ -28,10 +28,9 @@ const C = {
 };
 
 const PAGE_SIZE = 6;
+const LOGISTICS_ACCEPT_ADDRESS = "0x638BdA536eC958d7DCeFCB54b56E67a74073F0C7";
 
-const LOGISTICS_ACCEPT_ADDRESS = "0x50586CDc13BbB8bA4e7893D35b8df9544EAA6A66";
-
-/* Format Timestamps */
+/* Timestamp formatter */
 function formatFsTimestamp(v) {
   if (!v) return "-";
   try {
@@ -50,15 +49,12 @@ function formatFsTimestamp(v) {
   return String(v);
 }
 
-// MetaMask helper
+/* MetaMask signer */
 async function getSignerEnsured() {
-  if (!window.ethereum) {
-    throw new Error("MetaMask not detected.");
-  }
+  if (!window.ethereum) throw new Error("MetaMask not detected.");
   await window.ethereum.request({ method: "eth_requestAccounts" });
   const provider = new ethers.BrowserProvider(window.ethereum);
-  const signer = await provider.getSigner();
-  return signer;
+  return provider.getSigner();
 }
 
 export default function Logistics() {
@@ -75,7 +71,7 @@ export default function Logistics() {
 
   const [showSuccessPopup, setShowSuccessPopup] = React.useState(false);
 
-  /* Load header info */
+  /* Load logistics header */
   React.useEffect(() => {
     async function loadHeader() {
       try {
@@ -89,17 +85,15 @@ export default function Logistics() {
 
         let data = null;
 
-        const byIdSnap = await getDoc(doc(db, "logistics", String(lgId)));
-        if (byIdSnap.exists()) {
-          data = byIdSnap.data() || {};
+        const byId = await getDoc(doc(db, "logistics", String(lgId)));
+        if (byId.exists()) {
+          data = byId.data();
         } else {
           const col = collection(db, "logistics");
           const qs = await getDocs(
             query(col, where("LogisticsID", "==", String(lgId)))
           );
-          if (!qs.empty) {
-            data = qs.docs[0].data() || {};
-          }
+          if (!qs.empty) data = qs.docs[0].data();
         }
 
         if (!data) return;
@@ -109,7 +103,7 @@ export default function Logistics() {
           vehicleId: data.vehicleId || data.vehicleID || "",
         });
       } catch (e) {
-        console.error("Failed to load logistics header", e);
+        console.error("Failed to load header", e);
       }
     }
 
@@ -122,21 +116,23 @@ export default function Logistics() {
 
     async function fetchAll() {
       setLoading(true);
-      setRows([]);
       setMsg("");
 
       const col = collection(db, "prescriptions");
 
-      async function runQ(wheres, useOrder = true) {
-        try {
-          const q1 = useOrder
-            ? query(col, ...wheres, orderBy("updatedAt", "desc"))
-            : query(col, ...wheres);
-          return await getDocs(q1);
-        } catch {
-          return await getDocs(query(col, ...wheres));
-        }
-      }
+      async function runQ(wheres) {
+  try {
+    const q1 = query(col, ...wheres, orderBy("updatedAt", "desc"));
+    return await getDocs(q1);
+  } catch (err) {
+    console.warn("Index missing – falling back without orderBy:", err);
+
+    const snap = await getDocs(query(col, ...wheres));
+
+    return snap;
+  }
+}
+
 
       const candidates = [
         [
@@ -159,7 +155,7 @@ export default function Logistics() {
 
       if (!snap || snap.empty) {
         if (mounted) {
-          setMsg("No delivery orders found.");
+          setRows([]);
           setLoading(false);
         }
         return;
@@ -167,25 +163,16 @@ export default function Logistics() {
 
       const data = snap.docs
         .map((d) => {
-          const x = d.data() || {};
-          let onchainId = null;
-
-          if (x.onchainId) {
-            try {
-              onchainId = BigInt(String(x.onchainId));
-            } catch {}
-          }
+          const x = d.data();
 
           return {
             _docId: d.id,
             prescriptionId: x.prescriptionID || d.id,
-            onchainId,
+            onchainId: x.onchainId ? BigInt(String(x.onchainId)) : null,
             patientName: x.patientName || "-",
             patientId: String(x.nationalID ?? "-"),
             medicineLabel: x.medicineLabel || x.medicineName || "-",
-            createdAtTS: x?.createdAt?.toDate?.()
-              ? x.createdAt.toDate()
-              : undefined,
+            createdAtTS: x.createdAt?.toDate?.(),
             createdAt: formatFsTimestamp(x.createdAt),
             updatedAt: formatFsTimestamp(x.updatedAt),
             dispensed: !!x.dispensed,
@@ -194,8 +181,8 @@ export default function Logistics() {
           };
         })
         .sort((a, b) => {
-          const aT = a.createdAtTS?.getTime?.() || 0;
-          const bT = b.createdAtTS?.getTime?.() || 0;
+          const aT = a.createdAtTS?.getTime() || 0;
+          const bT = b.createdAtTS?.getTime() || 0;
           return bT - aT;
         });
 
@@ -207,9 +194,7 @@ export default function Logistics() {
     }
 
     fetchAll();
-    return () => {
-      mounted = false;
-    };
+    return () => (mounted = false);
   }, []);
 
   const visible = rows.filter(
@@ -222,18 +207,15 @@ export default function Logistics() {
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = visible.slice(start, end);
 
-  /* Handle accept (call LogisticsAccept + update Firestore) */
+  /* Accept delivery */
   async function handleAccept(r) {
     try {
       setMsg("");
-      setPending((prev) => ({ ...prev, [r.prescriptionId]: true }));
+      setPending((p) => ({ ...p, [r.prescriptionId]: true }));
 
-      if (r.onchainId == null) {
-        throw new Error("Missing on-chain ID for this prescription.");
-      }
+      if (r.onchainId == null) throw new Error("Missing on-chain ID.");
 
       const signer = await getSignerEnsured();
-
       const contract = new ethers.Contract(
         LOGISTICS_ACCEPT_ADDRESS,
         LOGISTICS_ACCEPT.abi,
@@ -243,35 +225,27 @@ export default function Logistics() {
       const tx = await contract.acceptDelivery(r.onchainId);
       await tx.wait();
 
-      // Update Firestore
       await updateDoc(doc(db, "prescriptions", r._docId), {
         logisticsAccepted: true,
         logisticsAcceptedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
 
-      // Update UI state
-      setRows((prev) =>
-        prev.map((row) =>
-          row._docId === r._docId
-            ? { ...row, logisticsAccepted: true }
-            : row
-        )
-      );
+      // Remove card immediately
+      setRows((prev) => prev.filter((row) => row._docId !== r._docId));
 
       setShowSuccessPopup(true);
     } catch (err) {
-      console.error("Accept delivery failed:", err);
-      setMsg(
-        err?.reason ||
-          err?.message ||
-          "Failed to accept delivery. Please try again."
-      );
+      console.error("Error:", err);
+
+      if (err?.code === "ACTION_REJECTED")
+        setMsg("MetaMask request was declined. Please try again.");
+      else setMsg("Error occurred. Please try again.");
     } finally {
-      setPending((prev) => {
-        const copy = { ...prev };
-        delete copy[r.prescriptionId];
-        return copy;
+      setPending((p) => {
+        const cp = { ...p };
+        delete cp[r.prescriptionId];
+        return cp;
       });
     }
   }
@@ -291,36 +265,39 @@ export default function Logistics() {
   return (
     <div className="p-6">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
+
+        {/* ERROR MESSAGE */}
+        {msg && (
+          <div className="mb-4 p-4 rounded-xl flex items-center gap-2 text-red-700 bg-red-100 border border-red-300">
+            <AlertCircle size={20} />
+            <span className="text-sm font-medium">{msg}</span>
+          </div>
+        )}
+
         {/* HEADER */}
         <div className="mb-6 flex items-center gap-3">
           <img
             src="/Images/TrustDose-pill.png"
             alt="TrustDose Capsule"
-            style={{ width: 64, height: "auto" }}
+            style={{ width: 64 }}
           />
 
           <div>
-            <h1
-              className="font-extrabold text-[24px]"
-              style={{ color: "#334155" }}
-            >
+            <h1 className="font-extrabold text-[24px]" style={{ color: "#334155" }}>
               {header.companyName
                 ? `Welcome, ${header.companyName}`
                 : "Welcome, Logistics Partner"}
             </h1>
 
-            {/* Subtitle */}
             <div className="mt-3 pt-3 border-t border-gray-200">
-              <p
-                className="text-[15px] font-medium"
-                style={{ color: "#64748b" }}
-              >
+              <p className="text-[15px] font-medium" style={{ color: "#64748b" }}>
                 Delivery Requests Awaiting Your Acceptance
               </p>
             </div>
           </div>
         </div>
 
+        {/* CARDS */}
         {pageItems.length > 0 && (
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             {pageItems.map((r) => {
@@ -335,7 +312,6 @@ export default function Logistics() {
                 : r.createdAt;
 
               const isPending = !!pending[r.prescriptionId];
-              const disabled = isPending;
 
               return (
                 <div
@@ -348,45 +324,32 @@ export default function Logistics() {
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Prescription ID:{" "}
-                      <span className="font-normal">{r.prescriptionId}</span>
+                      Prescription ID:
+                      <span className="font-normal"> {r.prescriptionId}</span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Patient:{" "}
+                      Patient:
                       <span className="font-normal">
-                        {r.patientName || "—"}
-                        {r.patientId ? ` — ${r.patientId}` : ""}
+                        {" "}
+                        {r.patientName} — {r.patientId}
                       </span>
                     </div>
 
                     <div className="mt-6 flex flex-wrap gap-2">
                       <button
-                        className="w-max px-4 py-2 text-sm rounded-lg transition-colors
-                          flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="w-max px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
                         style={{
                           backgroundColor: C.primary,
-                          cursor: disabled ? "not-allowed" : "pointer",
+                          cursor: isPending ? "not-allowed" : "pointer",
                         }}
-                        onMouseEnter={(e) =>
-                          (e.currentTarget.style.backgroundColor =
-                            C.primaryDark)
-                        }
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.backgroundColor = C.primary)
-                        }
                         onClick={() => handleAccept(r)}
-                        disabled={disabled}
+                        disabled={isPending}
                       >
                         {isPending && (
-                          <Loader2
-                            size={16}
-                            className="animate-spin text-white"
-                          />
+                          <Loader2 size={16} className="animate-spin text-white" />
                         )}
-                        <span className="text-white">
-                          {isPending ? "Processing..." : "Accept Delivery"}
-                        </span>
+                        {isPending ? "Processing..." : "Accept Delivery"}
                       </button>
                     </div>
                   </div>
@@ -400,6 +363,12 @@ export default function Logistics() {
           </section>
         )}
 
+        {/* NO ORDERS */}
+        {total === 0 && (
+          <p className="text-gray-600 mt-4">No active delivery orders.</p>
+        )}
+
+        {/* PAGINATION */}
         {total > 0 && (
           <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-sm text-gray-700">
@@ -423,9 +392,7 @@ export default function Logistics() {
                 <button
                   className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
                   style={{ background: C.primary }}
-                  onClick={() =>
-                    setPage((p) => Math.min(pageCount - 1, p + 1))
-                  }
+                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
                   disabled={page >= pageCount - 1}
                 >
                   Next →
@@ -434,23 +401,14 @@ export default function Logistics() {
             </div>
           </div>
         )}
-
-        {total === 0 && !msg && (
-          <p className="text-gray-600 mt-4">No active delivery orders.</p>
-        )}
-
-        {msg && <p className="text-gray-600 mt-4">{msg}</p>}
       </div>
 
-      {/* Success popup */}
+      {/* SUCCESS POPUP */}
       {showSuccessPopup && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
           <div
             className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border"
-            style={{
-              background: "#F6F1FA",
-              borderColor: C.primary,
-            }}
+            style={{ background: "#F6F1FA", borderColor: C.primary }}
           >
             <div className="flex flex-col items-center text-center">
               <div
@@ -464,16 +422,10 @@ export default function Logistics() {
                 Delivery accepted successfully
               </h3>
 
-              <p className="text-sm mb-4" style={{ color: "#4B5563" }}>
-              </p>
-
               <button
                 onClick={() => setShowSuccessPopup(false)}
-                className="px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
-                style={{
-                  backgroundColor: C.primary,
-                  color: "#FFFFFF",
-                }}
+                className="mt-3 px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
+                style={{ backgroundColor: C.primary, color: "#fff" }}
               >
                 OK
               </button>
