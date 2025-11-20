@@ -16,7 +16,10 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
-import { Loader2, Check } from "lucide-react";
+import { Loader2, Check, CheckCircle2 } from "lucide-react";
+import { ethers } from "ethers";
+import LOGISTICS_ACCEPT from "../contracts/LogisticsAccept.json";
+
 
 const C = {
   primary: "#B08CC1",
@@ -26,6 +29,8 @@ const C = {
 };
 
 const PAGE_SIZE = 6;
+
+const LOGISTICS_ACCEPT_ADDRESS = "0x5568ec6b8aEf606EB83D7e10DcD2373013d4160d";
 
 /* Format Timestamps */
 function formatFsTimestamp(v) {
@@ -46,6 +51,17 @@ function formatFsTimestamp(v) {
   return String(v);
 }
 
+// MetaMask helper
+async function getSignerEnsured() {
+  if (!window.ethereum) {
+    throw new Error("MetaMask not detected.");
+  }
+  await window.ethereum.request({ method: "eth_requestAccounts" });
+  const provider = new ethers.BrowserProvider(window.ethereum);
+  const signer = await provider.getSigner();
+  return signer;
+}
+
 export default function Logistics() {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState([]);
@@ -57,6 +73,8 @@ export default function Logistics() {
     companyName: "",
     vehicleId: "",
   });
+
+  const [showSuccessPopup, setShowSuccessPopup] = React.useState(false);
 
   /* Load header info */
   React.useEffect(() => {
@@ -205,10 +223,60 @@ export default function Logistics() {
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = visible.slice(start, end);
 
-  /* Handle accept (UI only for now – contract not implemented) */
+  /* Handle accept (call LogisticsAccept + update Firestore) */
   async function handleAccept(r) {
-    // لاحقًا لما تسوين عقد البلوك تشين ترجعي تكمّلين المنطق هنا
-    alert("Accept Delivery is not available yet (smart contract not implemented).");
+    try {
+      setMsg("");
+      setPending((prev) => ({ ...prev, [r.prescriptionId]: true }));
+
+      if (r.onchainId == null) {
+        throw new Error("Missing on-chain ID for this prescription.");
+      }
+
+      const signer = await getSignerEnsured();
+
+      const contract = new ethers.Contract(
+        LOGISTICS_ACCEPT_ADDRESS,
+        LOGISTICS_ACCEPT.abi,
+        signer
+      );
+
+      // r.onchainId is BigInt already
+      const tx = await contract.acceptDelivery(r.onchainId);
+      await tx.wait();
+
+      // Update Firestore
+      await updateDoc(doc(db, "prescriptions", r._docId), {
+        logisticsAccepted: true,
+        logisticsAcceptedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      // Update UI state
+      setRows((prev) =>
+        prev.map((row) =>
+          row._docId === r._docId
+            ? { ...row, logisticsAccepted: true }
+            : row
+        )
+      );
+
+      setMsg("تم قبول الوصفة بنجاح ✓");
+      setShowSuccessPopup(true);
+    } catch (err) {
+      console.error("Accept delivery failed:", err);
+      setMsg(
+        err?.reason ||
+          err?.message ||
+          "Failed to accept delivery. Please try again."
+      );
+    } finally {
+      setPending((prev) => {
+        const copy = { ...prev };
+        delete copy[r.prescriptionId];
+        return copy;
+      });
+    }
   }
 
   if (loading) {
@@ -270,7 +338,7 @@ export default function Logistics() {
                 : r.createdAt;
 
               const isPending = !!pending[r.prescriptionId];
-              const disabled = false;
+              const disabled = isPending;
 
               return (
                 <div
@@ -311,10 +379,14 @@ export default function Logistics() {
                         disabled={disabled}
                       >
                         {isPending && (
-                        <Loader2 size={16} className="animate-spin text-white" />
-                      )}
-                      <span className="text-white">Accept Delivery</span>
-
+                          <Loader2
+                            size={16}
+                            className="animate-spin text-white"
+                          />
+                        )}
+                        <span className="text-white">
+                          {isPending ? "Processing..." : "Accept Delivery"}
+                        </span>
                       </button>
                     </div>
                   </div>
@@ -367,8 +439,49 @@ export default function Logistics() {
           <p className="text-gray-600 mt-4">No active delivery orders.</p>
         )}
 
-        {msg && <p className="text-gray-600">{msg}</p>}
+        {msg && <p className="text-gray-600 mt-4">{msg}</p>}
       </div>
+
+      {/* Success popup */}
+      {showSuccessPopup && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+          <div
+            className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border"
+            style={{
+              background: "#F6F1FA",
+              borderColor: C.primary,
+            }}
+          >
+            <div className="flex flex-col items-center text-center">
+              <div
+                className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
+                style={{ backgroundColor: "#ECFDF3" }}
+              >
+                <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
+              </div>
+
+              <h3 className="text-lg font-semibold mb-1" style={{ color: C.ink }}>
+                تم قبول الوصفة بنجاح
+              </h3>
+
+              <p className="text-sm mb-4" style={{ color: "#4B5563" }}>
+                تم تأكيد طلب التوصيل وتحديث حالة الوصفة في النظام.
+              </p>
+
+              <button
+                onClick={() => setShowSuccessPopup(false)}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
+                style={{
+                  backgroundColor: C.primary,
+                  color: "#FFFFFF",
+                }}
+              >
+                موافق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
