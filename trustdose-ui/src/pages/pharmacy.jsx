@@ -1,19 +1,30 @@
 // @ts-nocheck
 import React, { useMemo, useState } from "react";
-import { Search, FileText, Loader2 } from "lucide-react";
+import {
+  Search,
+  FileText,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+} from "lucide-react";
 
 import { db } from "../firebase";
 import {
-  collection, query, where, getDocs,
-  doc as fsDoc, updateDoc, serverTimestamp
+  collection,
+  query,
+  where,
+  getDocs,
+  doc as fsDoc,
+  updateDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 
 import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
-const PRESCRIPTION_ADDRESS = "0xc110a1ba8b2FCEB135A7345088e625A92EE09F19";
-const DISPENSE_ADDRESS     = "0xAB9CB5fb894ff87756D868fdD590DBF8133B1658";
+const PRESCRIPTION_ADDRESS = "0x853A4f3FCa6105D96eC8D48CE9300f0de4Fb6299";
+const DISPENSE_ADDRESS = "0xbBeC5824104D5f95c86A6E5166C310190c0184B7";
 
 // ===== Pagination size =====
 const PAGE_SIZE = 6;
@@ -30,23 +41,28 @@ async function getSignerEnsured() {
   return provider.getSigner();
 }
 
-function nowISO() { return new Date().toISOString(); }
+function nowISO() {
+  return new Date().toISOString();
+}
+
 function fmt(dateISO) {
   if (!dateISO) return "-";
   const s = String(dateISO);
   return s.includes("T") ? s.replace("T", " ").slice(0, 16) : s;
 }
+
 function toEnglishDigits(s) {
   if (!s) return "";
   let out = "";
   for (const ch of String(s)) {
     const code = ch.charCodeAt(0);
     if (code >= 0x0660 && code <= 0x0669) out += String(code - 0x0660);
-    else if (code >= 0x06F0 && code <= 0x06F9) out += String(code - 0x06F0);
+    else if (code >= 0x06f0 && code <= 0x06f9) out += String(code - 0x06f0);
     else if (code >= 48 && code <= 57) out += ch;
   }
   return out;
 }
+
 function niceErr(e, fallback = "On-chain dispense failed.") {
   return (
     e?.shortMessage ||
@@ -58,9 +74,16 @@ function niceErr(e, fallback = "On-chain dispense failed.") {
   );
 }
 
-const ARABIC_LETTERS_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g;
+const ARABIC_LETTERS_RE =
+  /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g;
 
-const brand = { purple: "#B08CC1", purpleDark: "#9F76B4", teal: "#52B9C4", ink: "#4A2C59" };
+const brand = {
+  purple: "#B08CC1",
+  purpleDark: "#9F76B4",
+  teal: "#52B9C4",
+  ink: "#4A2C59",
+};
+
 const card = {
   background: "#fff",
   border: "1px solid #e6e9ee",
@@ -71,33 +94,91 @@ const card = {
 
 export default function PharmacyApp() {
   const [rxs, setRxs] = useState([
-    { ref: "RX-001", patientId: "1001", patientName: "Salem",   medicine: "Insulin",   dose: "10u",   timesPerDay: 2, durationDays: 30, createdAt: nowISO(), dispensed: false, accepted: false },
-    { ref: "RX-002", patientId: "1002", patientName: "Maha",    medicine: "Panadol",   dose: "500mg", timesPerDay: 3, durationDays: 5, createdAt: nowISO(), dispensed: false, accepted: false },
-    { ref: "RX-003", patientId: "1003", patientName: "Hassan",  medicine: "Metformin", dose: "850mg", timesPerDay: 1, durationDays: 14, createdAt: nowISO(), dispensed: false, accepted: false }
+    {
+      ref: "RX-001",
+      patientId: "1001",
+      patientName: "Salem",
+      medicine: "Insulin",
+      dose: "10u",
+      timesPerDay: 2,
+      durationDays: 30,
+      createdAt: nowISO(),
+      dispensed: false,
+      accepted: false,
+    },
+    {
+      ref: "RX-002",
+      patientId: "1002",
+      patientName: "Maha",
+      medicine: "Panadol",
+      dose: "500mg",
+      timesPerDay: 3,
+      durationDays: 5,
+      createdAt: nowISO(),
+      dispensed: false,
+      accepted: false,
+    },
+    {
+      ref: "RX-003",
+      patientId: "1003",
+      patientName: "Hassan",
+      medicine: "Metformin",
+      dose: "850mg",
+      timesPerDay: 1,
+      durationDays: 14,
+      createdAt: nowISO(),
+      dispensed: false,
+      accepted: false,
+    },
   ]);
 
   const [route] = useState("Pick Up Orders");
   const [q, setQ] = useState("");
 
-  const rowsDelivery = useMemo(() => rxs.filter(r => !r.dispensed && !r.accepted), [rxs]);
-  const rowsPending  = useMemo(() => rxs.filter(r => !r.dispensed && r.accepted), [rxs]);
+  const rowsDelivery = useMemo(
+    () => rxs.filter((r) => !r.dispensed && !r.accepted),
+    [rxs]
+  );
+  const rowsPending = useMemo(
+    () => rxs.filter((r) => !r.dispensed && r.accepted),
+    [rxs]
+  );
 
   function addNotification(payload) {
     console.log("PharmacyApp notification:", payload);
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", color: brand.ink, fontFamily: "Arial, sans-serif" }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#f8fafc",
+        color: brand.ink,
+      }}
+    >
       <main style={{ padding: 24 }}>
         <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
           {route === "Pick Up Orders" && (
-            <PickUpSection setRxs={setRxs} q={q} setQ={setQ} addNotification={addNotification} />
+            <PickUpSection
+              setRxs={setRxs}
+              q={q}
+              setQ={setQ}
+              addNotification={addNotification}
+            />
           )}
           {route === "Delivery Orders" && (
-            <DeliverySection rows={rowsDelivery} setRxs={setRxs} addNotification={addNotification} />
+            <DeliverySection
+              rows={rowsDelivery}
+              setRxs={setRxs}
+              addNotification={addNotification}
+            />
           )}
           {route === "Pending Orders" && (
-            <PendingSection rows={rowsPending} setRxs={setRxs} addNotification={addNotification} />
+            <PendingSection
+              rows={rowsPending}
+              setRxs={setRxs}
+              addNotification={addNotification}
+            />
           )}
         </div>
       </main>
@@ -113,7 +194,9 @@ function formatFsCreatedAt(v) {
   try {
     if (typeof v?.toDate === "function") d = v.toDate();
     else if (typeof v?.seconds === "number")
-      d = new Date(v.seconds * 1000 + Math.floor((v.nanoseconds || 0) / 1e6));
+      d = new Date(
+        v.seconds * 1000 + Math.floor((v.nanoseconds || 0) / 1e6)
+      );
   } catch {}
 
   if (!(d instanceof Date) || isNaN(d)) return String(v);
@@ -144,6 +227,11 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
   const [page, setPage] = useState(0);
 
   const [dispensingId, setDispensingId] = useState(null);
+
+  // ✅ popup state
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [popupRxRef, setPopupRxRef] = useState("");
+
   const raw = String(q || "").trim();
   const isPatientIdMode = /^\d/.test(raw);
   const natDigitsAll = toEnglishDigits(raw).replace(/\D/g, "");
@@ -163,14 +251,19 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
   };
 
   function normalizeFromDB(data = {}, docId = "") {
-    const pid = (data.nationalID !== undefined && data.nationalID !== null)
-      ? String(data.nationalID).trim()
-      : "-";
+    const pid =
+      data.nationalID !== undefined && data.nationalID !== null
+        ? String(data.nationalID).trim()
+        : "-";
 
     const onchain = safeInt(data.onchainId);
-    const docName  = data.doctorName ?? data.doctor?.name ?? "-";
-    const docPhone = data.doctorPhone || data.doctor_phone || data.phone || "-";
-    const freq     = data.frequency ?? data.freq ?? (data.timesPerDay ? `${data.timesPerDay} times/day` : "-");
+    const docName = data.doctorName ?? data.doctor?.name ?? "-";
+    const docPhone =
+      data.doctorPhone || data.doctor_phone || data.phone || "-";
+    const freq =
+      data.frequency ??
+      data.freq ??
+      (data.timesPerDay ? `${data.timesPerDay} times/day` : "-");
 
     return {
       ref: data.prescriptionID || docId || "-",
@@ -188,7 +281,9 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
 
       status: data.status || "-",
       dispensed: !!data.dispensed,
-      dispensedAt: data.dispensedAt ? formatFsCreatedAt(data.dispensedAt) : undefined,
+      dispensedAt: data.dispensedAt
+        ? formatFsCreatedAt(data.dispensedAt)
+        : undefined,
       dispensedBy: data.dispensedBy || undefined,
       sensitivity: data.sensitivity || "-",
       medicalCondition: data.medicalCondition || data.reason || "",
@@ -221,7 +316,9 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     } else {
       setQ(s);
       if (s.length > 0 && !rxFormatRe.test(s)) {
-        setValidationMsg("Prescription ID must be 1 letter followed by 4 or more digits.");
+        setValidationMsg(
+          "Prescription ID must be 1 letter followed by 4 or more digits."
+        );
       } else {
         setValidationMsg("");
       }
@@ -247,11 +344,17 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     }
 
     if (isPatientIdMode) {
-      const firstOk = natDigits.length > 0 && (natDigits[0] === "1" || natDigits[0] === "2");
+      const firstOk =
+        natDigits.length > 0 &&
+        (natDigits[0] === "1" || natDigits[0] === "2");
       const lenOk = natDigits.length === 10;
       if (!firstOk || !lenOk) {
         setLoading(false);
-        setValidationMsg(!firstOk ? "National ID must start with 1 or 2." : "National ID must be 10 digits.");
+        setValidationMsg(
+          !firstOk
+            ? "National ID must start with 1 or 2."
+            : "National ID must be 10 digits."
+        );
         return;
       }
     }
@@ -261,14 +364,19 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
 
       // Prescription ID lookup
       if (rxID) {
-        const snap = await getDocs(query(col, where("prescriptionID", "==", rxID)));
+        const snap = await getDocs(
+          query(col, where("prescriptionID", "==", rxID))
+        );
         if (!snap.empty) {
           const d = snap.docs[0];
           const n = normalizeFromDB(d.data(), d.id);
 
-          const isNonSensitive = String(n.sensitivity || "").toLowerCase() === "nonsensitive";
+          const isNonSensitive =
+            String(n.sensitivity || "").toLowerCase() === "nonsensitive";
           if (!isNonSensitive) {
-            setError("This prescription is for a sensitive medication and cannot be dispensed .");
+            setError(
+              "This prescription is for a sensitive medication and cannot be dispensed ."
+            );
             setResults([]);
             setLoading(false);
             return;
@@ -284,21 +392,27 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
 
       // National ID lookup
       const tasks = [
-        getDocs(query(
-          col,
-          where("nationalID", "==", natDigits),
-          where("dispensed", "==", false),
-          where("sensitivity", "==", "NonSensitive")
-        )),
+        getDocs(
+          query(
+            col,
+            where("nationalID", "==", natDigits),
+            where("dispensed", "==", false),
+            where("sensitivity", "==", "NonSensitive")
+          )
+        ),
       ];
       const nNum = Number(natDigits);
       if (!Number.isNaN(nNum)) {
-        tasks.push(getDocs(query(
-          col,
-          where("nationalID", "==", nNum),
-          where("dispensed", "==", false),
-          where("sensitivity", "==", "NonSensitive")
-        )));
+        tasks.push(
+          getDocs(
+            query(
+              col,
+              where("nationalID", "==", nNum),
+              where("dispensed", "==", false),
+              where("sensitivity", "==", "NonSensitive")
+            )
+          )
+        );
       }
 
       const snaps = await Promise.all(tasks);
@@ -307,30 +421,45 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       const list = [];
       for (const s of snaps) {
         if (!s || s.empty) continue;
-        s.forEach(doc => {
+        s.forEach((doc) => {
           if (seen.has(doc.id)) return;
           seen.add(doc.id);
           const n = normalizeFromDB(doc.data(), doc.id);
-          if (n.sensitivity === "NonSensitive" && n.dispensed === false && Number.isFinite(n.onchainId)) {
+          if (
+            n.sensitivity === "NonSensitive" &&
+            n.dispensed === false &&
+            Number.isFinite(n.onchainId)
+          ) {
             list.push(n);
           }
         });
       }
 
       if (list.length === 0) {
-        const fbTasks = [ getDocs(query(col, where("nationalID", "==", natDigits))) ];
-        if (!Number.isNaN(nNum)) fbTasks.push(getDocs(query(col, where("nationalID", "==", nNum))));
+        const fbTasks = [
+          getDocs(query(col, where("nationalID", "==", natDigits))),
+        ];
+        if (!Number.isNaN(nNum))
+          fbTasks.push(
+            getDocs(query(col, where("nationalID", "==", nNum)))
+          );
         const fbSnaps = await Promise.all(fbTasks);
-        const haveAny = fbSnaps.some(s => s && !s.empty);
+        const haveAny = fbSnaps.some((s) => s && !s.empty);
 
         if (haveAny) {
-          setInfoMsg("No eligible pickup prescriptions. They may be sensitive, already dispensed, or missing on-chain id.");
+          setInfoMsg(
+            "No eligible pickup prescriptions. They may be sensitive, already dispensed, or missing on-chain id."
+          );
         } else {
           setError("The national ID you entered isn't registered in our system.");
         }
       }
 
-      list.sort((a, b) => (b.createdAtTS?.getTime?.() || 0) - (a.createdAtTS?.getTime?.() || 0));
+      list.sort(
+        (a, b) =>
+          (b.createdAtTS?.getTime?.() || 0) -
+          (a.createdAtTS?.getTime?.() || 0)
+      );
       setResults(list);
     } catch (e) {
       console.error(e);
@@ -374,12 +503,22 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       const signer = await getSignerEnsured();
       const pharmacistAddr = await signer.getAddress();
 
-      const presc    = new ethers.Contract(PRESCRIPTION_ADDRESS, PRESCRIPTION.abi, signer);
-      const dispense = new ethers.Contract(DISPENSE_ADDRESS,     DISPENSE.abi,     signer);
+      const presc = new ethers.Contract(
+        PRESCRIPTION_ADDRESS,
+        PRESCRIPTION.abi,
+        signer
+      );
+      const dispense = new ethers.Contract(
+        DISPENSE_ADDRESS,
+        DISPENSE.abi,
+        signer
+      );
 
       const linked = await dispense.prescription();
       if (linked?.toLowerCase?.() !== PRESCRIPTION_ADDRESS.toLowerCase()) {
-        setError("Dispense contract is linked to a different Prescription address.");
+        setError(
+          "Dispense contract is linked to a different Prescription address."
+        );
         setLoading(false);
         setDispensingId(null);
         return;
@@ -387,7 +526,9 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
 
       const isPh = await dispense.isPharmacist(pharmacistAddr);
       if (!isPh) {
-        setError("Your wallet is not enabled as a pharmacist on-chain (Not pharmacist).");
+        setError(
+          "Your wallet is not enabled as a pharmacist on-chain (Not pharmacist)."
+        );
         setLoading(false);
         setDispensingId(null);
         return;
@@ -413,13 +554,29 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
         dispenseTx: txHash,
       });
 
-      setResults(prev => prev.map(r =>
-        r._docId === item._docId
-          ? { ...r, dispensed: true, dispensedAt: new Date().toISOString(), dispensedBy: pharmacistAddr, dispenseTx: txHash }
-          : r
-      ));
+      setResults((prev) =>
+        prev.map((r) =>
+          r._docId === item._docId
+            ? {
+                ...r,
+                dispensed: true,
+                dispensedAt: new Date().toISOString(),
+                dispensedBy: pharmacistAddr,
+                dispenseTx: txHash,
+              }
+            : r
+        )
+      );
 
-      addNotification(`Prescription ${item.ref} dispensed on-chain ✓`);
+      addNotification(
+        `Prescription ${item.ref} dispensed on-chain ✓`
+      );
+
+      // ✅ فعّل بوب أب النجاح
+      setPopupRxRef(
+        item.ref || item.prescriptionID || item._docId || ""
+      );
+      setShowSuccessPopup(true);
     } catch (e) {
       console.error(e);
       setError(niceErr(e));
@@ -444,7 +601,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
           <Search size={20} style={{ color: brand.purple }} />
-          <span style={{ color: brand.ink }}>Search Prescriptions</span>
+          <span style={{ color: brand.ink }}> Search Prescriptions </span>
         </h2>
 
         <div className="flex flex-col sm:flex-row gap-3">
@@ -456,7 +613,9 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
               value={q}
               maxLength={50}
               onChange={(e) => handleChange(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") runSearch(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") runSearch();
+              }}
               inputMode="numeric"
             />
             {!!q && (
@@ -477,11 +636,21 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
             onClick={runSearch}
             className="px-6 py-3 text-white rounded-xl transition-colors flex items-center gap-2 font-medium disabled:opacity-60"
             style={{ backgroundColor: brand.purple }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = brand.purpleDark)}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = brand.purple)}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.backgroundColor = brand.purpleDark)
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.backgroundColor = brand.purple)
+            }
             disabled={loading || !q.trim() || !!validationMsg}
           >
-            {loading ? "Searching..." : (<><Search size={18} /> Search</>)}
+            {loading ? (
+              "Searching..."
+            ) : (
+              <>
+                <Search size={18} /> Search
+              </>
+            )}
           </button>
         </div>
 
@@ -489,7 +658,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
           <div className="flex justify-end mt-2">
             <button
               onClick={resetSearch}
-              className="px-6 py-3 rounded-xl font-semibold"
+              className="px-6 py-3 rounded-xl font-medium"
               style={{ background: "#F3F4F6", color: "#374151" }}
             >
               Clear Search
@@ -497,16 +666,28 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
           </div>
         )}
 
-        {(!!error || !!infoMsg || !!validationMsg) && (
-          <div className="mt-3 font-medium" style={{ color: error ? "#DC2626" : "#374151" }}>
-            {validationMsg || infoMsg || error}
+        {(validationMsg || error || infoMsg) && (
+          <div
+            className={`mt-3 text-sm flex items-center gap-2 ${
+              validationMsg || error ? "text-rose-700" : "text-gray-700"
+            }`}
+          >
+            <AlertCircle size={16} />
+            <span>{validationMsg || error || infoMsg}</span>
           </div>
         )}
       </section>
 
-      {searched && !loading && results.length === 0 && !error && !infoMsg && !validationMsg && (
-        <div className="text-gray-600">No matching prescriptions found.</div>
-      )}
+      {searched &&
+        !loading &&
+        results.length === 0 &&
+        !error &&
+        !infoMsg &&
+        !validationMsg && (
+          <div className="text-gray-600">
+            No matching prescriptions found.
+          </div>
+        )}
 
       {/* Grid with pagination: 1 col mobile / 2 cols desktop */}
       {results.length > 0 && (
@@ -514,7 +695,8 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {pageItems.map((r) => {
               const eligible =
-                String(r.sensitivity || "").toLowerCase() === "nonsensitive" &&
+                String(r.sensitivity || "").toLowerCase() ===
+                  "nonsensitive" &&
                 r.dispensed === false &&
                 Number.isFinite(r.onchainId);
 
@@ -529,87 +711,145 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
                     minute: "2-digit",
                   })
                 : r.createdAt || "-";
-              const prescriber = r.doctorName ? `Dr. ${r.doctorName}` : (r.dispensedBy || "-");
-              const facility = r.doctorFacility ? ` — ${r.doctorFacility}` : "";
+
+              const prescriber = r.doctorName
+                ? `Dr. ${r.doctorName}`
+                : r.dispensedBy || "-";
+              const facility = r.doctorFacility
+                ? ` — ${r.doctorFacility}`
+                : "";
               const medTitle = r.medicineLabel || r.medicine || "—";
 
               return (
-                <div key={r._docId} className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between">
+                <div
+                  key={r._docId}
+                  className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between"
+                >
                   <div>
                     {/* Title */}
-                    <div className="text-lg font-bold text-slate-800 truncate">{medTitle}</div>
+                    <div className="text-lg font-bold text-slate-800 truncate">
+                      {medTitle}
+                    </div>
 
                     {/* Pharmacy extras */}
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Prescription ID: <span className="font-normal">{String(r.ref || r.prescriptionID || r.prescriptionId || r._docId || "—")}</span>
+                      Prescription ID:{" "}
+                      <span className="font-normal">
+                        {String(
+                          r.ref ||
+                            r.prescriptionID ||
+                            r.prescriptionId ||
+                            r._docId ||
+                            "—"
+                        )}
+                      </span>
                     </div>
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Patient:{" "}
                       <span className="font-normal">
                         {r.patientName || "—"}
-                        {r.patientId ? ` — ${String(r.patientId)}` : ""}
+                        {r.patientId
+                          ? ` — ${String(r.patientId)}`
+                          : ""}
                       </span>
                     </div>
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Doctor Phone: <span className="font-normal">{String(r.doctorPhone || "—")}</span>
+                      Doctor Phone:{" "}
+                      <span className="font-normal">
+                        {String(r.doctorPhone || "—")}
+                      </span>
                     </div>
 
                     {/* Details */}
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Prescribed by <span className="font-normal">{prescriber}{facility}</span>
+                      Prescribed by{" "}
+                      <span className="font-normal">
+                        {prescriber}
+                        {facility}
+                      </span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Dosage:{" "}
                       <span className="font-normal">
-                        {(r.dose || r.dosage || "—")} • {(r.frequency || "—")} • {(r.durationDays || r.duration || "—")}
+                        {r.dose || r.dosage || "—"} •{" "}
+                        {r.frequency || "—"} •{" "}
+                        {r.durationDays || r.duration || "—"}
                       </span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-2 font-semibold">
-                      Medical Condition: <span className="font-normal">{r.medicalCondition || "—"}</span>
+                      Medical Condition:{" "}
+                      <span className="font-normal">
+                        {r.medicalCondition || "—"}
+                      </span>
                     </div>
 
-                    {/* 🔹 مساحة ثابتة للنوتس – حتى لو ما فيه Notes */}
+                    {/* Notes area */}
                     <div className="mt-1 min-h-[28px]">
                       {!!r.notes && (
                         <div className="text-sm text-slate-700 font-semibold">
-                          Notes: <span className="font-normal">{r.notes}</span>
+                          Notes:{" "}
+                          <span className="font-normal">
+                            {r.notes}
+                          </span>
                         </div>
                       )}
                     </div>
 
-                    {/* زر Confirm & Dispense تحت النوتس مباشرة */}
+                    {/* Confirm & Dispense button */}
                     <div className="mt-1 flex justify-start">
                       <button
                         onClick={() => markDispensed(r)}
-                        disabled={!eligible || r.dispensed || isThisLoading}
+                        disabled={
+                          !eligible || r.dispensed || isThisLoading
+                        }
                         className="w-max px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-1.5 font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-white"
-                        style={{ backgroundColor: isThisLoading ? "rgba(176,140,193,0.6)" : brand.purple }}
+                        style={{
+                          backgroundColor: isThisLoading
+                            ? "rgba(176,140,193,0.6)"
+                            : brand.purple,
+                        }}
                         onMouseEnter={(e) => {
-                          if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = brand.purpleDark;
+                          if (!e.currentTarget.disabled)
+                            e.currentTarget.style.backgroundColor =
+                              brand.purpleDark;
                         }}
                         onMouseLeave={(e) => {
-                          if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = brand.purple;
+                          if (!e.currentTarget.disabled)
+                            e.currentTarget.style.backgroundColor =
+                              brand.purple;
                         }}
                         title={
                           r.dispensed
                             ? "Prescription already dispensed"
-                            : (!Number.isFinite(r.onchainId)
-                                ? "Missing on-chain id"
-                                : "Confirm & Dispense")
+                            : !Number.isFinite(r.onchainId)
+                            ? "Missing on-chain id"
+                            : "Confirm & Dispense"
                         }
                       >
                         {isThisLoading ? (
                           <>
-                            <Loader2 size={16} className="animate-spin text-white" />
-                            <span className="text-white">Processing…</span>
+                            <Loader2
+                              size={16}
+                              className="animate-spin text-white"
+                            />
+                            <span className="text-white">
+                              Processing…
+                            </span>
                           </>
                         ) : (
                           <>
-                            <FileText size={16} className="text-white" />
+                            <FileText
+                              size={16}
+                              className="text-white"
+                            />
                             <span className="text-white">
-                              {r.dispensed ? "✓ Dispensed" : (eligible ? "Confirm & Dispense" : "Not eligible")}
+                              {r.dispensed
+                                ? "✓ Dispensed"
+                                : eligible
+                                ? "Confirm & Dispense"
+                                : "Not eligible"}
                             </span>
                           </>
                         )}
@@ -617,7 +857,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
                     </div>
                   </div>
 
-                  {/* التاريخ تحت الزر بمسافة بسيطة وثابتة */}
+                  {/* date */}
                   <div className="text-right text-xs text-gray-500 mt-1">
                     Prescription issued on {dateTime}
                   </div>
@@ -633,7 +873,9 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
             </div>
 
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500">Page {page + 1} of {pageCount}</span>
+              <span className="text-xs text-gray-500">
+                Page {page + 1} of {pageCount}
+              </span>
               <div className="flex gap-2">
                 <button
                   className="px-4 py-2 rounded-lg border text-sm disabled:opacity-50"
@@ -645,7 +887,11 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
                 <button
                   className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
                   style={{ background: brand.purple }}
-                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                  onClick={() =>
+                    setPage((p) =>
+                      Math.min(pageCount - 1, p + 1)
+                    )
+                  }
                   disabled={page >= pageCount - 1}
                 >
                   Next →
@@ -655,6 +901,59 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
           </div>
         </>
       )}
+
+      {/* ✅ Success popup like Doctor */}
+      {showSuccessPopup && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+          <div
+            className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border"
+            style={{
+              background: "#F6F1FA",
+              borderColor: brand.purple,
+            }}
+          >
+            <div className="flex flex-col items-center text-center">
+              <div
+                className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
+                style={{ backgroundColor: "#ECFDF3" }}
+              >
+                <CheckCircle2
+                  size={28}
+                  style={{ color: "#16A34A" }}
+                />
+              </div>
+              <h3
+                className="text-lg font-semibold mb-1"
+                style={{ color: brand.ink }}
+              >
+                Prescription dispensed successfully
+              </h3>
+              <p
+                className="text-sm mb-4"
+                style={{ color: "#4B5563" }}
+              >
+                The prescription has been dispensed .
+                {popupRxRef && (
+                  <>
+                    <br />
+                    Prescription ID: {popupRxRef}
+                  </>
+                )}
+              </p>
+              <button
+                onClick={() => setShowSuccessPopup(false)}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
+                style={{
+                  backgroundColor: brand.purple,
+                  color: "#FFFFFF",
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -662,24 +961,43 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
 /* Delivery & Pending (unchanged visuals) */
 function DeliverySection({ rows = [], setRxs, addNotification }) {
   function acceptOrder(rxRef) {
-    setRxs(prev => prev.map(rx => rx.ref === rxRef ? { ...rx, accepted: true, acceptedAt: nowISO() } : rx));
-    addNotification(`Prescription ${rxRef} accepted for delivery`);
+    setRxs((prev) =>
+      prev.map((rx) =>
+        rx.ref === rxRef
+          ? { ...rx, accepted: true, acceptedAt: nowISO() }
+          : rx
+      )
+    );
+    addNotification(
+      `Prescription ${rxRef} accepted for delivery`
+    );
   }
   return (
     <section style={{ display: "grid", gap: 12 }}>
       <h1>Delivery Orders</h1>
-      {rows.map(r => (
+      {rows.map((r) => (
         <div key={r.ref} style={card}>
-          <div><b>Prescription {r.ref}</b></div>
-          <div>Patient: {r.patientName} ({r.patientId})</div>
+          <div>
+            <b>Prescription {r.ref}</b>
+          </div>
+          <div>
+            Patient: {r.patientName} ({r.patientId})
+          </div>
           <div>Medicine: {r.medicine}</div>
           <div>Dose: {r.dose}</div>
           <div>Times/Day: {r.timesPerDay}</div>
           <div>Duration: {r.durationDays} days</div>
           <div>Created: {fmt(r.createdAt)}</div>
-          {r.acceptedAt && <div>Accepted At: {fmt(r.acceptedAt)}</div>}
+          {r.acceptedAt && (
+            <div>Accepted At: {fmt(r.acceptedAt)}</div>
+          )}
           <div style={{ marginTop: 8 }}>
-            <button onClick={() => acceptOrder(r.ref)} className="px-6 py-3 rounded-xl font-medium" style={{ background: "#F3F4F6", color: "#374151" }} disabled={r.accepted}>
+            <button
+              onClick={() => acceptOrder(r.ref)}
+              className="px-6 py-3 rounded-xl font-medium"
+              style={{ background: "#F3F4F6", color: "#374151" }}
+              disabled={r.accepted}
+            >
               {r.accepted ? "✓ Accepted" : "Accept"}
             </button>
           </div>
@@ -691,32 +1009,73 @@ function DeliverySection({ rows = [], setRxs, addNotification }) {
 
 function PendingSection({ rows = [], setRxs, addNotification }) {
   function cancel(rxRef) {
-    setRxs(prev => prev.map(rx => rx.ref === rxRef ? { ...rx, accepted: false, acceptedAt: undefined } : rx));
-    addNotification({ type: 'cancel', ref: rxRef, text: `Prescription ${rxRef} cancelled` });
+    setRxs((prev) =>
+      prev.map((rx) =>
+        rx.ref === rxRef
+          ? { ...rx, accepted: false, acceptedAt: undefined }
+          : rx
+      )
+    );
+    addNotification({
+      type: "cancel",
+      ref: rxRef,
+      text: `Prescription ${rxRef} cancelled`,
+    });
   }
   function contact(rxRef) {
-    setRxs(prev => prev.map(rx => rx.ref === rxRef ? { ...rx, contactedAt: nowISO() } : rx));
-    addNotification(`Prescription ${rxRef} contacted logistics`);
+    setRxs((prev) =>
+      prev.map((rx) =>
+        rx.ref === rxRef
+          ? { ...rx, contactedAt: nowISO() }
+          : rx
+      )
+    );
+    addNotification(
+      `Prescription ${rxRef} contacted logistics`
+    );
   }
   return (
     <section style={{ display: "grid", gap: 12 }}>
       <h1>Pending Orders</h1>
-      {rows.map(r => (
+      {rows.map((r) => (
         <div key={r.ref} style={card}>
-          <div><b>Prescription {r.ref}</b></div>
-          <div>Patient: {r.patientName} ({r.patientId})</div>
+          <div>
+            <b>Prescription {r.ref}</b>
+          </div>
+          <div>
+            Patient: {r.patientName} ({r.patientId})
+          </div>
           <div>Medicine: {r.medicine}</div>
           <div>Dose: {r.dose}</div>
           <div>Times/Day: {r.timesPerDay}</div>
           <div>Duration: {r.durationDays} days</div>
           <div>Accepted At: {fmt(r.acceptedAt)}</div>
-          {r.contactedAt && <div>Contacted At: {fmt(r.contactedAt)}</div>}
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <button onClick={() => cancel(r.ref)} className="px-6 py-3 rounded-xl font-medium" style={{ background: "#F3F4F6", color: "#374151" }}>Cancel</button>
+          {r.contactedAt && (
+            <div>Contacted At: {fmt(r.contactedAt)}</div>
+          )}
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginTop: 8,
+            }}
+          >
+            <button
+              onClick={() => cancel(r.ref)}
+              className="px-6 py-3 rounded-xl font-medium"
+              style={{ background: "#F3F4F6", color: "#374151" }}
+            >
+              Cancel
+            </button>
             <button
               onClick={() => contact(r.ref)}
               className="px-6 py-3 rounded-xl font-medium"
-              style={{ background: r.contactedAt ? "#d1fae5" : "#F3F4F6", color: "#374151" }}
+              style={{
+                background: r.contactedAt
+                  ? "#d1fae5"
+                  : "#F3F4F6",
+                color: "#374151",
+              }}
               disabled={!!r.contactedAt}
             >
               {r.contactedAt ? "✓ Contacted" : "Contact"}

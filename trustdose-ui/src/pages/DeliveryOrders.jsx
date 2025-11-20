@@ -8,7 +8,7 @@ import {
   collection, query, where, getDocs, orderBy,
   doc, getDoc, updateDoc, serverTimestamp
 } from "firebase/firestore";
-import { Loader2, Check } from "lucide-react";
+import { Loader2, CheckCircle2 } from "lucide-react"; // ✅ نفس الأيقونة حق الصيدلية
 import { ethers } from "ethers";
 import DELIVERY_ACCEPT from "../contracts/DeliveryAccept.json";
 
@@ -18,7 +18,7 @@ const RX_STATUS = { DELIVERY_REQUESTED: "DELIVERY_REQUESTED", PHARM_ACCEPTED: "P
 const PAGE_SIZE = 6;
 
 // ======== عقد DeliveryAccept ========
-const DELIVERY_ACCEPT_ADDRESS = "0x147167048bF62A750c51E7A81C3cC4476f8F7318";
+const DELIVERY_ACCEPT_ADDRESS = "0x988458c14A662c770807276AB612041AFA1ffB80";
 const DELIVERY_ACCEPT_ABI = DELIVERY_ACCEPT?.abi ?? [];
 
 /* ========== helpers ========== */
@@ -43,6 +43,9 @@ export default function DeliveryOrders({ pharmacyId }) {
   const [msg, setMsg] = React.useState("");
   const [page, setPage] = React.useState(0);
   const [pending, setPending] = React.useState({}); // prescriptionId -> true
+
+  // ✅ حالة البوب أب (نفس فكرة الصيدلية بس بعنوان/رسالة)
+  const [successModal, setSuccessModal] = React.useState(null);
 
   React.useEffect(() => {
     let mounted = true;
@@ -249,6 +252,12 @@ export default function DeliveryOrders({ pharmacyId }) {
       setRows((arr) => arr.filter((x) => x._docId !== r._docId));
 
       console.log("Marked acceptDelivery", txHash ? "with tx " + txHash : "without on-chain tx");
+
+      // ✅ بوب أب نفس اللي في PickUpSection (نفس الشكل بس نص مختلف)
+      setSuccessModal({
+        title: "Sensitive prescription accepted",
+        message: "If accepted by logistics, the prescription will appear in Pending Orders.",
+      });
     } catch (err) {
       console.error(err);
       alert(err?.message || "Accept failed");
@@ -276,6 +285,54 @@ export default function DeliveryOrders({ pharmacyId }) {
   return (
     <div className="p-6">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
+
+        {/* ✅ البوب أب نفس بوب أب الصيدلية بالضبط */}
+        {successModal && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+            <div
+              className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border"
+              style={{
+                background: "#F6F1FA",
+                borderColor: C.primary,
+              }}
+            >
+              <div className="flex flex-col items-center text-center">
+                <div
+                  className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
+                  style={{ backgroundColor: "#ECFDF3" }}
+                >
+                  <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
+                </div>
+
+                <h3
+                  className="text-lg font-semibold mb-1"
+                  style={{ color: C.ink }}
+                >
+                  {successModal.title}
+                </h3>
+
+                <p
+                  className="text-sm mb-4"
+                  style={{ color: "#4B5563" }}
+                >
+                  {successModal.message}
+                </p>
+
+                <button
+                  onClick={() => setSuccessModal(null)}
+                  className="px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
+                  style={{
+                    backgroundColor: C.primary,
+                    color: "#FFFFFF",
+                  }}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {msg && <p className="text-gray-600">{msg}</p>}
 
         {pageItems.length > 0 && (
@@ -341,7 +398,7 @@ export default function DeliveryOrders({ pharmacyId }) {
                       <span className="font-normal">{r.medicalCondition || "—"}</span>
                     </div>
 
-                    {/* مساحة ثابتة للنوتس - نفس الفكرة حق PendingOrders */}
+                    {/* مساحة ثابتة للنوتس */}
                     <div className="mt-1 min-h-[28px]">
                       {!!r.notes && (
                         <div className="text-sm text-slate-700 font-semibold">
@@ -372,11 +429,10 @@ export default function DeliveryOrders({ pharmacyId }) {
                       onClick={() => handleAccept(r)}
                       disabled={disabled}
                     >
-                      {isPending ? (
+                      {isPending && (
                         <Loader2 size={16} className="animate-spin text-white" />
-                      ) : (
-                        <Check size={16} className="text-white" />
                       )}
+
                       <span className="text-white">
                         {isPending ? "Processing…" : "Accept"}
                       </span>
