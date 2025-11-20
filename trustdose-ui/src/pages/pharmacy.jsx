@@ -23,8 +23,8 @@ import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
-const PRESCRIPTION_ADDRESS = "0x853A4f3FCa6105D96eC8D48CE9300f0de4Fb6299";
-const DISPENSE_ADDRESS = "0xAB9CB5fb894ff87756D868fdD590DBF8133B1658";
+const PRESCRIPTION_ADDRESS = "0xBc2Ff43Ae58974638F0E528490799299b2CC8585";
+const DISPENSE_ADDRESS = "0xaa02995aCd7Fb1Cd6a1D35A3d96e81b690859b8f";
 
 // ===== Pagination size =====
 const PAGE_SIZE = 6;
