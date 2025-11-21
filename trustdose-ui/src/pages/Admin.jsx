@@ -1,4 +1,3 @@
-// src/pages/Admin.jsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -12,6 +11,7 @@ import {
   LayoutDashboard,
   UserPlus,
   LogOut,
+  CheckCircle2,     
 } from "lucide-react";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
@@ -20,8 +20,6 @@ import { db } from "../firebase";
 import { useNavigate, useLocation } from "react-router-dom";
 
 const C = { primary: "#B08CC1", teal: "#52B9C4", ink: "#4A2C59" };
-
-/* ======== helpers for temp password reset (لا تلمسين الباقي) ======== */
 async function hashPasswordSHA256(password) {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
@@ -74,7 +72,6 @@ function Sidebar({ open, setOpen, onNav, onLogout }) {
         </div>
 
         <nav className="px-3">
-          {/* Dashboard = Admin console (patients tab) */}
           <button
             onClick={() => {
               setOpen(false);
@@ -89,8 +86,6 @@ function Sidebar({ open, setOpen, onNav, onLogout }) {
             <LayoutDashboard size={18} />
             <span>Dashboard</span>
           </button>
-
-          {/* Add Doctor page (مسار الأدمِن الأصلي) */}
           <button
             onClick={() => {
               setOpen(false);
@@ -118,7 +113,6 @@ function Sidebar({ open, setOpen, onNav, onLogout }) {
   );
 }
 
-/* ============== small UI bits ============== */
 function StatCard({ title, count, icon: Icon, accent }) {
   return (
     <div className="rounded-2xl bg-white border border-gray-200 shadow-sm p-5 flex items-center justify-between">
@@ -232,15 +226,14 @@ function mask(str, head = 6, tail = 4) {
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
-/* === Normalizers (تجهيز البيانات لكل رول) === */
 const normalize = {
-  // Access ID للمريض = الـ National ID / Hash فعلياً (لكن ما نعرضه كعمود منفصل)
+
   patient: (id, d) => {
     const national =
       d.nationalId || d.nid || d.nationalIdHash || d.accessId || "";
     return {
       id,
-      accessId: national, // للبحث فقط
+      accessId: national,
       name:
         d.name ||
         d.fullName ||
@@ -290,7 +283,6 @@ const normalize = {
         ? "Inactive"
         : "");
 
-    // لو التمب باسورد منتهية نخليها Inactive في الواجهة
     if (tempExpired) {
       status = "Inactive";
     }
@@ -309,7 +301,6 @@ const normalize = {
     };
   },
 
-  // Pharmacy: Access ID من branchId / BranchID + Address بدال Wallet في الجدول
   pharmacy: (id, d) => ({
     id,
     accessId:
@@ -360,6 +351,9 @@ export default function Admin() {
   const queryTab = new URLSearchParams(location.search).get("tab");
   const [active, setActive] = useState(queryTab || "patients");
   const [open, setOpen] = useState(false);
+
+
+  const [resetModal, setResetModal] = useState(null); // { doctorLabel, tempPassword, expiresAt }
 
   // sync tab with URL
   useEffect(() => {
@@ -501,11 +495,6 @@ export default function Admin() {
   /* ======== reset doctor temp password ======== */
   async function handleResetDoctor(row) {
     if (!row?.id) return;
-    const confirmReset = window.confirm(
-      `Generate a new temporary password for doctor ${row.accessId || ""}?\n\n` +
-        "The old one will be replaced and the new one will be valid for 24 hours."
-    );
-    if (!confirmReset) return;
 
     try {
       const plain = generateTempPassword();
@@ -525,7 +514,6 @@ export default function Admin() {
         },
       });
 
-      // حدثي الحالة في الواجهة
       setDoctors((prev) =>
         prev.map((d) =>
           d.id === row.id
@@ -534,18 +522,25 @@ export default function Admin() {
         )
       );
 
-      alert(
-        `New temporary password for ${row.accessId || row.name || ""}:\n\n${plain}\n\nValid for 24 hours.`
-      );
+      const expiresText = new Date(expiresAtMs).toLocaleString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      setResetModal({
+        doctorLabel: row.accessId || row.name || "Doctor",
+        tempPassword: plain,
+        expiresAt: expiresText,
+      });
     } catch (e) {
       console.error(e);
       alert("Failed to reset password: " + (e?.message || e));
     }
   }
 
-  /* filters + dynamic columns + paging */
-
-  // Patients: بدون عمود Access ID منفصل
   const fPatients = useMemo(() => {
     const q = qPatients.trim().toLowerCase();
     const list = !q
@@ -652,7 +647,6 @@ export default function Admin() {
     { key: "logistics", label: "Logistics" },
   ];
 
-  // نستخدم المسار الحالي (عشان ما يرجعنا على add doctor بالغلط)
   const changeTab = (key) => {
     setActive(key);
     const sp = new URLSearchParams(location.search);
@@ -662,10 +656,7 @@ export default function Admin() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Header مع زر المينيو للسايدبار */}
       <Header hideMenu={false} onMenuClick={() => setOpen(true)} />
-
-      {/* ⭐ التعديل الوحيد هنا: كبرنا الماكس و زدنا الـ padding شوي */}
       <section className="mx-auto w-full max-w-[1500px] px-8 mt-10">
         <div className="flex items-center gap-3">
           <img
@@ -676,7 +667,7 @@ export default function Admin() {
           />
           <div>
             <h1 className="text-[28px] leading-tight font-extrabold tracking-tight text-[#2A1E36]">
-             Welcome, Admin
+              Welcome, Admin
             </h1>
             <p className="text-gray-500 text-sm">
               Manage identities & compliance.
@@ -968,7 +959,6 @@ export default function Admin() {
             </div>
           )}
 
-          {/* Pharmacies (Access ID + Address بدل Wallet) */}
           {active === "pharmacies" && (
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
               <SectionHeader
@@ -1201,6 +1191,64 @@ export default function Admin() {
         onNav={(p) => navigate(p)}
         onLogout={() => navigate("/auth", { replace: true })}
       />
+      {resetModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40">
+          <div
+            className="w-full max-w-sm px-6 py-5 rounded-3xl shadow-xl border"
+            style={{
+              background: "#F6F1FA",
+              borderColor: C.primary,
+            }}
+          >
+            <div className="flex flex-col items-center text-center">
+              <div
+                className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
+                style={{ backgroundColor: "#ECFDF3" }}
+              >
+                <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
+              </div>
+
+              <h3
+                className="text-lg font-semibold mb-1"
+                style={{ color: C.ink }}
+              >
+                Temporary password reset successfully
+              </h3>
+
+              <p className="text-sm mb-1" style={{ color: "#4B5563" }}>
+                New temp password for{" "}
+                <span className="font-semibold">
+                  {resetModal.doctorLabel}
+                </span>
+                :
+              </p>
+
+              <p
+                className="text-base font-semibold mb-2"
+                style={{ color: C.ink }}
+              >
+                {resetModal.tempPassword}
+              </p>
+
+              <p className="text-xs mb-4" style={{ color: "#6B7280" }}>
+                Valid until {resetModal.expiresAt}. Please share it securely
+                with the doctor.
+              </p>
+
+              <button
+                onClick={() => setResetModal(null)}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
+                style={{
+                  backgroundColor: C.primary,
+                  color: "#FFFFFF",
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

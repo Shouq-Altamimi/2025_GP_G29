@@ -1,19 +1,31 @@
-// src/pages/AdminDashboard.jsx (أو اسم ملفك)
-// صفحة: AdminAddDoctorOnly
-
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { X, LayoutDashboard, UserPlus, LogOut, AlertCircle } from "lucide-react";
+import {
+  X,
+  LayoutDashboard,
+  UserPlus,
+  LogOut,
+  AlertCircle,
+  CheckCircle2,        
+} from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
 
 import app, { db } from "../firebase";
 import {
-  collection, addDoc, serverTimestamp,
-  doc, updateDoc, runTransaction,
-  query, orderBy, limit, getDocs, where   // 👈 أضفنا where هنا
+  collection,
+  addDoc,
+  serverTimestamp,
+  doc,
+  updateDoc,
+  runTransaction,
+  query,
+  orderBy,
+  limit,
+  getDocs,
+  where, 
 } from "firebase/firestore";
 import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "firebase/auth";
 
@@ -30,10 +42,17 @@ function ensureAuthReady() {
   if (a.currentUser?.uid) return Promise.resolve(a.currentUser.uid);
   if (authReadyPromise) return authReadyPromise;
   authReadyPromise = new Promise((resolve, reject) => {
-    signInAnonymously(a).catch(()=>{});
-    const unsub = onAuthStateChanged(a, (u) => {
-      if (u?.uid) { unsub(); resolve(u.uid); }
-    }, reject);
+    signInAnonymously(a).catch(() => {});
+    const unsub = onAuthStateChanged(
+      a,
+      (u) => {
+        if (u?.uid) {
+          unsub();
+          resolve(u.uid);
+        }
+      },
+      reject
+    );
     setTimeout(() => reject(new Error("Auth timeout")), 10000);
   });
   return authReadyPromise;
@@ -46,10 +65,13 @@ const DoctorRegistry_ABI = [
   {
     inputs: [
       { internalType: "address", name: "_doctor", type: "address" },
-      { internalType: "string",  name: "_accessId", type: "string" },
-      { internalType: "bytes32", name: "_tempPassHash", type: "bytes32" }
+      { internalType: "string", name: "_accessId", type: "string" },
+      { internalType: "bytes32", name: "_tempPassHash", type: "bytes32" },
     ],
-    name: "addDoctor", outputs: [], stateMutability: "nonpayable", type: "function"
+    name: "addDoctor",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
   },
 ];
 
@@ -59,7 +81,9 @@ async function loadEthers() {
 }
 async function getProvider() {
   const E = await loadEthers();
-  return E.BrowserProvider ? new E.BrowserProvider(window.ethereum) : new E.providers.Web3Provider(window.ethereum);
+  return E.BrowserProvider
+    ? new E.BrowserProvider(window.ethereum)
+    : new E.providers.Web3Provider(window.ethereum);
 }
 async function getSigner(provider) {
   const s = provider.getSigner();
@@ -86,10 +110,11 @@ function isHex40(s) {
 async function sha256Hex(text) {
   const enc = new TextEncoder().encode(text);
   const buf = await crypto.subtle.digest("SHA-256", enc);
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return [...new Uint8Array(buf)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-/* هل الخطأ من المستخدم (كنسل ميتاماسك)؟ */
 function isUserRejectedError(e) {
   const code = e?.code || e?.error?.code;
   const msg = String(e?.message || e?.error?.message || "").toLowerCase();
@@ -120,8 +145,13 @@ async function reserveAccessId_Firestore(id) {
   return true;
 }
 async function tryReserveAccessId(id) {
-  try { await reserveAccessId_Firestore(id); return true; }
-  catch (e) { if (String(e?.message).includes("ACCESS_ID_TAKEN")) return false; throw e; }
+  try {
+    await reserveAccessId_Firestore(id);
+    return true;
+  } catch (e) {
+    if (String(e?.message).includes("ACCESS_ID_TAKEN")) return false;
+    throw e;
+  }
 }
 async function markAccessIdClaimed_Firestore(id) {
   await ensureAuthReady();
@@ -136,7 +166,10 @@ async function peekNextAccessId() {
   snap.forEach((d) => {
     const a = d.data()?.accessId;
     const m = /^Dr-(\d{3})$/i.exec(String(a || ""));
-    if (m) { const n = parseInt(m[1], 10); if (!Number.isNaN(n)) maxNum = Math.max(maxNum, n); }
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (!Number.isNaN(n)) maxNum = Math.max(maxNum, n);
+    }
   });
   const next = maxNum + 1;
   return `Dr-${String(next).padStart(3, "0")}`;
@@ -153,7 +186,7 @@ async function allocateSequentialAccessId() {
   throw new Error("Failed to allocate sequential Access ID. Please try again.");
 }
 
-/* ✅ تشيك عدم تكرار License Number */
+/* License Number */
 async function isLicenseTaken(licenseNumber) {
   if (!licenseNumber) return false;
   const qSnap = await getDocs(
@@ -167,7 +200,9 @@ async function isLicenseTaken(licenseNumber) {
    ========================= */
 async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPassword }) {
   const E = await loadEthers();
-  const provider = E.BrowserProvider ? new E.BrowserProvider(window.ethereum) : new E.providers.Web3Provider(window.ethereum);
+  const provider = E.BrowserProvider
+    ? new E.BrowserProvider(window.ethereum)
+    : new E.providers.Web3Provider(window.ethereum);
   const signer = await getSigner(provider);
   const contract = new E.Contract(contractAddress, DoctorRegistry_ABI, signer);
   const tempPassHash = await idCompat(tempPassword);
@@ -181,7 +216,10 @@ async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPasswo
    ========================= */
 function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
   const location = useLocation();
-  const go = (path) => { setOpen(false); onNav?.(path); };
+  const go = (path) => {
+    setOpen(false);
+    onNav?.(path);
+  };
   const isActive = (path) => location.pathname === path;
 
   return (
@@ -223,7 +261,13 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
             <span>Add Doctor</span>
           </SidebarItem>
 
-          <SidebarItem variant="ghost" onClick={() => { setOpen(false); onLogout?.(); }}>
+          <SidebarItem
+            variant="ghost"
+            onClick={() => {
+              setOpen(false);
+              onLogout?.();
+            }}
+          >
             <LogOut size={18} />
             <span>Sign out</span>
           </SidebarItem>
@@ -233,12 +277,13 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
   );
 }
 function SidebarItem({ children, onClick, variant = "solid", active = false }) {
-  const base = "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
+  const base =
+    "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
   const styles = active
     ? "bg-white text-[#5B3A70]"
     : variant === "ghost"
-      ? "text-white/90 hover:bg-white/10"
-      : "bg-white/25 text-white hover:bg-white/35";
+    ? "text-white/90 hover:bg-white/10"
+    : "bg-white/25 text-white hover:bg-white/35";
   return (
     <button onClick={onClick} className={`${base} ${styles}`} aria-current={active ? "page" : undefined}>
       {children}
@@ -252,7 +297,7 @@ function SidebarItem({ children, onClick, variant = "solid", active = false }) {
 // min 5 chars
 const NAME_RE = /^[A-Za-z ]{5,}$/;
 const SPEC_RE = /^[A-Za-z ]{5,}$/;
-const LIC_RE  = /^[A-Za-z0-9]{10}$/; // exactly 10 alphanumeric
+const LIC_RE = /^[A-Za-z0-9]{10}$/; // exactly 10 alphanumeric
 
 function validateLic(v) {
   if (!v) return { ok: false, err: "License number is required." };
@@ -326,12 +371,16 @@ export default function AdminAddDoctorOnly() {
   async function handleLogout() {
     localStorage.clear();
     sessionStorage.clear();
-    try { await signOut(getAuth(app)); } catch {}
+    try {
+      await signOut(getAuth(app));
+    } catch {}
     navigate("/auth", { replace: true });
   }
 
   const HOSPITAL_NAME = "Dr. Sulaiman Al Habib Hospital";
-  const [contractAddress, setContractAddress] = useState("0xEe83DeA7b37B086B8695193BDf740B7F417Da952");
+  const [contractAddress, setContractAddress] = useState(
+    "0xEe83DeA7b37B086B8695193BDf740B7F417Da952"
+  );
   const [DoctorID, setDoctorID] = useState("");
   const [healthFacility] = useState(HOSPITAL_NAME);
   const [licenseNumber, setLicenseNumber] = useState("");
@@ -343,23 +392,33 @@ export default function AdminAddDoctorOnly() {
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const [dirty, setDirty] = useState({ contract: false, name: false, spec: false, lic: false, wallet: false });
+  const [dirty, setDirty] = useState({
+    contract: false,
+    name: false,
+    spec: false,
+    lic: false,
+    wallet: false,
+  });
 
-  // رسالة خطأ MetaMask
+//Metamask error
   const [mmError, setMmError] = useState("");
+  const [successModal, setSuccessModal] = useState(null);
 
   // Validations
   const vContract = validateContract(contractAddress);
-  const vName     = validateName(name);
-  const vSpec     = validateSpec(speciality);
-  const vLic      = validateLic(licenseNumber);
-  const vWallet   = validateWallet(walletAddress);
-  const allValid  = vContract.ok && vName.ok && vSpec.ok && vLic.ok && vWallet.ok;
+  const vName = validateName(name);
+  const vSpec = validateSpec(speciality);
+  const vLic = validateLic(licenseNumber);
+  const vWallet = validateWallet(walletAddress);
+  const allValid = vContract.ok && vName.ok && vSpec.ok && vLic.ok && vWallet.ok;
 
   async function connectMetaMask() {
     try {
       setMmError("");
-      if (!window?.ethereum) { setStatus("⚠️ Please install MetaMask first."); return; }
+      if (!window?.ethereum) {
+        setStatus("⚠️ Please install MetaMask first.");
+        return;
+      }
       await window.ethereum.request({ method: "eth_requestAccounts" });
       const provider = await getProvider();
       const signer = await getSigner(provider);
@@ -395,7 +454,10 @@ export default function AdminAddDoctorOnly() {
       if (!formOk) throw new Error("Please fill all required fields correctly");
       await ensureAuthReady();
 
-      // ✅ أول شيء: تأكد أن الـ License Number غير مكرر
+   
+      const usedTempPassword = tempPassword;
+
+     
       setStatus("⏳ Checking license number…");
       const taken = await isLicenseTaken(licenseNumber);
       if (taken) {
@@ -406,14 +468,20 @@ export default function AdminAddDoctorOnly() {
 
       setStatus("⏳ Allocating sequential Access ID…");
       const id = await allocateSequentialAccessId();
+      const usedAccessId = id; 
       setAccessId(id);
       setDoctorID(id);
 
       setStatus("⏳ Adding doctor on-chain…");
-      const chain = await saveOnChain({ contractAddress, doctorWallet: walletAddress, accessId: id, tempPassword });
+      const chain = await saveOnChain({
+        contractAddress,
+        doctorWallet: walletAddress,
+        accessId: id,
+        tempPassword: usedTempPassword,
+      });
 
       setStatus("⏳ Saving to database…");
-      const tempPasswordHash = await sha256Hex(tempPassword);
+      const tempPasswordHash = await sha256Hex(usedTempPassword);
       const expiresAtMs = Date.now() + 24 * 60 * 60 * 1000;
 
       await saveDoctor_FirestoreMulti({
@@ -440,7 +508,15 @@ export default function AdminAddDoctorOnly() {
 
       await markAccessIdClaimed_Firestore(id);
 
+      
+      setSuccessModal({
+        accessId: usedAccessId,
+        tempPassword: usedTempPassword,
+      });
+
       setStatus(`✅ Doctor added successfully.`);
+
+
       setLicenseNumber("");
       setName("");
       setspeciality("");
@@ -467,13 +543,54 @@ export default function AdminAddDoctorOnly() {
       {/* Header */}
       <Header hideMenu={false} onMenuClick={() => setOpen(true)} />
 
-      {/* 🔴 نفس الاليرت تبع PendingOrders */}
       {mmError && (
         <div className="w-full">
           <div className="mx-auto w-full max-w-6xl px-4 mt-4">
             <div className="mb-4 p-4 rounded-xl flex items-center gap-2 text-red-700 bg-red-100 border border-red-300">
               <AlertCircle size={20} />
               <span className="text-sm font-medium">{mmError}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {successModal && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+          <div
+            className="w-full max-w-sm px-6 py-5 rounded-3xl shadow-xl border"
+            style={{ background: "#F6F1FA", borderColor: "#B08CC1" }}
+          >
+            <div className="flex flex-col items-center text-center">
+              <div
+                className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
+                style={{ backgroundColor: "#ECFDF3" }}
+              >
+                <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
+              </div>
+
+              <h3 className="text-lg font-semibold mb-1" style={{ color: "#4A2C59" }}>
+                Doctor added successfully
+              </h3>
+
+              <p className="text-sm mb-1" style={{ color: "#4B5563" }}>
+                The doctor has been created.
+              </p>
+              <p className="text-sm mb-1" style={{ color: "#4B5563" }}>
+                <span className="font-semibold">Access ID:</span>{" "}
+                {successModal.accessId}
+              </p>
+              <p className="text-sm mb-4" style={{ color: "#4B5563" }}>
+                <span className="font-semibold">Temp Password:</span>{" "}
+                {successModal.tempPassword}
+              </p>
+
+              <button
+                onClick={() => setSuccessModal(null)}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
+                style={{ backgroundColor: "#B08CC1", color: "#FFFFFF" }}
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>
@@ -496,7 +613,9 @@ export default function AdminAddDoctorOnly() {
       {/* Form box */}
       <main className="flex-1 flex items-center justify-center px-4 py-10">
         <aside className="w-full max-w-xl bg-white rounded-3xl shadow-xl border border-gray-200 p-6">
-          <h3 className="mb-4 text-xl font-semibold text-[#4A2C59]">Add Doctor</h3>
+          <h3 className="mb-4 text-xl font-semibold text-[#4A2C59]">
+            Add Doctor
+          </h3>
 
           {/* Contract Address */}
           <div className="mb-3">
@@ -509,13 +628,18 @@ export default function AdminAddDoctorOnly() {
               onChange={(e) => {
                 const cleaned = sanitizeHexLike(e.target.value);
                 setContractAddress(cleaned);
-                setDirty((d)=>({...d, contract:true}));
+                setDirty((d) => ({ ...d, contract: true }));
               }}
-              className={`w-full rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(vContract.ok, dirty.contract)}`}
+              className={`w-full rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(
+                vContract.ok,
+                dirty.contract
+              )}`}
               inputMode="text"
               dir="ltr"
             />
-            <ErrorMsg>{dirty.contract && !vContract.ok ? vContract.err : ""}</ErrorMsg>
+            <ErrorMsg>
+              {dirty.contract && !vContract.ok ? vContract.err : ""}
+            </ErrorMsg>
           </div>
 
           {/* Name + Specialty */}
@@ -529,12 +653,17 @@ export default function AdminAddDoctorOnly() {
                 value={name}
                 onChange={(e) => {
                   setName(sanitizeName(e.target.value));
-                  setDirty((d)=>({...d, name:true}));
+                  setDirty((d) => ({ ...d, name: true }));
                 }}
-                className={`w-full rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(vName.ok, dirty.name)}`}
+                className={`w-full rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(
+                  vName.ok,
+                  dirty.name
+                )}`}
                 inputMode="text"
               />
-              <ErrorMsg>{dirty.name && !vName.ok ? vName.err : ""}</ErrorMsg>
+              <ErrorMsg>
+                {dirty.name && !vName.ok ? vName.err : ""}
+              </ErrorMsg>
             </div>
 
             <div>
@@ -546,19 +675,26 @@ export default function AdminAddDoctorOnly() {
                 value={speciality}
                 onChange={(e) => {
                   setspeciality(sanitizeSpec(e.target.value));
-                  setDirty((d)=>({...d, spec:true}));
+                  setDirty((d) => ({ ...d, spec: true }));
                 }}
-                className={`w-full rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(vSpec.ok, dirty.spec)}`}
+                className={`w-full rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(
+                  vSpec.ok,
+                  dirty.spec
+                )}`}
                 inputMode="text"
               />
-              <ErrorMsg>{dirty.spec && !vSpec.ok ? vSpec.err : ""}</ErrorMsg>
+              <ErrorMsg>
+                {dirty.spec && !vSpec.ok ? vSpec.err : ""}
+              </ErrorMsg>
             </div>
           </div>
 
           {/* IDs / Facility / License */}
           <div className="mt-3 grid grid-cols-1 gap-3">
             <div>
-              <label className="block text-sm text-gray-700 mb-1">Doctor ID</label>
+              <label className="block text-sm text-gray-700 mb-1">
+                Doctor ID
+              </label>
               <input
                 placeholder="Auto-generated (e.g., Dr-007)"
                 value={DoctorID}
@@ -568,7 +704,9 @@ export default function AdminAddDoctorOnly() {
             </div>
 
             <div>
-              <label className="block text-sm text-gray-700 mb-1">Health Facility</label>
+              <label className="block text-sm text-gray-700 mb-1">
+                Health Facility
+              </label>
               <input
                 value={healthFacility}
                 readOnly
@@ -585,12 +723,17 @@ export default function AdminAddDoctorOnly() {
                 value={licenseNumber}
                 onChange={(e) => {
                   setLicenseNumber(sanitizeLicense(e.target.value));
-                  setDirty((d)=>({...d, lic:true}));
+                  setDirty((d) => ({ ...d, lic: true }));
                 }}
-                className={`w-full rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(vLic.ok, dirty.lic)}`}
+                className={`w-full rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(
+                  vLic.ok,
+                  dirty.lic
+                )}`}
                 inputMode="text"
               />
-              <ErrorMsg>{dirty.lic && !vLic.ok ? vLic.err : ""}</ErrorMsg>
+              <ErrorMsg>
+                {dirty.lic && !vLic.ok ? vLic.err : ""}
+              </ErrorMsg>
             </div>
           </div>
 
@@ -601,10 +744,13 @@ export default function AdminAddDoctorOnly() {
             </label>
             <div className="flex items-center gap-2">
               <input
-                placeholder="Click “Use MetaMask” to fill"
+                placeholder='Click “Use MetaMask” to fill'
                 value={walletAddress}
                 readOnly
-                className={`flex-1 rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(vWallet.ok, dirty.wallet)}`}
+                className={`flex-1 rounded-2xl border px-4 py-3 text-gray-800 outline-none focus:ring-2 ${fieldClasses(
+                  vWallet.ok,
+                  dirty.wallet
+                )}`}
                 inputMode="text"
                 dir="ltr"
               />
@@ -618,18 +764,25 @@ export default function AdminAddDoctorOnly() {
               </button>
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              Please click &quot;Use MetaMask&quot; to automatically fill the wallet address.
+              Please click &quot;Use MetaMask&quot; to automatically fill the
+              wallet address.
             </p>
-            <ErrorMsg>{dirty.wallet && !vWallet.ok ? vWallet.err : ""}</ErrorMsg>
+            <ErrorMsg>
+              {dirty.wallet && !vWallet.ok ? vWallet.err : ""}
+            </ErrorMsg>
           </div>
 
           {/* Access ID + Temp Password (read-only) */}
           <div className="mt-4 space-y-2">
             <div className="flex justify-between border border-gray-200 bg-gray-50 px-4 py-2 rounded-2xl text-sm text-gray-700">
-              <span><b>Access ID:</b> {accessId}</span>
+              <span>
+                <b>Access ID:</b> {accessId}
+              </span>
             </div>
             <div className="flex justify-between border border-gray-200 bg-gray-50 px-4 py-2 rounded-2xl text-sm text-gray-700">
-              <span><b>Temp Password:</b> {tempPassword}</span>
+              <span>
+                <b>Temp Password:</b> {tempPassword}
+              </span>
             </div>
           </div>
 
@@ -645,7 +798,9 @@ export default function AdminAddDoctorOnly() {
               onClick={handleSave}
               disabled={saving || !formOk}
               className={`rounded-2xl px-5 py-3 font-medium text-white shadow-md transition-all ${
-                saving || !formOk ? "bg-[#CBB4D9] cursor-not-allowed" : "bg-[#B08CC1] hover:bg-[#9A7EAF]"
+                saving || !formOk
+                  ? "bg-[#CBB4D9] cursor-not-allowed"
+                  : "bg-[#B08CC1] hover:bg-[#9A7EAF]"
               }`}
             >
               {saving ? "Saving…" : "Save"}
