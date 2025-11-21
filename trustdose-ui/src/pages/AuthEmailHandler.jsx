@@ -3,7 +3,15 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { db } from "../firebase.js";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { 
+  doc, 
+  updateDoc, 
+  serverTimestamp,
+  collection,
+  query,
+  where,
+  getDocs
+} from "firebase/firestore";
 import { getAuth, isSignInWithEmailLink, signInWithEmailLink, signOut } from "firebase/auth";
 
 export default function AuthEmailHandler() {
@@ -21,9 +29,9 @@ export default function AuthEmailHandler() {
         console.log("📧 Email verification started");
         console.log("🔗 Current URL:", href);
 
-        // ===== Params (with doctors, pharmacies, patients support) =====
+        // ===== Params =====
         const colParam = (searchParams.get("col") || "doctors").trim().toLowerCase();
-        const safeCol = ["doctors", "pharmacies", "patients" ,  "logistics"].includes(colParam)
+        const safeCol = ["doctors", "pharmacies", "patients", "logistics"].includes(colParam)
           ? colParam
           : "doctors";
 
@@ -49,7 +57,7 @@ export default function AuthEmailHandler() {
           return;
         }
 
-        // Fallback to local pending email if not in URL
+        // Fallback to localStorage
         if (!email) {
           try {
             const pending = JSON.parse(localStorage.getItem("td_email_pending") || "{}");
@@ -70,26 +78,52 @@ export default function AuthEmailHandler() {
         setStatus("🔐 Authenticating...");
         console.log("🔐 Signing in with email link...");
 
-        // Temporary sign-in to verify email ownership
+        // Sign in
         await signInWithEmailLink(auth, email, href);
         console.log("✅ Sign in successful");
 
-        setStatus("💾 Saving email to profile...");
+        // ===== التشييك على تكرار الإيميل =====
+        setStatus("🔍 Checking email...");
+        console.log("🔍 Checking if email already exists...");
+
+        const allCollections = ["doctors", "pharmacies", "patients", "logistics"];
+        
+        for (const col of allCollections) {
+          const q = query(collection(db, col), where("email", "==", email));
+          const snapshot = await getDocs(q);
+          
+          // لو لقى الإيميل في مستند غير المستند الحالي
+          if (!snapshot.empty && snapshot.docs[0].id !== documentId) {
+            console.error(`❌ Email exists in ${col}`);
+            setStatus("❌ This email is already registered");
+            setError(true);
+            
+            try {
+              await signOut(auth);
+            } catch {}
+            
+            return;
+          }
+        }
+
+        console.log("✅ Email is unique");
+
+        setStatus("💾 Saving email...");
         console.log("💾 Updating Firestore...");
 
-        // Update Firestore doc (doctor/pharmacy/patient)
+        // حفظ الإيميل
         await updateDoc(doc(db, safeCol, documentId), {
           email,
           emailVerifiedAt: serverTimestamp(),
         });
-        console.log("✅ Firestore updated");
+        console.log("✅ Email saved successfully");
 
-        // Sign out temp auth
+        // Sign out
         try {
           await signOut(auth);
         } catch {}
 
-        // Clear pending email
+        // Clear localStorage
         try {
           localStorage.removeItem("td_email_pending");
         } catch {}
