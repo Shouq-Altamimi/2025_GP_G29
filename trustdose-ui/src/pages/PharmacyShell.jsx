@@ -221,7 +221,7 @@ export default function PharmacyShell() {
       )}
       {showResetAlert && (
         <AlertBanner>
-          ⚠️ Set your password now to keep access — temporary access ends in 24h.{" "}
+          ⚠️ Please Verify your email so you can change your password later.{" "}
           <button
             onClick={() => setShowAccount(true)}
             style={{ fontWeight: 700, color: C.primary }}
