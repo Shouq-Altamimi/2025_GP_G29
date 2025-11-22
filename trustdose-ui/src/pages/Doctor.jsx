@@ -22,7 +22,7 @@ import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "luci
 import PRESCRIPTION from "../contracts/Prescription.json";
 
 const C = { primary: "#B08CC1", primaryDark: "#B08CC1", ink: "#4A2C59", pale: "#F6F1FA" };
-const CONTRACT_ADDRESS = "0x8B1346cb92a09f6ad0A86f2f1C68FE530e8DB2Ad";
+const CONTRACT_ADDRESS = "0x177C1B487fA2c7cc152D2a7D5E16545e72fc7Ba3";
 
 const OTHER_MAX = 20;
 const LIMITS = Object.freeze({
@@ -379,8 +379,9 @@ export default function Doctor() {
         prescriptionNum: generatedNum,
         dispensed: false,
         acceptDelivery: false,
-        // ⭐ الجديد: يتسجل في الداتابيس false
         logisticsAccepted: false,
+        deliveryConfirmed: false,
+
       };
 
       if (selectedMed?.sensitivity) payload[F.sensitivity] = selectedMed.sensitivity;

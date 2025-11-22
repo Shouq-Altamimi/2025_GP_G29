@@ -19,7 +19,6 @@ import PrescriptionsPage from "./pages/PrescriptionsPage";
 import PharmacyShell from "./pages/PharmacyShell";
 import Pharmacy from "./pages/pharmacy.jsx";
 import DeliveryOrders from "./pages/DeliveryOrders.jsx";
-// ✅ صفحة الطلبات المعلّقة (بانتظار اللوجستكس)
 import PendingOrders from "./pages/PendingOrders.jsx";
 
 // البريد / إعادة تعيين
@@ -33,15 +32,16 @@ import Admin from "./pages/Admin";
 // اللوجستك
 import LogisticsHeader from "./pages/LogisticsHeader.jsx";
 import Logistics from "./pages/Logistics.jsx";
+import LogisticsPending from "./pages/LogisticsPending.jsx";
 
-// 🔥 Welcome Page (مضاف الآن)
+// صفحة الترحيب
 import Welcome from "./pages/Welcome";
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* بدل ما يروح لـ auth → الآن يفتح Welcome */}
+        {/* Landing Page */}
         <Route path="/" element={<Welcome />} />
 
         {/* صفحات عامة */}
@@ -49,7 +49,7 @@ export default function App() {
         <Route path="/auth-email" element={<AuthEmailHandler />} />
         <Route path="/password-reset" element={<PasswordReset />} />
 
-        {/* الأدمن (محمي) */}
+        {/* الأدمن */}
         <Route
           path="/admin"
           element={
@@ -115,7 +115,7 @@ export default function App() {
             path="delivery"
             element={<DeliveryOrders pharmacyId="pharma_001" />}
           />
-          {/* الطلبات المعلّقة بانتظار اللوجستكس */}
+
           <Route
             path="pending"
             element={<PendingOrders pharmacyId="pharma_001" />}
@@ -132,13 +132,12 @@ export default function App() {
           }
         >
           <Route index element={<Logistics />} />
+
+          <Route path="pending" element={<LogisticsPending />} />
         </Route>
 
         {/* 404 */}
-        <Route
-          path="*"
-          element={<div style={{ padding: 24 }}>Page not found</div>}
-        />
+        <Route path="*" element={<div style={{ padding: 24 }}>Page not found</div>} />
       </Routes>
     </BrowserRouter>
   );

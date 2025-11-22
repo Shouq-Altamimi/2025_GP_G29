@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-contract LogisticsAccept {
-
+contract DeliveryConfirmation {
     struct Delivery {
-        bool accepted;
+        bool delivered;
         address logistics;
-        uint256 acceptedAt;
+        uint256 deliveredAt;
     }
 
     mapping(address => bool) public isLogistics;
     mapping(uint256 => Delivery) public deliveries;
 
-    event DeliveryAccepted(uint256 indexed prescriptionId, address indexed logistics);
+    event DeliveryConfirmed(uint256 indexed prescriptionId, address indexed logistics);
 
     constructor(address[] memory logisticsList) {
         for (uint256 i = 0; i < logisticsList.length; i++) {
@@ -20,16 +19,15 @@ contract LogisticsAccept {
         }
     }
 
-    function acceptDelivery(uint256 prescriptionId) external {
+    function confirmDelivery(uint256 prescriptionId) external {
         require(isLogistics[msg.sender], "Not logistics");
-
         Delivery storage d = deliveries[prescriptionId];
-        require(!d.accepted, "Already accepted");
+        require(!d.delivered, "Already delivered");
 
-        d.accepted = true;
+        d.delivered = true;
         d.logistics = msg.sender;
-        d.acceptedAt = block.timestamp;
+        d.deliveredAt = block.timestamp;
 
-        emit DeliveryAccepted(prescriptionId, msg.sender);
+        emit DeliveryConfirmed(prescriptionId, msg.sender);
     }
 }

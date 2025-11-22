@@ -170,6 +170,58 @@ function AlertBanner({ children }) {
   );
 }
 
+/* ============ Email / Phone uniqueness helpers ============ */
+
+const ALL_USER_COLLECTIONS = ["doctors", "patients", "pharmacies", "logistics", "admin"];
+
+async function isEmailTakenGlobally(email, selfCollection, selfDocId) {
+  const raw = String(email || "").trim();
+  if (!raw) return false;
+
+  const candidates = [raw, raw.toLowerCase()];
+  for (const col of ALL_USER_COLLECTIONS) {
+    for (const value of candidates) {
+      const qy = query(
+        collection(db, col),
+        where("email", "==", value),
+        fsLimit(1)
+      );
+      const snap = await getDocs(qy);
+      if (!snap.empty) {
+        const d = snap.docs[0];
+        if (!(col === selfCollection && d.id === selfDocId)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+async function isPhoneTakenGlobally(phone, selfCollection, selfDocId) {
+  const p = String(phone || "").trim();
+  if (!p) return false;
+
+  const phoneFields = ["phone", "phoneNumber", "mobile", "Mobile", "Phone"];
+  for (const col of ALL_USER_COLLECTIONS) {
+    for (const field of phoneFields) {
+      const qy = query(
+        collection(db, col),
+        where(field, "==", p),
+        fsLimit(1)
+      );
+      const snap = await getDocs(qy);
+      if (!snap.empty) {
+        const d = snap.docs[0];
+        if (!(col === selfCollection && d.id === selfDocId)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 /* ============ main layout ============ */
 
 export default function LogisticsHeader() {
@@ -282,34 +334,45 @@ export default function LogisticsHeader() {
               </button>
             </div>
 
-           <nav className="px-3">
-            <DrawerItem
-              active={location.pathname === "/logistics"}
-              onClick={() => {
-                navigate("/logistics");
-                setOpen(false);
-              }}
-            >
-              <Package size={18} />
-              <span>Delivery Orders</span>
-            </DrawerItem>
+            <nav className="px-3">
+              <DrawerItem
+                active={location.pathname === "/logistics"}
+                onClick={() => {
+                  navigate("/logistics");
+                  setOpen(false);
+                }}
+              >
+                <Package size={18} />
+                <span>Delivery Orders</span>
+              </DrawerItem>
 
-            <DrawerItem
-              onClick={() => {
-                setShowAccount(true);
-                setOpen(false);
-              }}
-            >
-              <User size={18} />
-              <span>My Profile</span>
-            </DrawerItem>
+              {/* ✅ Pending page في السايد بار */}
+              <DrawerItem
+                active={location.pathname === "/logistics/pending"}
+                onClick={() => {
+                  navigate("/logistics/pending");
+                  setOpen(false);
+                }}
+              >
+                <Clock size={18} />
+                <span>Pending Orders</span>
+              </DrawerItem>
 
-            <DrawerItem onClick={signOut} variant="ghost">
-              <LogOut size={18} />
-              <span>Sign out</span>
-            </DrawerItem>
-          </nav>
+              <DrawerItem
+                onClick={() => {
+                  setShowAccount(true);
+                  setOpen(false);
+                }}
+              >
+                <User size={18} />
+                <span>My Profile</span>
+              </DrawerItem>
 
+              <DrawerItem onClick={signOut} variant="ghost">
+                <LogOut size={18} />
+                <span>Sign out</span>
+              </DrawerItem>
+            </nav>
           </aside>
         </>
       )}
@@ -374,6 +437,13 @@ function AccountModal({ user, docId, onClose, onSaved }) {
       const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
       if (!ok) {
         setEmailMsg("Please enter a valid email.");
+        return;
+      }
+
+      // ✅ تحقق أن الإيميل غير مكرر في كل الداتابيس
+      const taken = await isEmailTakenGlobally(raw, "logistics", docId);
+      if (taken) {
+        setEmailMsg("This email is already used in another account.");
         return;
       }
 
@@ -472,8 +542,7 @@ function AccountModal({ user, docId, onClose, onSaved }) {
                 </div>
               ) : (
                 <>
-                  <p className="text-gray-600 mb-2">
-                  </p>
+                  <p className="text-gray-600 mb-2"></p>
                   <div className="flex gap-2">
                     <input
                       className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
@@ -496,10 +565,11 @@ function AccountModal({ user, docId, onClose, onSaved }) {
                     <div
                       className="mt-2 text-sm"
                       style={{
-                        color: emailMsg.startsWith("Firebase") ||
+                        color:
+                          emailMsg.startsWith("Firebase") ||
                           emailMsg.includes("already used")
-                          ? "#991B1B"
-                          : "#166534",
+                            ? "#991B1B"
+                            : "#166534",
                       }}
                     >
                       {emailMsg}
@@ -511,7 +581,11 @@ function AccountModal({ user, docId, onClose, onSaved }) {
 
             {/* Password (only if email exists) */}
             {hasEmail && (
-              <PasswordResetSection user={user} docId={docId} onSaved={onSaved} />
+              <PasswordResetSection
+                user={user}
+                docId={docId}
+                onSaved={onSaved}
+              />
             )}
           </div>
         </div>

@@ -18,7 +18,7 @@ import {
 
 import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { ethers } from "ethers";
-import LOGISTICS_ACCEPT from "../contracts/LogisticsAccept.json";
+import DELIVERY_CONFIRMATION from "../contracts/DeliveryConfirmation.json";
 
 const C = {
   primary: "#B08CC1",
@@ -28,7 +28,8 @@ const C = {
 };
 
 const PAGE_SIZE = 6;
-const LOGISTICS_ACCEPT_ADDRESS = "0xC1A80Bd36f421d4B1D70871c4aEE29318AC5b126";
+const DELIVERY_CONFIRMATION_ADDRESS =
+  "0x7F5E642378321774eeE4e941c482c5134B948d92";
 
 /* Timestamp formatter */
 function formatFsTimestamp(v) {
@@ -121,29 +122,31 @@ export default function Logistics() {
       const col = collection(db, "prescriptions");
 
       async function runQ(wheres) {
-  try {
-    const q1 = query(col, ...wheres, orderBy("updatedAt", "desc"));
-    return await getDocs(q1);
-  } catch (err) {
-    console.warn("Index missing – falling back without orderBy:", err);
+        try {
+          const q1 = query(col, ...wheres, orderBy("updatedAt", "desc"));
+          return await getDocs(q1);
+        } catch (err) {
+          console.warn("Index missing – falling back without orderBy:", err);
+          const snap = await getDocs(query(col, ...wheres));
+          return snap;
+        }
+      }
 
-    const snap = await getDocs(query(col, ...wheres));
-
-    return snap;
-  }
-}
-
-
+      // === 🔍 الفلترة الرئيسية ===
       const candidates = [
         [
           where("sensitivity", "==", "Sensitive"),
           where("acceptDelivery", "==", true),
-          where("dispensed", "==", false),
+          where("dispensed", "==", true),
+          where("logisticsAccepted", "==", true),
+          where("deliveryConfirmed", "==", false),
         ],
         [
           where("sensitivity", "==", "sensitive"),
           where("acceptDelivery", "==", true),
-          where("dispensed", "==", false),
+          where("dispensed", "==", true),
+          where("logisticsAccepted", "==", true),
+          where("deliveryConfirmed", "==", false),
         ],
       ];
 
@@ -161,9 +164,27 @@ export default function Logistics() {
         return;
       }
 
-      const data = snap.docs
-        .map((d) => {
+      // نبني الصفوف + نجيب رقم جوال المريض من مجموعة patients
+      const data = await Promise.all(
+        snap.docs.map(async (d) => {
           const x = d.data();
+
+          // ========= جلب رقم جوال المريض من patients =========
+          let patientPhone = "-";
+          const natId = x.nationalID;
+          if (natId) {
+            try {
+              const pRef = doc(db, "patients", `Ph_${String(natId)}`);
+              const pSnap = await getDoc(pRef);
+              if (pSnap.exists()) {
+                const p = pSnap.data();
+                patientPhone = p.contact || p.phone || "-";
+              }
+            } catch (e) {
+              console.error("Failed to load patient phone", e);
+            }
+          }
+          // ====================================================
 
           return {
             _docId: d.id,
@@ -171,6 +192,7 @@ export default function Logistics() {
             onchainId: x.onchainId ? BigInt(String(x.onchainId)) : null,
             patientName: x.patientName || "-",
             patientId: String(x.nationalID ?? "-"),
+            patientPhone, // ← هنا نستخدم رقم جوال المريض
             medicineLabel: x.medicineLabel || x.medicineName || "-",
             createdAtTS: x.createdAt?.toDate?.(),
             createdAt: formatFsTimestamp(x.createdAt),
@@ -178,13 +200,16 @@ export default function Logistics() {
             dispensed: !!x.dispensed,
             acceptDelivery: x.acceptDelivery === true,
             logisticsAccepted: x.logisticsAccepted === true,
+            deliveryConfirmed: x.deliveryConfirmed === true,
           };
         })
-        .sort((a, b) => {
-          const aT = a.createdAtTS?.getTime() || 0;
-          const bT = b.createdAtTS?.getTime() || 0;
-          return bT - aT;
-        });
+      );
+
+      data.sort((a, b) => {
+        const aT = a.createdAtTS?.getTime() || 0;
+        const bT = b.createdAtTS?.getTime() || 0;
+        return bT - aT;
+      });
 
       if (mounted) {
         setRows(data);
@@ -197,8 +222,13 @@ export default function Logistics() {
     return () => (mounted = false);
   }, []);
 
+  // فلتر احتياطي
   const visible = rows.filter(
-    (r) => r.acceptDelivery && !r.dispensed && !r.logisticsAccepted
+    (r) =>
+      r.acceptDelivery &&
+      r.dispensed &&
+      r.logisticsAccepted &&
+      !r.deliveryConfirmed
   );
 
   const total = visible.length;
@@ -207,7 +237,7 @@ export default function Logistics() {
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = visible.slice(start, end);
 
-  /* Accept delivery */
+  /* Confirm delivery to patient */
   async function handleAccept(r) {
     try {
       setMsg("");
@@ -217,21 +247,20 @@ export default function Logistics() {
 
       const signer = await getSignerEnsured();
       const contract = new ethers.Contract(
-        LOGISTICS_ACCEPT_ADDRESS,
-        LOGISTICS_ACCEPT.abi,
+        DELIVERY_CONFIRMATION_ADDRESS,
+        DELIVERY_CONFIRMATION.abi,
         signer
       );
 
-      const tx = await contract.acceptDelivery(r.onchainId);
+      const tx = await contract.confirmDelivery(r.onchainId);
       await tx.wait();
 
       await updateDoc(doc(db, "prescriptions", r._docId), {
-        logisticsAccepted: true,
-        logisticsAcceptedAt: serverTimestamp(),
+        deliveryConfirmed: true,
+        deliveryConfirmedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
 
-      // Remove card immediately
       setRows((prev) => prev.filter((row) => row._docId !== r._docId));
 
       setShowSuccessPopup(true);
@@ -265,8 +294,6 @@ export default function Logistics() {
   return (
     <div className="p-6">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
-
-        {/* ERROR MESSAGE */}
         {msg && (
           <div className="mb-4 p-4 rounded-xl flex items-center gap-2 text-red-700 bg-red-100 border border-red-300">
             <AlertCircle size={20} />
@@ -274,7 +301,6 @@ export default function Logistics() {
           </div>
         )}
 
-        {/* HEADER */}
         <div className="mb-6 flex items-center gap-3">
           <img
             src="/Images/TrustDose-pill.png"
@@ -283,33 +309,37 @@ export default function Logistics() {
           />
 
           <div>
-            <h1 className="font-extrabold text-[24px]" style={{ color: "#334155" }}>
+            <h1
+              className="font-extrabold text-[24px]"
+              style={{ color: "#334155" }}
+            >
               {header.companyName
                 ? `Welcome, ${header.companyName}`
                 : "Welcome, Logistics Partner"}
             </h1>
 
             <div className="mt-3 pt-3 border-t border-gray-200">
-              <p className="text-[15px] font-medium" style={{ color: "#64748b" }}>
-                Delivery Requests Awaiting Your Acceptance
+              <p
+                className="text-[15px] font-medium"
+                style={{ color: "#64748b" }}
+              >
+                Delivered orders awaiting your confirmation
               </p>
             </div>
           </div>
         </div>
 
-        {/* CARDS */}
         {pageItems.length > 0 && (
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             {pageItems.map((r) => {
-              const dateTime = r.createdAtTS
-                ? r.createdAtTS.toLocaleString("en-GB", {
-                    day: "2-digit",
-                    month: "long",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : r.createdAt;
+              const dateTime =
+                r.createdAtTS?.toLocaleString("en-GB", {
+                  day: "2-digit",
+                  month: "long",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }) || r.createdAt;
 
               const isPending = !!pending[r.prescriptionId];
 
@@ -324,21 +354,27 @@ export default function Logistics() {
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Prescription ID:
-                      <span className="font-normal"> {r.prescriptionId}</span>
+                      Prescription ID:{" "}
+                      <span className="font-normal">{r.prescriptionId}</span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Patient:
+                      Patient:{" "}
                       <span className="font-normal">
-                        {" "}
                         {r.patientName} — {r.patientId}
+                      </span>
+                    </div>
+
+                    <div className="text-sm text-slate-700 mt-1 font-semibold">
+                      Patient Phone:{" "}
+                      <span className="font-normal">
+                        {r.patientPhone || "-"}
                       </span>
                     </div>
 
                     <div className="mt-6 flex flex-wrap gap-2">
                       <button
-                        className="w-max px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
+                        className="w-max px-4 py-2 text-sm rounded-lg flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
                         style={{
                           backgroundColor: C.primary,
                           cursor: isPending ? "not-allowed" : "pointer",
@@ -347,9 +383,14 @@ export default function Logistics() {
                         disabled={isPending}
                       >
                         {isPending && (
-                          <Loader2 size={16} className="animate-spin text-white" />
+                          <Loader2
+                            size={16}
+                            className="animate-spin text-white"
+                          />
                         )}
-                        {isPending ? "Processing..." : "Accept Delivery"}
+                        {isPending
+                          ? "Processing..."
+                          : "Confirm Delivery to Patient"}
                       </button>
                     </div>
                   </div>
@@ -363,12 +404,10 @@ export default function Logistics() {
           </section>
         )}
 
-        {/* NO ORDERS */}
         {total === 0 && (
           <p className="text-gray-600 mt-4">No active delivery orders.</p>
         )}
 
-        {/* PAGINATION */}
         {total > 0 && (
           <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-sm text-gray-700">
@@ -392,7 +431,9 @@ export default function Logistics() {
                 <button
                   className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
                   style={{ background: C.primary }}
-                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                  onClick={() =>
+                    setPage((p) => Math.min(pageCount - 1, p + 1))
+                  }
                   disabled={page >= pageCount - 1}
                 >
                   Next →
@@ -403,44 +444,41 @@ export default function Logistics() {
         )}
       </div>
 
-        {/* SUCCESS POPUP */}
-{showSuccessPopup && (
-  <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-    <div
-      className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border"
-      style={{ background: "#F6F1FA", borderColor: C.primary }}
-    >
-      <div className="flex flex-col items-center text-center">
-        <div
-          className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
-          style={{ backgroundColor: "#ECFDF3" }}
-        >
-          <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
+      {showSuccessPopup && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+          <div
+            className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border"
+            style={{
+              background: "#F6F1FA",
+              borderColor: C.primary,
+            }}
+          >
+            <div className="flex flex-col items-center text-center">
+              <div
+                className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
+                style={{ backgroundColor: "#ECFDF3" }}
+              >
+                <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
+              </div>
+
+              <h3
+                className="text-lg font-semibold mb-1"
+                style={{ color: C.ink }}
+              >
+                You have successfully confirmed the delivery to the patient
+              </h3>
+
+              <button
+                onClick={() => setShowSuccessPopup(false)}
+                className="mt-3 px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
+                style={{ backgroundColor: C.primary, color: "#fff" }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
         </div>
-
-        <h3 className="text-lg font-semibold mb-1" style={{ color: C.ink }}>
-          Delivery accepted successfully
-        </h3>
-
-        <p className="text-sm mt-1" style={{ color: "#64748b" }}>
-          Once the pharmacy confirms dispensing (which means the prescription
-          has been handed over to you), it will appear under
-          <span className="font-semibold"> Pending Orders</span> for final
-          delivery to the patient.
-        </p>
-
-        <button
-          onClick={() => setShowSuccessPopup(false)}
-          className="mt-3 px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
-          style={{ backgroundColor: C.primary, color: "#fff" }}
-        >
-          OK
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
+      )}
     </div>
   );
 }
