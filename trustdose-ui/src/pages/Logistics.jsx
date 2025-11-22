@@ -418,16 +418,14 @@ export default function Logistics() {
           <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
         </div>
 
-        <h3 className="text-lg font-semibold mb-1" style={{ color: C.ink }}>
-          Delivery accepted successfully
-        </h3>
+       <h3 className="text-lg font-semibold mb-1" style={{ color: C.ink }}>
+              Delivery accepted
+            </h3>
 
-        <p className="text-sm mt-1" style={{ color: "#64748b" }}>
-          Once the pharmacy confirms dispensing (which means the prescription
-          has been handed over to you), it will appear under
-          <span className="font-semibold"> Pending Orders</span> for final
-          delivery to the patient.
-        </p>
+            <p className="text-sm mt-1" style={{ color: "#64748b" }}>
+              You'll see it in 
+              <span className="font-semibold"> Pending Orders</span> once the pharmacy confirms dispensing.
+            </p>
 
         <button
           onClick={() => setShowSuccessPopup(false)}
