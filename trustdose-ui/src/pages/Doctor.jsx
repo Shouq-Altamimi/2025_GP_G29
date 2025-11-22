@@ -31,7 +31,7 @@ const LIMITS = Object.freeze({
 });
 
 const DOSAGE_BY_FORM = {
-  tablet: ["1 tablet", "2 tablets", "½ tablet", "¼ tablet"],
+  tablet: ["1 tablet", "2 tablets", "½ tablet"],
   capsule: ["1 capsule", "2 capsules"],
   inhaler: ["1 puff", "2 puffs"],
   suspension: ["2.5 mL", "5 mL", "10 mL", "15 mL"],
@@ -180,6 +180,7 @@ export default function Doctor() {
 
   const [q, setQ] = useState("");
   const [searchMsg, setSearchMsg] = useState("");
+  const [validationMsg, setValidationMsg] = useState(""); // ✅ جديد مثل الصيدلية
   const [searched, setSearched] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
 
@@ -218,6 +219,7 @@ export default function Doctor() {
       if (pid) {
         setQ(pid);
         setSearchMsg("");
+        setValidationMsg("");
         runSearch(pid, { silent: true });
       }
       return;
@@ -228,6 +230,7 @@ export default function Doctor() {
     if (!pid) return;
     setQ(pid);
     setSearchMsg("");
+    setValidationMsg("");
     runSearch(pid, { silent: true });
   }, [location.search]);
 
@@ -235,6 +238,30 @@ export default function Doctor() {
     setQ("");
     setSelectedPatient(null);
     setSearched(false);
+    setSearchMsg("");
+    setValidationMsg(""); // ✅ نمسح الرسالة
+  }
+
+  // ✅ نفس فكرة الصيدلية: فاليديشن "ريال تايم"
+  function handleQChange(v) {
+    let digits = String(v).replace(/[^0-9]/g, "").slice(0, 10);
+    setQ(digits);
+    setSelectedPatient(null);
+    setSearched(false);
+
+    if (!digits) {
+      setValidationMsg("");
+      setSearchMsg("");
+      return;
+    }
+
+    if (digits[0] !== "1" && digits[0] !== "2") {
+      setValidationMsg("National ID must start with 1 or 2.");
+    } else if (digits.length > 0 && digits.length < 10) {
+      setValidationMsg("National ID must be 10 digits.");
+    } else {
+      setValidationMsg("");
+    }
     setSearchMsg("");
   }
 
@@ -247,9 +274,11 @@ export default function Doctor() {
 
     if (!firstOk || !lenOk) {
       if (!silent) {
-        setSearchMsg(
-          !firstOk ? "National ID must start with 1 or 2." : "National ID must be 10 digits."
-        );
+        const msg = !firstOk
+          ? "National ID must start with 1 or 2."
+          : "National ID must be 10 digits.";
+        setValidationMsg(msg);
+        setSearchMsg("");
         setSelectedPatient(null);
         setSearched(false);
       }
@@ -259,6 +288,7 @@ export default function Doctor() {
     if (!idOverride) setQ(natDigits);
     setIsLoading(true);
     setSearchMsg("");
+    setValidationMsg(""); // ✅ تجاوزنا الفاليديشن بنجاح
 
     try {
       const rec = await fetchPatientByNationalId(natDigits);
@@ -381,7 +411,6 @@ export default function Doctor() {
         acceptDelivery: false,
         logisticsAccepted: false,
         deliveryConfirmed: false,
-
       };
 
       if (selectedMed?.sensitivity) payload[F.sensitivity] = selectedMed.sensitivity;
@@ -404,7 +433,6 @@ export default function Doctor() {
     } catch (e) {
       console.error("createPrescription failed:", e);
 
-      // 🔹 نجيب الرسالة الأصلية من الخطأ
       const rawMsg =
         e?.info?.error?.message ||
         e?.shortMessage ||
@@ -413,7 +441,6 @@ export default function Doctor() {
 
       const lower = String(rawMsg).toLowerCase();
 
-      // 🔹 لو اليوزر رفض طلب ميتاماسك:
       if (
         lower.includes("user denied") ||
         lower.includes("user rejected") ||
@@ -477,22 +504,13 @@ export default function Doctor() {
                 inputMode="numeric"
                 pattern="[0-9]*"
                 maxLength={10}
-                onChange={(e) => {
-                  let v = e.target.value.replace(/[^0-9]/g, "");
-                  v = v.slice(0, 10);
-                  setQ(v);
-                  setSearchMsg("");
-                }}
+                onChange={(e) => handleQChange(e.target.value)} // ✅ نفس فكرة الصيدلية
                 onKeyDown={(e) => e.key === "Enter" && runSearch()}
               />
 
               {q && (
                 <button
-                  onClick={() => {
-                    setQ("");
-                    setSearched(false);
-                    setSelectedPatient(null);
-                  }}
+                  onClick={clearSearch}
                   className="absolute right-3 top-1/2 -translate-y-1/2 hover:opacity-80"
                   style={{ color: C.ink }}
                 >
@@ -501,13 +519,20 @@ export default function Doctor() {
               )}
             </div>
 
+            {/* ✅ زر البحث نفس الصيدلي بالضبط من ناحية faded / disable */}
             <button
               onClick={() => runSearch()}
-              disabled={q.length === 0 || isLoading}
+              disabled={isLoading || !q.trim() || !!validationMsg}
               className="px-6 py-3 text-white rounded-xl font-medium transition-all flex items-center gap-2 disabled:opacity-60"
               style={{
-                backgroundColor: q.length > 0 ? C.primary : "rgba(176, 140, 193, 0.4)",
-                cursor: q.length > 0 ? "pointer" : "not-allowed",
+                backgroundColor:
+                  q.trim().length > 0 && !validationMsg
+                    ? C.primary
+                    : "rgba(176, 140, 193, 0.4)",
+                cursor:
+                  q.trim().length > 0 && !validationMsg
+                    ? "pointer"
+                    : "not-allowed",
               }}
             >
               <Search size={18} /> Search
@@ -516,7 +541,6 @@ export default function Doctor() {
 
           {(q || selectedPatient) && (
             <div className="flex justify-end mt-2">
-              {/* ✅ تركته زي ما هو بالضبط */}
               <button
                 onClick={clearSearch}
                 className="px-6 py-3 rounded-xl font-medium"
@@ -527,9 +551,9 @@ export default function Doctor() {
             </div>
           )}
 
-          {!!searchMsg && (
+          {(validationMsg || searchMsg) && (
             <div className="mt-3 text-sm flex items-center gap-2 text-rose-700">
-              <AlertCircle size={16} /> {searchMsg}
+              <AlertCircle size={16} /> {validationMsg || searchMsg}
             </div>
           )}
         </section>
