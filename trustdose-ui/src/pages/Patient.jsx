@@ -685,10 +685,30 @@ export default function PatientPage() {
                                     p.sensitivity === "Sensitive" ? TD.brand.dangerText : TD.brand.successText,
                                 }}
                               >
-                                {p.sensitivity === "Sensitive"
-                                  ? "Sensitive — (Delivery)"
-                                  : "Non-Sensitive — (Pickup)"}
-                              </div>
+                               {p.sensitivity === "Sensitive" ? (
+                                 <>
+     Sensitive — (Delivery)
+    {p.acceptDelivery || p.logisticsAccepted || p.dispensed ? (
+      <>
+        {" "}
+        •{" "}
+        {p.logisticsAccepted === true && p.dispensed === true
+          ? "Delivered to you"
+          : p.acceptDelivery === true && p.dispensed === true
+          ? "Handed to logistics"
+          : p.logisticsAccepted === true
+          ? "Accepted by logistics"
+          : p.acceptDelivery === true
+          ? "Accepted by pharmacy"
+          : ""
+        }
+      </>
+    ) : null}
+  </>
+) : (
+  "Non-Sensitive — (Pickup)"
+)}
+                               </div>
                             </div>
                           )}
 
