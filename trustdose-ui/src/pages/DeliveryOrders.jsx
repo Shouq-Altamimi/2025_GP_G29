@@ -263,9 +263,15 @@ export default function DeliveryOrders({ pharmacyId }) {
 
       // ✅ بوب أب نفس اللي في PendingOrders / PickUpSection
       setSuccessModal({
-        title: "Sensitive prescription accepted",
-        message: "If accepted by logistics, the prescription will appear in Pending Orders.",
-      });
+          title: "Sensitive prescription accepted",
+          message: (
+            <>
+              If accepted by logistics provider, the prescription will appear in
+              <span className="font-semibold"> Pending Orders</span>.
+            </>
+          ),
+        });
+
     } catch (err) {
       console.error(err);
 
