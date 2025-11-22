@@ -29,7 +29,7 @@ const C = {
 
 const PAGE_SIZE = 6;
 const DELIVERY_CONFIRMATION_ADDRESS =
-  "0x7F5E642378321774eeE4e941c482c5134B948d92";
+  "0x684e284270107317b04441A373AFF2Fc8578BA1D";
 
 /* Timestamp formatter */
 function formatFsTimestamp(v) {
