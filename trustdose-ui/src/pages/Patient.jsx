@@ -232,7 +232,7 @@ async function hydrateNames(items) {
       ...p,
       _doctorName: doctorName,
       _facilityName: facilityName,       // ← Healthcare Facility
-      _pharmacyName: globalPharmacyName  // ← Pharmacy Name فقط
+      _pharmacyName: globalPharmacyName,  // ← Pharmacy Name فقط
       // 🚫 _pharmacistName محذوف
     });
   }
@@ -336,6 +336,42 @@ function WelcomeHeader({ name }) {
    ========================= */
 export default function PatientPage() {
   const [nid, setNid] = useState(null);
+    // ========== Get logistics company name once from Firebase ==========
+  const [logisticsName, setLogisticsName] = useState("—");
+/////////////////////////////////////////////////////////////////
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const col = collection(db, "logistics");
+        const snap = await getDocs(col);
+        if (!snap.empty) {
+          const first = snap.docs[0].data();
+
+          // نحاول نقرأ أكثر من اسم حقل عشان نغطي كل الحالات
+          const name =
+            first.companyName ||
+            first.name ||
+            first.company ||
+            first.logisticsName ||
+            first.title;
+
+          if (name) {
+            setLogisticsName(String(name));
+            console.log("🚚 logisticsName =", name);
+          } else {
+            console.log("⚠️ logistics doc found but no name-like field", first);
+          }
+        } else {
+          console.log("⚠️ no logistics docs found");
+        }
+      } catch (e) {
+        console.log("logistics fetch failed", e);
+      }
+    })();
+  }, []);
+
+/////////////////////////////////////////////////////////////////////////////
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [patient, setPatient] = useState(null);
@@ -367,6 +403,8 @@ export default function PatientPage() {
         if (!found) throw new Error("Patient not found. Please log in again.");
         const pres = await fetchPrescriptionsSmart(found.id, nid);
         pres.items = await hydrateNames(pres.items);
+        pres.items = pres.items.map(p => ({ ...p, _logisticsName: logisticsName }));
+
         setPatient(found.data);
 
         // Show alert if the patient has no email saved
@@ -553,8 +591,8 @@ export default function PatientPage() {
 
                 const facility = p._facilityName || "—";
                 const doctor = p._doctorName || "—";
-                const pharmacist = p._pharmacistName || "—";
                 const pharmacy = p._pharmacyName || "—";
+                const logistics = p._logisticsName || "—";
 
                 const medTitle = p.medicineLabel || p.micineName || p.medicineName || "Prescription";
                 const rxNumber =
@@ -656,8 +694,13 @@ export default function PatientPage() {
                         <Row label="Healthcare Facility" value={facility} />
                         <Row label="Doctor Name" value={doctor} />
                         <Row label="Pharmacy Name" value={pharmacy} />
+                        {p.sensitivity === "Sensitive" && (
+<Row label="Logistics Company" value={logisticsName !== "—" ? logisticsName : (p.logisticsName || "Dr. Sulaiman Al Habib Logistics")} />
+)}
+
                         <Row label="Dispensed At" value={dispensedAt ? fmtDateTime(dispensedAt) : "—"} />
                         <Row label="Date & Time Consultation" value={createdFull} />
+                        
 
                         <div style={{ borderTop: "1px dashed #e5e7eb", paddingTop: 10 }}>
                           <div style={{ fontWeight: 600, color: "#374151", marginBottom: 6 }}>
@@ -685,10 +728,30 @@ export default function PatientPage() {
                                     p.sensitivity === "Sensitive" ? TD.brand.dangerText : TD.brand.successText,
                                 }}
                               >
-                                {p.sensitivity === "Sensitive"
-                                  ? "Sensitive — (Delivery)"
-                                  : "Non-Sensitive — (Pickup)"}
-                              </div>
+                               {p.sensitivity === "Sensitive" ? (
+                                 <>
+     Sensitive — (Delivery)
+    {p.acceptDelivery || p.logisticsAccepted || p.dispensed ? (
+      <>
+        {" "}
+        •{" "}
+        {p.logisticsAccepted === true && p.dispensed === true
+          ? "Delivered to you"
+          : p.acceptDelivery === true && p.dispensed === true
+          ? "Handed to logistics"
+          : p.logisticsAccepted === true
+          ? "Accepted by logistics"
+          : p.acceptDelivery === true
+          ? "Accepted by pharmacy"
+          : ""
+        }
+      </>
+    ) : null}
+  </>
+) : (
+  "Non-Sensitive — (Pickup)"
+)}
+                               </div>
                             </div>
                           )}
 
