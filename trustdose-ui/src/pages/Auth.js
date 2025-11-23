@@ -492,7 +492,38 @@ export default function TrustDoseAuth() {
       setAdminLoading(false);
     }
   }
+//////////////////////
+// ========== Fake RESET EMAIL (for testing ONLY) ========== //
+/*async function fakeSendPasswordResetEmail(auth, email, actionCodeSettings) {
+  try {
+    if (!actionCodeSettings || !actionCodeSettings.url) {
+      console.error("❌ actionCodeSettings.url is missing");
+      throw new Error("Internal error: URL not generated");
+    }
 
+    const base = String(actionCodeSettings.url).trim();
+
+    // generate fake oobCode manually
+    const fakeOob =
+      "FAKE_" + Math.random().toString(36).substring(2, 10).toUpperCase();
+
+    const finalLink = `${base}&mode=resetPassword&oobCode=${fakeOob}&debug=1`;
+
+    console.log("==================================");
+    console.log("🔐 FAKE PASSWORD RESET EMAIL");
+    console.log("To:", email);
+    console.log("Reset Link:");
+    console.log(finalLink);
+    console.log("==================================");
+
+    return Promise.resolve();
+  } catch (err) {
+    console.error("FAKE RESET ERROR:", err);
+    throw err;
+  }
+}
+*/
+//////////////////////
   async function handleForgotPassword(e) {
     e.preventDefault();
     setForgotMsg("");
@@ -594,7 +625,9 @@ export default function TrustDoseAuth() {
         handleCodeInApp: true,
       };
 
-      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+     await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+     //await fakeSendPasswordResetEmail(auth, email, actionCodeSettings);
+
 
       setForgotMsg(
         `✅ Password reset link sent to ${email}. Check your inbox and spam folder!`

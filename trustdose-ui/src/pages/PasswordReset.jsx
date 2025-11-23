@@ -135,7 +135,7 @@ export default function PasswordReset() {
   const meetsPolicy = pwInfo.len8 && pwInfo.hasLower && pwInfo.hasUpper && pwInfo.hasDigit;
 
   // التحقق من الرابط
-  useEffect(() => {
+ useEffect(() => {
     (async () => {
       try {
         const auth = getAuth();
@@ -283,8 +283,8 @@ export default function PasswordReset() {
       setStatus("❌ Error verifying reset link");
     }
   })();
-}, [searchParams]);*/
-
+}, [searchParams]);
+*/
 /////////////////////////////////////////////////////////////////////////////
   // تحديث الباسوورد
   async function handleResetPassword(e) {
@@ -359,7 +359,7 @@ export default function PasswordReset() {
       setLoading(false);
     }
   }
-
+//////////////////////////////////////////////
   return (
     <div
       style={{
