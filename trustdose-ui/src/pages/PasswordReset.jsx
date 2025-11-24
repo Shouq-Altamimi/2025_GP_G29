@@ -15,7 +15,6 @@ const TD = {
   ok: "#10b981",
 };
 
-// SHA-256 للدكاترة والصيادلة
 async function hashPasswordSHA256(password) {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
@@ -24,7 +23,6 @@ async function hashPasswordSHA256(password) {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// PBKDF2 للمرضى
 async function pbkdf2Hash(password, saltBase64, iterations = 100_000) {
   const enc = new TextEncoder();
   const pwKey = await crypto.subtle.importKey(
@@ -202,91 +200,7 @@ export default function PasswordReset() {
     })();
   }, [searchParams]);
 
-  //////////////////////////////////////////////////////////////////////
-
-  // التحقق من الرابط (يدعم وضع الـ DEBUG)
-/*useEffect(() => {
-  (async () => {
-    try {
-      const href = window.location.href;
-
-      const col = searchParams.get("col") || "";
-      const documentId = searchParams.get("doc") || "";
-      const id = searchParams.get("id") || "";
-      const isReset = searchParams.get("reset") === "true";
-      const email = searchParams.get("e") || "";
-      const redirectPath = searchParams.get("redirect") || "/auth";
-      const debug = searchParams.get("debug") === "1";   // <-- أهم سطر
-
-      console.log("🔗 Reset URL:", href);
-      console.log("📋 Params:", { col, documentId, id, email, isReset, debug });
-
-      // ===========================
-      //     🔥 DEBUG MODE
-      // ===========================
-      if (debug) {
-        console.log("🚨 DEBUG MODE ACTIVE — Skipping Firebase checks");
-
-        if (!col || !documentId || !id || !email || !isReset) {
-          setStatus("❌ Invalid reset link - missing info (debug)");
-          setStep("error");
-          setError(true);
-          return;
-        }
-
-        setUserCol(col);
-        setUserDocId(documentId);
-        setUserId(id);
-        setRedirect(redirectPath);
-
-        setStatus("✅ Debug link verified! Enter your new password.");
-        setStep("reset");
-        return;
-      }
-
-      // ===========================
-      //   الوضع العادي Firebase
-      // ===========================
-      const auth = getAuth();
-
-      if (!isSignInWithEmailLink(auth, href)) {
-        setStatus("❌ Invalid or expired reset link");
-        setStep("error");
-        setError(true);
-        return;
-      }
-
-      if (!email || !documentId || !col || !isReset) {
-        setStatus("❌ Invalid reset link (missing data)");
-        setStep("error");
-        setError(true);
-        return;
-      }
-
-      setStatus("🔐 Authenticating...");
-
-      await signInWithEmailLink(auth, email, href);
-      await signOut(auth);
-
-      setUserCol(col);
-      setUserDocId(documentId);
-      setUserId(id);
-      setRedirect(redirectPath);
-
-      setStatus("✅ Link verified! Enter your new password.");
-      setStep("reset");
-
-    } catch (e) {
-      console.error("💥 Error:", e);
-      setError(true);
-      setStep("error");
-      setStatus("❌ Error verifying reset link");
-    }
-  })();
-}, [searchParams]);
-*/
-/////////////////////////////////////////////////////////////////////////////
-  // تحديث الباسوورد
+ 
   async function handleResetPassword(e) {
     e.preventDefault();
     setMsg("");
@@ -318,7 +232,6 @@ export default function PasswordReset() {
       const userData = docSnap.data();
       let hashedPassword;
 
-      // للمرضى: PBKDF2
       if (userCol === "patients") {
         console.log("Using PBKDF2 for patient");
         const saltB64 = genSaltBase64(16);
@@ -331,7 +244,6 @@ export default function PasswordReset() {
           passwordUpdatedAt: serverTimestamp(),
         });
       } 
-      // للدكاترة والصيادلة: SHA-256
       else {
         console.log("Using SHA-256 for", userCol);
         hashedPassword = await hashPasswordSHA256(newPassword);
@@ -359,7 +271,7 @@ export default function PasswordReset() {
       setLoading(false);
     }
   }
-//////////////////////////////////////////////
+
   return (
     <div
       style={{
@@ -412,7 +324,7 @@ export default function PasswordReset() {
           {step === "error" && "There was a problem with your reset link."}
         </p>
 
-        {/* Verifying State */}
+        {/* Verifying  */}
         {step === "verifying" && (
           <div style={{ padding: "40px 0", textAlign: "center" }}>
             <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-purple-600 border-r-transparent"></div>

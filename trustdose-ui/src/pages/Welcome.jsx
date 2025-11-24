@@ -1,5 +1,4 @@
 // src/pages/Welcome.jsx
-// @ts-nocheck
 "use client";
 
 import React, { useState, useEffect } from "react";

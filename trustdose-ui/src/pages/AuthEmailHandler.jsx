@@ -29,7 +29,7 @@ export default function AuthEmailHandler() {
         console.log("📧 Email verification started");
         console.log("🔗 Current URL:", href);
 
-        // ===== Params =====
+        // \ Params 
         const colParam = (searchParams.get("col") || "doctors").trim().toLowerCase();
         const safeCol = ["doctors", "pharmacies", "patients", "logistics"].includes(colParam)
           ? colParam
@@ -57,7 +57,6 @@ export default function AuthEmailHandler() {
           return;
         }
 
-        // Fallback to localStorage
         if (!email) {
           try {
             const pending = JSON.parse(localStorage.getItem("td_email_pending") || "{}");
@@ -82,7 +81,7 @@ export default function AuthEmailHandler() {
         await signInWithEmailLink(auth, email, href);
         console.log("✅ Sign in successful");
 
-        // ===== التشييك على تكرار الإيميل =====
+        //  التشييك على تكرار الإيميل 
         setStatus("🔍 Checking email...");
         console.log("🔍 Checking if email already exists...");
 

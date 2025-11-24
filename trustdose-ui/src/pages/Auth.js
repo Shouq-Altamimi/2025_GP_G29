@@ -157,7 +157,7 @@ function validateAndNormalizePhone(raw) {
   };
 }
 
-// ✅ التحقق المحسّن من الهوية الوطنية
+// ✅ التحقق الهوية الوطنية
 function isValidNationalIdStrict(raw) {
   const s = String(raw || "");
   if (/\s/.test(s)) return false;
@@ -175,7 +175,7 @@ function isValidNationalIdLive(raw) {
   if (s.length >= 1 && !/^[12]/.test(s))
     return { ok: false, reason: "Must start with 1 or 2." };
 
-  // ✅ رسالة خطأ فقط إذا أقل من 10
+  //  رسالة خطأ فقط إذا أقل من 10
   if (s.length > 0 && s.length < 10) {
     return { ok: false, reason: "National ID must be exactly 10 digits." };
   }
@@ -492,38 +492,7 @@ export default function TrustDoseAuth() {
       setAdminLoading(false);
     }
   }
-//////////////////////
-// ========== Fake RESET EMAIL (for testing ONLY) ========== //
-/*async function fakeSendPasswordResetEmail(auth, email, actionCodeSettings) {
-  try {
-    if (!actionCodeSettings || !actionCodeSettings.url) {
-      console.error("❌ actionCodeSettings.url is missing");
-      throw new Error("Internal error: URL not generated");
-    }
 
-    const base = String(actionCodeSettings.url).trim();
-
-    // generate fake oobCode manually
-    const fakeOob =
-      "FAKE_" + Math.random().toString(36).substring(2, 10).toUpperCase();
-
-    const finalLink = `${base}&mode=resetPassword&oobCode=${fakeOob}&debug=1`;
-
-    console.log("==================================");
-    console.log("🔐 FAKE PASSWORD RESET EMAIL");
-    console.log("To:", email);
-    console.log("Reset Link:");
-    console.log(finalLink);
-    console.log("==================================");
-
-    return Promise.resolve();
-  } catch (err) {
-    console.error("FAKE RESET ERROR:", err);
-    throw err;
-  }
-}
-*/
-//////////////////////
   async function handleForgotPassword(e) {
     e.preventDefault();
     setForgotMsg("");
@@ -577,7 +546,6 @@ export default function TrustDoseAuth() {
           if (!snap.empty) {
             user = snap.docs[0].data();
             userDocId = snap.docs[0].id;
-            // coll = "logistics";  // ملاحظة: هذا السطر عندك أصلاً، ما لمسته
           }
         } catch {}
       }
@@ -626,7 +594,6 @@ export default function TrustDoseAuth() {
       };
 
      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-     //await fakeSendPasswordResetEmail(auth, email, actionCodeSettings);
 
 
       setForgotMsg(
@@ -652,11 +619,7 @@ export default function TrustDoseAuth() {
       setForgotLoading(false);
     }
   }
-  ///////////////////////////////////////////////////////////////////////////
-  /*
-  ... (بلوك الـ DEBUG القديم تبع handleForgotPassword موجود عندك ومعلّق، ما لمسته)
-  */
-  ///////////////////////////////////////////////////////////////////////////
+ 
 
   async function handleSignIn(e) {
     e.preventDefault();
@@ -730,7 +693,7 @@ export default function TrustDoseAuth() {
       console.log("🔐 Verifying password for role:", role);
 
       let verified = false;
-      // FORCE tempPassword for doctors
+      // apply tempPassword for doctors
       console.log("LOGIN DEBUG → doctor:", {
         enteredPassword: pass,
         tempPassword: user.tempPassword,
@@ -738,9 +701,7 @@ export default function TrustDoseAuth() {
         passwordHash: user.passwordHash,
       });
 
-      // ========= Doctor login logic (مع صلاحية ٢٤ ساعة للتمبرري) =========
       if (role === "doctor") {
-        // 0) If password empty → show message
         if (!pass) {
           setMsg("Please enter your password.");
           return;
@@ -748,18 +709,15 @@ export default function TrustDoseAuth() {
 
         const tempMeta = user.tempPassword || null;
 
-        // 1) تمبرري باسورد موجودة وفعّالة
         if (tempMeta && tempMeta.valid) {
           const expiresAtMs = Number(tempMeta.expiresAtMs || 0);
           const nowMs = Date.now();
 
-          // انتهت مدة الـ ٢٤ ساعة أو قيمة الانتهاء مفقودة
           if (!expiresAtMs || nowMs > expiresAtMs) {
             setMsg("❌ Temporary password has expired");
             return;
           }
 
-          // التمبرري لسه صالحة → نتحقق من الباسورد باستخدام الهاش
           if (user.passwordHash) {
             const ok = await verifyPasswordSHA256(pass, user.passwordHash);
             if (!ok) {
@@ -768,7 +726,6 @@ export default function TrustDoseAuth() {
             }
             verified = true;
           } else if (user.password) {
-            // احتياط لو كان موجود password كهاش قديم
             const ok = await verifyPasswordSHA256(pass, user.password);
             if (!ok) {
               setMsg("❌ ID or password incorrect.");
@@ -781,7 +738,6 @@ export default function TrustDoseAuth() {
           }
         }
 
-        // 2) ما عنده تمبرري فعّالة → نتعامل معه كـ باسورد دائمة
         else if (user.password) {
           const ok = await verifyPasswordSHA256(pass, user.password);
           if (!ok) {
@@ -791,7 +747,6 @@ export default function TrustDoseAuth() {
           verified = true;
         }
 
-        // 3) fallback: لو عنده فقط passwordHash
         else if (user.passwordHash) {
           const ok = await verifyPasswordSHA256(pass, user.passwordHash);
           if (!ok) {
@@ -805,7 +760,6 @@ export default function TrustDoseAuth() {
         }
       }
 
-      // 2) PBKDF2 hashing
       else if (!verified && "passwordHash" in user && "passwordSalt" in user) {
         if (!pass) {
           setMsg("Please enter your password.");
@@ -830,22 +784,7 @@ export default function TrustDoseAuth() {
         verified = true;
       }
 
-      // 3) Logistics SHA256
-      /*else if (!verified && role === "logistics" && user.passwordHash) {
-        if (!pass) {
-          setMsg("Please enter your password.");
-          return;
-        }
-
-        const ok = await verifyPasswordSHA256(pass, user.passwordHash);
-        if (!ok) {
-          setMsg("❌ ID or password incorrect.");
-          return;
-        }
-        verified = true;
-      }*/
-     /////////////////////////////////////////////////////////////////
-     // 3) Logistics SHA256 (stored in `password`)
+     
 else if (!verified && role === "logistics" && user.password) {
   if (!pass) {
     setMsg("Please enter your password.");
@@ -854,7 +793,6 @@ else if (!verified && role === "logistics" && user.password) {
 
   const stored = String(user.password).trim();
 
-  // hashed SHA256 (64 hex) – نفس اللي نخزّنه من LogisticsHeader
   if (/^[a-f0-9]{64}$/i.test(stored)) {
     const ok = await verifyPasswordSHA256(pass, stored);
     if (!ok) {
@@ -864,7 +802,6 @@ else if (!verified && role === "logistics" && user.password) {
     verified = true;
   }
   else if (pass === stored) {
-    // دعم قديم لو كان الباسورد نص عادي
     verified = true;
   } else {
     setMsg("❌ ID or password incorrect.");
@@ -873,8 +810,7 @@ else if (!verified && role === "logistics" && user.password) {
 }
 
 
-      // 4) Plain / sha256 password
-      //else if (!verified && "password" in user) {
+     
       else if (!verified && "password" in user && role !== "logistics") {
         if (!pass) {
           setMsg("Please enter your password.");
@@ -883,7 +819,6 @@ else if (!verified && role === "logistics" && user.password) {
 
         const stored = String(user.password).trim();
 
-        // hashed SHA256 (64 hex)
         if (/^[a-f0-9]{64}$/i.test(stored)) {
           const ok = await verifyPasswordSHA256(pass, stored);
           if (!ok) {
@@ -893,7 +828,6 @@ else if (!verified && role === "logistics" && user.password) {
           verified = true;
         }
 
-        // plain text (legacy)
         else if (pass === stored) {
           verified = true;
         } else {
@@ -902,7 +836,6 @@ else if (!verified && role === "logistics" && user.password) {
         }
       }
 
-      // 5) No password fields
       else if (!verified) {
         setMsg("❌ This account has no password.");
         return;
@@ -1392,7 +1325,7 @@ else if (!verified && role === "logistics" && user.password) {
           </form>
         ) : (
           <form onSubmit={handleSignUp}>
-            {/* ========== National ID ========== */}
+            {/*  National ID  */}
             <Label required>National ID</Label>
             <input
               value={nationalId}
@@ -1506,7 +1439,7 @@ else if (!verified && role === "logistics" && user.password) {
               </div>
             )}
 
-            {/* ========== Phone ========== */}
+            {/*  Phone  */}
             <Label required>Phone</Label>
             <div style={{ position: "relative" }}>
               <input
@@ -1646,7 +1579,7 @@ else if (!verified && role === "logistics" && user.password) {
               )}
             </div>
 
-            {/* ========== Full name ========== */}
+            {/*  Full name  */}
             <Label required>Full name</Label>
             <input
               value={name}
@@ -1728,7 +1661,7 @@ else if (!verified && role === "logistics" && user.password) {
               </div>
             )}
 
-            {/* ========== Gender + Birth date ========== */}
+            {/*  Gender + Birth date  */}
             <div
               style={{
                 display: "grid",
@@ -1809,7 +1742,7 @@ else if (!verified && role === "logistics" && user.password) {
               </div>
             </div>
 
-            {/* ========== City + District ========== */}
+            {/*  City + District  */}
             <div
               style={{
                 display: "grid",
@@ -1908,7 +1841,7 @@ else if (!verified && role === "logistics" && user.password) {
               </div>
             )}
 
-            {/* ========== Password + Strength ========== */}
+            {/*  Password + Strength  */}
             <Label required>Password</Label>
             <div style={{ position: "relative" }}>
               <input
@@ -2029,7 +1962,7 @@ else if (!verified && role === "logistics" && user.password) {
               </div>
             )}
 
-            {/* ========== Confirm Password ========== */}
+            {/*  Confirm Password  */}
             <Label required>Confirm Password</Label>
             <div style={{ position: "relative" }}>
               <input
