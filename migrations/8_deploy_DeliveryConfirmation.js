@@ -1,8 +1,12 @@
-// migrations/8_deploy_DeliveryConfirmation.js
+const Prescription = artifacts.require("Prescription");
 const DeliveryConfirmation = artifacts.require("DeliveryConfirmation");
 
-module.exports = function (deployer, network, accounts) {
+module.exports = async function (deployer, network, accounts) {
+  const prescription = await Prescription.deployed();
+
   const logistics = accounts.slice(0, 10);
-  console.log("Logistics accounts for DeliveryConfirmation:", logistics);
-  return deployer.deploy(DeliveryConfirmation, logistics);
+
+  await deployer.deploy(DeliveryConfirmation, prescription.address, logistics);
+
+  console.log("✅ DeliveryConfirmation deployed with Prescription:", prescription.address);
 };

@@ -1,10 +1,16 @@
+const Prescription = artifacts.require("Prescription");
 const LogisticsAccept = artifacts.require("LogisticsAccept");
 
 module.exports = async function (deployer, network, accounts) {
-  const logistics = accounts.slice(0, 10);
-  console.log("Logistics Accounts:", logistics);
+  const prescription = await Prescription.deployed();
 
-  // نشر عقد LogisticsAccept وتمرير قائمة اللوجستيك
-  await deployer.deploy(LogisticsAccept, logistics);
-  console.log("✅ Deployed LogisticsAccept with logistics accounts [0–9]");
+  const logistics = accounts.slice(0, 10);
+  console.log("Logistics accounts:", logistics);
+
+  await deployer.deploy(LogisticsAccept, prescription.address, logistics);
+
+  console.log(
+    "✅ LogisticsAccept deployed with Prescription:",
+    prescription.address
+  );
 };
