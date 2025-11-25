@@ -338,6 +338,8 @@ export default function PatientPage() {
   const [nid, setNid] = useState(null);
     // ========== Get logistics company name once from Firebase ==========
   const [logisticsName, setLogisticsName] = useState("—");
+  const [logisticsPhone, setLogisticsPhone] = useState("—");
+
 /////////////////////////////////////////////////////////////////
 
   useEffect(() => {
@@ -362,6 +364,12 @@ export default function PatientPage() {
           } else {
             console.log("⚠️ logistics doc found but no name-like field", first);
           }
+          if (first.phone) {
+  setLogisticsPhone(String(first.phone));
+  console.log("📞 logisticsPhone =", first.phone);
+}
+
+          
         } else {
           console.log("⚠️ no logistics docs found");
         }
@@ -695,8 +703,19 @@ export default function PatientPage() {
                         <Row label="Doctor Name" value={doctor} />
                         <Row label="Pharmacy Name" value={pharmacy} />
                         {p.sensitivity === "Sensitive" && (
-<Row label="Logistics Company" value={logisticsName !== "—" ? logisticsName : (p.logisticsName || "Dr. Sulaiman Al Habib Logistics")} />
+  <>
+    <Row
+      label="Logistics Company"
+      value={
+        logisticsName !== "—"
+          ? logisticsName
+          : (p.logisticsName || "Dr. Sulaiman Al Habib Logistics")
+      }
+    />
+  </>
 )}
+
+
 
                         <Row label="Dispensed At" value={dispensedAt ? fmtDateTime(dispensedAt) : "—"} />
                         <Row label="Date & Time Consultation" value={createdFull} />
@@ -754,6 +773,19 @@ export default function PatientPage() {
                                </div>
                             </div>
                           )}
+                        {p.sensitivity === "Sensitive" && (
+  <div style={{
+    textAlign: "center",
+    fontWeight: 700,
+    margin: "8px 0",
+    fontSize: 15,
+    color: "#374151"
+  }}>
+    Logistics Phone: {logisticsPhone}
+  </div>
+)}
+
+
 
                           {p.notes && <Row label="Notes" value={p.notes} />}
                         </div>

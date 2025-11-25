@@ -1,3 +1,4 @@
+// src/pages/Admin.jsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -11,7 +12,7 @@ import {
   LayoutDashboard,
   UserPlus,
   LogOut,
-  CheckCircle2,     
+  CheckCircle2,
 } from "lucide-react";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
@@ -20,6 +21,7 @@ import { db } from "../firebase";
 import { useNavigate, useLocation } from "react-router-dom";
 
 const C = { primary: "#B08CC1", teal: "#52B9C4", ink: "#4A2C59" };
+
 async function hashPasswordSHA256(password) {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
@@ -227,7 +229,6 @@ function mask(str, head = 6, tail = 4) {
 }
 
 const normalize = {
-
   patient: (id, d) => {
     const national =
       d.nationalId || d.nid || d.nationalIdHash || d.accessId || "";
@@ -352,7 +353,6 @@ export default function Admin() {
   const [active, setActive] = useState(queryTab || "patients");
   const [open, setOpen] = useState(false);
 
-
   const [resetModal, setResetModal] = useState(null); // { doctorLabel, tempPassword, expiresAt }
 
   // sync tab with URL
@@ -397,31 +397,21 @@ export default function Admin() {
   const [pLogs, setPLogs] = useState(1);
   const PAGE = 10;
 
-  /* load counters */
+  // ✅ تحسين: نحسب الكاونتس من الـ arrays نفسها بدل lengths بس
   useEffect(() => {
-    async function loadCounts() {
-      try {
-        const [d, p, ph, l] = await Promise.all([
-          getDocs(collection(db, "doctors")),
-          getDocs(collection(db, "patients")),
-          getDocs(collection(db, "pharmacies")),
-          getDocs(collection(db, "logistics")),
-        ]);
-        setCounts({
-          users: d.size + p.size + ph.size + l.size,
-          doctors: d.size,
-          patients: p.size,
-          pharmacies: ph.size,
-          logistics: l.size,
-        });
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoadingCards(false);
-      }
-    }
-    loadCounts();
-  }, []);
+    setCounts({
+      users:
+        doctors.length +
+        patients.length +
+        pharmacies.length +
+        logistics.length,
+      doctors: doctors.length,
+      patients: patients.length,
+      pharmacies: pharmacies.length,
+      logistics: logistics.length,
+    });
+    setLoadingCards(false);
+  }, [doctors, patients, pharmacies, logistics]);
 
   /* load tables once */
   useEffect(() => {
@@ -516,9 +506,7 @@ export default function Admin() {
 
       setDoctors((prev) =>
         prev.map((d) =>
-          d.id === row.id
-            ? { ...d, status: "Active", tempExpired: false }
-            : d
+          d.id === row.id ? { ...d, status: "Active", tempExpired: false } : d
         )
       );
 
@@ -657,6 +645,7 @@ export default function Admin() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header hideMenu={false} onMenuClick={() => setOpen(true)} />
+
       <section className="mx-auto w-full max-w-[1500px] px-8 mt-10">
         <div className="flex items-center gap-3">
           <img
@@ -669,9 +658,7 @@ export default function Admin() {
             <h1 className="text-[28px] leading-tight font-extrabold tracking-tight text-[#2A1E36]">
               Welcome, Admin
             </h1>
-            <p className="text-gray-500 text-sm">
-              Manage identities & compliance.
-            </p>
+            <p className="text-gray-500 text-sm">Manage identities & compliance.</p>
           </div>
         </div>
 
@@ -725,9 +712,7 @@ export default function Admin() {
                     <tr>
                       <th className="text-left px-4 py-3">Name</th>
                       {fPatients.flags.hasNationalId && (
-                        <th className="text-left px-4 py-3">
-                          National ID / Hash
-                        </th>
+                        <th className="text-left px-4 py-3">National ID / Hash</th>
                       )}
                       {fPatients.flags.hasEmail && (
                         <th className="text-left px-4 py-3">Email</th>
@@ -749,47 +734,32 @@ export default function Admin() {
                   <tbody>
                     {loading.patients ? (
                       <tr>
-                        <td
-                          colSpan={8}
-                          className="px-4 py-6 text-center text-gray-500"
-                        >
+                        <td colSpan={8} className="px-4 py-6 text-center text-gray-500">
                           Loading…
                         </td>
                       </tr>
                     ) : fPatients.rows.length === 0 ? (
                       <tr>
-                        <td
-                          colSpan={8}
-                          className="px-4 py-6 text-center text-gray-500"
-                        >
+                        <td colSpan={8} className="px-4 py-6 text-center text-gray-500">
                           No patients found.
                         </td>
                       </tr>
                     ) : (
                       fPatients.rows.map((r) => (
-                        <tr
-                          key={r.id}
-                          className="border-t border-gray-100"
-                        >
+                        <tr key={r.id} className="border-t border-gray-100">
                           <td className="px-4 py-3 font-medium text-[#2A1E36]">
                             {r.name}
                           </td>
                           {fPatients.flags.hasNationalId && (
                             <td className="px-4 py-3">
-                              {r.nationalId
-                                ? mask(r.nationalId, 4, 3)
-                                : "—"}
+                              {r.nationalId ? mask(r.nationalId, 4, 3) : "—"}
                             </td>
                           )}
                           {fPatients.flags.hasEmail && (
-                            <td className="px-4 py-3">
-                              {r.email || "—"}
-                            </td>
+                            <td className="px-4 py-3">{r.email || "—"}</td>
                           )}
                           {fPatients.flags.hasPhone && (
-                            <td className="px-4 py-3">
-                              {r.phone || "—"}
-                            </td>
+                            <td className="px-4 py-3">{r.phone || "—"}</td>
                           )}
                           {fPatients.flags.hasWallet && (
                             <td className="px-4 py-3">
@@ -804,9 +774,7 @@ export default function Admin() {
                             </td>
                           )}
                           {fPatients.flags.hasCreated && (
-                            <td className="px-4 py-3">
-                              {fmtDate(r.createdAt)}
-                            </td>
+                            <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>
                           )}
                         </tr>
                       ))
@@ -865,46 +833,31 @@ export default function Admin() {
                   <tbody>
                     {loading.doctors ? (
                       <tr>
-                        <td
-                          colSpan={9}
-                          className="px-4 py-6 text-center text-gray-500"
-                        >
+                        <td colSpan={9} className="px-4 py-6 text-center text-gray-500">
                           Loading…
                         </td>
                       </tr>
                     ) : fDoctors.rows.length === 0 ? (
                       <tr>
-                        <td
-                          colSpan={9}
-                          className="px-4 py-6 text-center text-gray-500"
-                        >
+                        <td colSpan={9} className="px-4 py-6 text-center text-gray-500">
                           No doctors found.
                         </td>
                       </tr>
                     ) : (
                       fDoctors.rows.map((r) => (
-                        <tr
-                          key={r.id}
-                          className="border-t border-gray-100"
-                        >
+                        <tr key={r.id} className="border-t border-gray-100">
                           <td className="px-4 py-3 font-medium text-[#2A1E36]">
                             {r.accessId}
                           </td>
                           <td className="px-4 py-3">{r.name}</td>
                           {fDoctors.flags.hasSpecialty && (
-                            <td className="px-4 py-3">
-                              {r.specialty || "—"}
-                            </td>
+                            <td className="px-4 py-3">{r.specialty || "—"}</td>
                           )}
                           {fDoctors.flags.hasLicense && (
-                            <td className="px-4 py-3">
-                              {r.license || "—"}
-                            </td>
+                            <td className="px-4 py-3">{r.license || "—"}</td>
                           )}
                           {fDoctors.flags.hasFacility && (
-                            <td className="px-4 py-3">
-                              {r.facility || "—"}
-                            </td>
+                            <td className="px-4 py-3">{r.facility || "—"}</td>
                           )}
                           {fDoctors.flags.hasWallet && (
                             <td className="px-4 py-3">
@@ -927,9 +880,7 @@ export default function Admin() {
                             </td>
                           )}
                           {fDoctors.flags.hasCreated && (
-                            <td className="px-4 py-3">
-                              {fmtDate(r.createdAt)}
-                            </td>
+                            <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>
                           )}
                           <td className="px-4 py-3">
                             {r.status === "Inactive" ? (
@@ -959,6 +910,7 @@ export default function Admin() {
             </div>
           )}
 
+          {/* Pharmacies */}
           {active === "pharmacies" && (
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
               <SectionHeader
@@ -998,51 +950,34 @@ export default function Admin() {
                   <tbody>
                     {loading.pharmacies ? (
                       <tr>
-                        <td
-                          colSpan={8}
-                          className="px-4 py-6 text-center text-gray-500"
-                        >
+                        <td colSpan={8} className="px-4 py-6 text-center text-gray-500">
                           Loading…
                         </td>
                       </tr>
                     ) : fPharms.rows.length === 0 ? (
                       <tr>
-                        <td
-                          colSpan={8}
-                          className="px-4 py-6 text-center text-gray-500"
-                        >
+                        <td colSpan={8} className="px-4 py-6 text-center text-gray-500">
                           No pharmacies found.
                         </td>
                       </tr>
                     ) : (
                       fPharms.rows.map((r) => (
-                        <tr
-                          key={r.id}
-                          className="border-t border-gray-100"
-                        >
+                        <tr key={r.id} className="border-t border-gray-100">
                           <td className="px-4 py-3 font-medium text-[#2A1E36]">
                             {r.accessId}
                           </td>
                           <td className="px-4 py-3">{r.name}</td>
                           {fPharms.flags.hasEmail && (
-                            <td className="px-4 py-3">
-                              {r.email || "—"}
-                            </td>
+                            <td className="px-4 py-3">{r.email || "—"}</td>
                           )}
                           {fPharms.flags.hasPhone && (
-                            <td className="px-4 py-3">
-                              {r.phone || "—"}
-                            </td>
+                            <td className="px-4 py-3">{r.phone || "—"}</td>
                           )}
                           {fPharms.flags.hasLicense && (
-                            <td className="px-4 py-3">
-                              {r.license || "—"}
-                            </td>
+                            <td className="px-4 py-3">{r.license || "—"}</td>
                           )}
                           {fPharms.flags.hasAddress && (
-                            <td className="px-4 py-3">
-                              {r.address || "—"}
-                            </td>
+                            <td className="px-4 py-3">{r.address || "—"}</td>
                           )}
                           {fPharms.flags.hasStatus && (
                             <td className="px-4 py-3">
@@ -1052,9 +987,7 @@ export default function Admin() {
                             </td>
                           )}
                           {fPharms.flags.hasCreated && (
-                            <td className="px-4 py-3">
-                              {fmtDate(r.createdAt)}
-                            </td>
+                            <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>
                           )}
                         </tr>
                       ))
@@ -1088,9 +1021,7 @@ export default function Admin() {
                   <thead className="bg-gray-50 text-gray-600">
                     <tr>
                       <th className="text-left px-4 py-3">Access ID</th>
-                      <th className="text-left px-4 py-3">
-                        Company / Name
-                      </th>
+                      <th className="text-left px-4 py-3">Company / Name</th>
                       {fLogs.flags.hasContact && (
                         <th className="text-left px-4 py-3">Contact</th>
                       )}
@@ -1111,41 +1042,28 @@ export default function Admin() {
                   <tbody>
                     {loading.logistics ? (
                       <tr>
-                        <td
-                          colSpan={7}
-                          className="px-4 py-6 text-center text-gray-500"
-                        >
+                        <td colSpan={7} className="px-4 py-6 text-center text-gray-500">
                           Loading…
                         </td>
                       </tr>
                     ) : fLogs.rows.length === 0 ? (
                       <tr>
-                        <td
-                          colSpan={7}
-                          className="px-4 py-6 text-center text-gray-500"
-                        >
+                        <td colSpan={7} className="px-4 py-6 text-center text-gray-500">
                           No logistics found.
                         </td>
                       </tr>
                     ) : (
                       fLogs.rows.map((r) => (
-                        <tr
-                          key={r.id}
-                          className="border-t border-gray-100"
-                        >
+                        <tr key={r.id} className="border-t border-gray-100">
                           <td className="px-4 py-3 font-medium text-[#2A1E36]">
                             {r.accessId}
                           </td>
                           <td className="px-4 py-3">{r.name}</td>
                           {fLogs.flags.hasContact && (
-                            <td className="px-4 py-3">
-                              {r.contact || "—"}
-                            </td>
+                            <td className="px-4 py-3">{r.contact || "—"}</td>
                           )}
                           {fLogs.flags.hasSla && (
-                            <td className="px-4 py-3">
-                              {r.sla || "—"}
-                            </td>
+                            <td className="px-4 py-3">{r.sla || "—"}</td>
                           )}
                           {fLogs.flags.hasWallet && (
                             <td className="px-4 py-3">
@@ -1160,9 +1078,7 @@ export default function Admin() {
                             </td>
                           )}
                           {fLogs.flags.hasCreated && (
-                            <td className="px-4 py-3">
-                              {fmtDate(r.createdAt)}
-                            </td>
+                            <td className="px-4 py-3">{fmtDate(r.createdAt)}</td>
                           )}
                         </tr>
                       ))
@@ -1191,6 +1107,7 @@ export default function Admin() {
         onNav={(p) => navigate(p)}
         onLogout={() => navigate("/auth", { replace: true })}
       />
+
       {resetModal && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40">
           <div
@@ -1208,31 +1125,22 @@ export default function Admin() {
                 <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
               </div>
 
-              <h3
-                className="text-lg font-semibold mb-1"
-                style={{ color: C.ink }}
-              >
+              <h3 className="text-lg font-semibold mb-1" style={{ color: C.ink }}>
                 Temporary password reset successfully
               </h3>
 
               <p className="text-sm mb-1" style={{ color: "#4B5563" }}>
                 New temp password for{" "}
-                <span className="font-semibold">
-                  {resetModal.doctorLabel}
-                </span>
-                :
+                <span className="font-semibold">{resetModal.doctorLabel}</span>:
               </p>
 
-              <p
-                className="text-base font-semibold mb-2"
-                style={{ color: C.ink }}
-              >
+              <p className="text-base font-semibold mb-2" style={{ color: C.ink }}>
                 {resetModal.tempPassword}
               </p>
 
               <p className="text-xs mb-4" style={{ color: "#6B7280" }}>
-                Valid until {resetModal.expiresAt}. Please share it securely
-                with the doctor.
+                Valid until {resetModal.expiresAt}. Please share it securely with the
+                doctor.
               </p>
 
               <button
