@@ -2,7 +2,7 @@
 // @ts-nocheck
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
@@ -156,7 +156,7 @@ export default function PharmacyShell() {
   const [showEmailAlert, setShowEmailAlert] = useState(false);
   const [showResetAlert, setShowResetAlert] = useState(false);
 
-  // ✅ هنا نمسك رسالة الخطأ الجاية من PendingOrders
+  // رسالة خطأ قادمة من الصفحات الداخلية
   const [pageError, setPageError] = useState("");
 
   useEffect(() => {
@@ -170,7 +170,11 @@ export default function PharmacyShell() {
       let snap = await getDoc(doc(db, "pharmacies", String(userPharmacyID)));
       if (!snap.exists()) {
         const qs = await getDocs(
-          query(collection(db, "pharmacies"), where("PharmacyID", "==", String(userPharmacyID)), fsLimit(1))
+          query(
+            collection(db, "pharmacies"),
+            where("PharmacyID", "==", String(userPharmacyID)),
+            fsLimit(1)
+          )
         );
         if (!qs.empty) snap = qs.docs[0];
       }
@@ -181,14 +185,11 @@ export default function PharmacyShell() {
       setPharmacyDocId(snap.id);
 
       setShowEmailAlert(!norm.email);
-      setShowResetAlert(
-        norm.requirePasswordChange === true ||
-        (!!norm.email && !norm.passwordUpdatedAt)
-      );
+      setShowResetAlert(norm.requirePasswordChange === true);
     })();
   }, [isPharmacyPage, location.pathname]);
 
-  // ✅ كل ما تغيّرت الصفحة نمسح رسالة الخطأ
+  // كل ما تغيّرت الصفحة نمسح رسالة الخطأ
   useEffect(() => {
     setPageError("");
   }, [location.pathname]);
@@ -203,11 +204,21 @@ export default function PharmacyShell() {
   const isDelivActive = location.pathname.startsWith("/pharmacy/delivery");
   const isPendActive  = location.pathname.startsWith("/pharmacy/pending");
 
+  // subtitle تحت الـ Welcome
+  let subtitleText = "";
+  if (isPickActive) {
+    subtitleText = "Pick-up orders awaiting patient arrival";
+  } else if (isDelivActive) {
+    subtitleText = "Delivery requests awaiting your acceptance";
+  } else if (isPendActive) {
+    subtitleText = "Pending delivery prescriptions awaiting dispensing";
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header hideMenu={false} onMenuClick={() => { if (isPharmacyPage && pharmacyDocId) setOpen(true); }} />
 
-      {/* Alerts (نفس صيغة الدكتور) */}
+      {/* Alerts */}
       {showEmailAlert && (
         <AlertBanner>
           ⚠️Please verify your email so you can change your password later.{" "}
@@ -231,7 +242,7 @@ export default function PharmacyShell() {
         </AlertBanner>
       )}
 
-      {/* ✅ بانر الخطأ الأحمر (زي اللوجستكس بالضبط) فوق الـ Welcome */}
+      {/* بانر الخطأ الأحمر */}
       {pageError && (
         <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
           <div className="mb-4 p-4 rounded-xl flex items-center gap-2 text-red-700 bg-red-100 border border-red-300">
@@ -241,26 +252,36 @@ export default function PharmacyShell() {
         </div>
       )}
 
-      {/* Welcome (تحت التنبيهات وفوق المحتوى) */}
+      {/* Welcome + subtitle */}
       {isPharmacyPage && (
         <div className="mx-auto w-full max-w-6xl px-4 md:px-6 mt-4">
-          <div className="mb-4 flex items-center gap-3">
-            <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 64, height: "auto" }} />
+          <div className="mb-6 flex items-center gap-3">
+            <img
+              src="/Images/TrustDose-pill.png"
+              alt="TrustDose Capsule"
+              style={{ width: 64, height: "auto" }}
+            />
             <div>
-              <div className="font-extrabold text-[24px]" style={{ color: "#334155" }}>
+              <h1 className="font-extrabold text-[24px]" style={{ color: "#334155" }}>
                 {pharmacy?.pharmacyName || pharmacy?.name
-                  ? `Welcome, ${pharmacy.pharmacyName || pharmacy.name} `
+                  ? `Welcome, ${pharmacy.pharmacyName || pharmacy.name}`
                   : "Welcome, Pharmacy"}
-              </div>
-              <div className="text-sm" style={{ color: "#64748b" }}>
-              </div>
+              </h1>
+
+              {subtitleText && (
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <p className="text-[15px] font-medium" style={{ color: "#64748b" }}>
+                    {subtitleText}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
 
       <div className="flex-1">
-        {/* ✅ نمرر setPageError للصفحات الداخلية (مثل PendingOrders) */}
+        {/* نمرر setPageError للصفحات الداخلية */}
         <Outlet context={{ setPageError }} />
       </div>
 
@@ -284,23 +305,36 @@ export default function PharmacyShell() {
           >
             <div className="flex items-center justify-between px-4 py-4">
               <img src="/Images/TrustDose_logo.png" alt="TrustDose" className="h-7 w-auto" />
-              <button onClick={() => setOpen(false)} className="h-9 w-9 grid place-items-center rounded-lg hover:bg-white/20 text-white" aria-label="Close">
+              <button
+                onClick={() => setOpen(false)}
+                className="h-9 w-9 grid place-items-center rounded-lg hover:bg-white/20 text-white"
+                aria-label="Close"
+              >
                 <X size={18} />
               </button>
             </div>
 
             <nav className="px-3">
-              <DrawerItem active={isPickActive} onClick={() => { navigate("/pharmacy"); setOpen(false); }}>
+              <DrawerItem
+                active={isPickActive}
+                onClick={() => { navigate("/pharmacy"); setOpen(false); }}
+              >
                 <ClipboardList size={18} />
                 <span>Pick Up Orders</span>
               </DrawerItem>
 
-              <DrawerItem active={isDelivActive} onClick={() => { navigate("/pharmacy/delivery"); setOpen(false); }}>
+              <DrawerItem
+                active={isDelivActive}
+                onClick={() => { navigate("/pharmacy/delivery"); setOpen(false); }}
+              >
                 <PackageCheck size={18} />
                 <span>Delivery Orders</span>
               </DrawerItem>
 
-              <DrawerItem active={isPendActive} onClick={() => { navigate("/pharmacy/pending"); setOpen(false); }}>
+              <DrawerItem
+                active={isPendActive}
+                onClick={() => { navigate("/pharmacy/pending"); setOpen(false); }}
+              >
                 <Clock size={18} />
                 <span>Pending Orders</span>
               </DrawerItem>
@@ -353,39 +387,74 @@ function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
 function Row({ label, value }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-gray-500">{label}</span>
+      <span className="text-gray-500 font-medium">{label}</span>
       <span className="font-medium text-gray-800 text-right">{value}</span>
     </div>
   );
 }
 
 /* ================= Account Modal ================= */
-// ... (خلي باقي الكود كما هو – نفس اللي عندك في الملف فوق, ما عدلته)
-
-
-/* ================= Account Modal ================= */
 function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
   // Phone
   const [phone, setPhone] = useState(pharmacy?.phone || "");
+  const [initialPhone, setInitialPhone] = useState(pharmacy?.phone || "");
   const [phoneInfo, setPhoneInfo] = useState({ ok: false, reason: "", normalized: "" });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [msgType, setMsgType] = useState(""); // success | error | ""
+
+  const [editingPhone, setEditingPhone] = useState(false);
+  const phoneRef = useRef(null);
+  useEffect(() => { if (editingPhone) setTimeout(() => phoneRef.current?.focus(), 0); }, [editingPhone]);
+
+  useEffect(() => {
+    setPhone(pharmacy?.phone || "");
+    setInitialPhone(pharmacy?.phone || "");
+  }, [pharmacy?.phone]);
+
   useEffect(() => setPhoneInfo(validateAndNormalizePhone(phone)), [phone]);
-  const canSave = phoneInfo.ok && !saving;
+
+  const canSave = phoneInfo.ok && !saving && phone !== initialPhone;
+  const hasPhone = !!initialPhone;
 
   async function save() {
     const pInfo = validateAndNormalizePhone(phone);
-    if (!pInfo.ok) return setMsg(pInfo.reason || "Invalid phone.");
-    if (!pharmacyDocId) return setMsg("Pharmacy record not found.");
+    if (!pInfo.ok) {
+      setMsgType("error");
+      setMsg(pInfo.reason || "Invalid phone.");
+      return;
+    }
+    if (!pharmacyDocId) {
+      setMsgType("error");
+      setMsg("Pharmacy record not found.");
+      return;
+    }
+
+    if (phone === initialPhone) {
+      setMsgType("error");
+      setMsg("You are already using this phone number.");
+      return;
+    }
+
     try {
       setSaving(true);
       setMsg("");
+      setMsgType("");
+
       const payload = { phone: pInfo.normalized, updatedAt: new Date(), phoneLocal: deleteField() };
       await updateDoc(doc(db, "pharmacies", pharmacyDocId), payload);
+
+      setInitialPhone(payload.phone);
       onSaved?.({ phone: payload.phone });
+      setMsgType("success");
       setMsg("Saved ✓");
-      setTimeout(() => onClose?.(), 600);
+      setEditingPhone(false);
+      setTimeout(() => {
+        setMsg("");
+        setMsgType("");
+      }, 1500);
     } catch (e) {
+      setMsgType("error");
       setMsg(e?.message || "Failed to save.");
     } finally {
       setSaving(false);
@@ -433,73 +502,126 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
         <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-semibold" style={{ color: C.ink }}>My Profile</h3>
-            <button onClick={onClose} className="h-8 w-8 grid place-items-center rounded-lg hover:bg-gray-100" aria-label="Close">✕</button>
+            <button
+              onClick={onClose}
+              className="h-8 w-8 grid place-items-center rounded-lg hover:bg-gray-100"
+              aria-label="Close"
+            >
+              ✕
+            </button>
           </div>
 
-          <div className="space-y-3 text-sm">
-            <Row label="Pharmacy" value={pharmacy?.pharmacyName || pharmacy?.name || "—"} />
-            <Row label="Pharmacy ID" value={pharmacy?.BranchID || "—"} />
-            <Row label="Address" value={pharmacy?.address || "—"} />
-
-            {/* Phone */}
-            <div>
-              <label className="block text-sm text-gray-700 mb-1">
-                Phone <span className="text-rose-600">*</span>
-              </label>
-              <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="05xxxxxxxx or +9665xxxxxxxx (no spaces)"
-                inputMode="tel"
-                pattern="[+0-9]*"
-                dir="ltr"
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
-                style={{ outlineColor: C.primary }}
-                onKeyDown={(e) => { if (e.key === " " || /[٠-٩۰-۹]/.test(e.key)) e.preventDefault(); }}
-              />
-              <div style={{ marginTop: 6, fontSize: 12 }}>
-                {!phone && <span style={{ color: "#888" }}>Enter phone starting with 05 or +9665</span>}
-                {phone && !phoneInfo.ok && <span style={{ color: "#b91c1c" }}>{phoneInfo.reason}</span>}
+          <div className="space-y-5 text-sm">
+            {/* Pharmacy Info */}
+            <div className="rounded-xl border bg-white p-4">
+              <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>Pharmacy Info</div>
+              <div className="space-y-2">
+                <Row label="Pharmacy" value={pharmacy?.pharmacyName || pharmacy?.name || "—"} />
+                <Row label="Pharmacy ID" value={pharmacy?.BranchID || "—"} />
+                <Row label="Address" value={pharmacy?.address || "—"} />
               </div>
             </div>
 
-            {/* Email */}
-            <div className="mt-3">
-              <label className="block text-sm text-gray-700 mb-1">Email</label>
-              {hasEmail ? (
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-gray-800">{pharmacy.email}</span>
-                  <span className="text-[12px] px-2 py-0.5 rounded-full border" style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}>
-                    Verified
-                  </span>
+            {/* Contact Info */}
+            <div className="rounded-xl border bg-white p-4">
+              <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>Contact Info</div>
+
+              {/* Phone */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-gray-700 font-medium">Phone</span>
+                  {!editingPhone && (
+                    <button
+                      onClick={() => setEditingPhone(true)}
+                      className="px-3 py-1.5 rounded-lg text-white"
+                      style={{ background: C.primary }}
+                    >
+                      {hasPhone ? "Update" : "Add"}
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <>
-                  <div className="flex gap-2">
+
+                {!editingPhone ? (
+                  <div className="font-medium text-gray-900">
+                    {initialPhone || "—"}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
                     <input
-                      className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
+                      ref={phoneRef}
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="05xxxxxxxx or +9665xxxxxxxx (no spaces)"
+                      inputMode="tel"
+                      pattern="[+0-9]*"
+                      dir="ltr"
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
                       style={{ outlineColor: C.primary }}
-                      placeholder="name@example.com"
-                      value={emailInput}
-                      onChange={(e) => setEmailInput(e.target.value)}
-                      inputMode="email"
+                      onKeyDown={(e) => { if (e.key === " " || /[٠-٩۰-۹]/.test(e.key)) e.preventDefault(); }}
                     />
                     <button
-                      onClick={sendVerifyLink}
-                      disabled={emailLoading}
+                      onClick={save}
+                      disabled={!canSave}
                       className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
                       style={{ background: C.primary }}
                     >
-                      {emailLoading ? "Sending..." : "Send Verify"}
+                      {saving ? "Saving..." : "Save"}
                     </button>
                   </div>
-                  {!!emailMsg && (
-                    <div className="mt-2 text-sm" style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534" }}>
-                      {emailMsg}
+                )}
+
+                {msgType === "success" && !!msg && (
+                  <div className="text-green-700 font-medium mt-2">{msg}</div>
+                )}
+                {msgType === "error" && !!msg && (
+                  <div className="text-rose-700 mt-2">{msg}</div>
+                )}
+              </div>
+
+              {/* Email */}
+              <div className="mt-3">
+                <label className="block text-sm text-gray-700 mb-1">Email</label>
+                {hasEmail ? (
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-800">{pharmacy.email}</span>
+                    <span
+                      className="text-[12px] px-2 py-0.5 rounded-full border"
+                      style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}
+                    >
+                      Verified
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
+                        style={{ outlineColor: C.primary }}
+                        placeholder="name@example.com"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        inputMode="email"
+                      />
+                      <button
+                        onClick={sendVerifyLink}
+                        disabled={emailLoading}
+                        className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
+                        style={{ background: C.primary }}
+                      >
+                        {emailLoading ? "Sending..." : "Send Verify"}
+                      </button>
                     </div>
-                  )}
-                </>
-              )}
+                    {!!emailMsg && (
+                      <div
+                        className="mt-2 text-sm"
+                        style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534" }}
+                      >
+                        {emailMsg}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Password (only if email exists) */}
@@ -509,15 +631,20 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                 onSaved={onSaved}
               />
             )}
-
-            {!!msg && <div className="text-sm">{msg}</div>}
           </div>
 
+          {/* أزرار تحت زي ما هي */}
           <div className="mt-4 flex items-center justify-end gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg border">Cancel</button>
+            <button onClick={onClose} className="px-4 py-2 rounded-lg border">
+              Cancel
+            </button>
             <button
-              onClick={save}
-              disabled={!canSave}
+              onClick={() => {
+                // نخلي زر Save العام بس يقفل المودال لو ما في شيء يتحفظ
+                if (!editingPhone) onClose();
+                else save();
+              }}
+              disabled={editingPhone && !canSave}
               className="px-4 py-2 rounded-lg text-white disabled:opacity-50"
               style={{ background: C.primary }}
             >

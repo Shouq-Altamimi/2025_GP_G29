@@ -6,8 +6,15 @@ import React from "react";
 import { useOutletContext } from "react-router-dom";
 import { db } from "../firebase";
 import {
-  collection, query, where, getDocs, orderBy,
-  doc, getDoc, updateDoc, serverTimestamp
+  collection,
+  query,
+  where,
+  getDocs,
+  orderBy,
+  doc,
+  getDoc,
+  updateDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { Loader2, CheckCircle2 } from "lucide-react"; // ✅ نفس الأيقونة حق الصيدلية
 import { ethers } from "ethers";
@@ -19,7 +26,7 @@ const RX_STATUS = { DELIVERY_REQUESTED: "DELIVERY_REQUESTED", PHARM_ACCEPTED: "P
 const PAGE_SIZE = 6;
 
 // ======== عقد DeliveryAccept ========
-const DELIVERY_ACCEPT_ADDRESS = "0x48B1223ea5B780DBc0f3D1dA3fB1554776230d03";
+const DELIVERY_ACCEPT_ADDRESS = "0x1CcbC36fAe3A3b39c482d679B8a05C5c4665986a";
 const DELIVERY_ACCEPT_ABI = DELIVERY_ACCEPT?.abi ?? [];
 
 /* ========== helpers ========== */
@@ -29,8 +36,11 @@ function formatFsTimestamp(v) {
     if (typeof v?.toDate === "function") {
       const d = v.toDate();
       return d.toLocaleString("en-GB", {
-        day: "2-digit", month: "long", year: "numeric",
-        hour: "2-digit", minute: "2-digit",
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
       });
     }
     if (typeof v === "string") return v;
@@ -65,7 +75,9 @@ export default function DeliveryOrders({ pharmacyId }) {
 
       async function runQ(wheres, useOrder = true) {
         try {
-          const q1 = useOrder ? query(col, ...wheres, orderBy("updatedAt", "desc")) : query(col, ...wheres);
+          const q1 = useOrder
+            ? query(col, ...wheres, orderBy("updatedAt", "desc"))
+            : query(col, ...wheres);
           return await getDocs(q1);
         } catch {
           const q2 = query(col, ...wheres);
@@ -111,7 +123,8 @@ export default function DeliveryOrders({ pharmacyId }) {
 
       if (!snap || snap.empty) {
         if (mounted) {
-          setMsg("No sensitive prescriptions found.");
+          // ✅ نفس فكرة PendingOrders لكن للجملة الجديدة
+          setMsg("No delivery prescriptions to accept.");
           setRows([]);
           setLoading(false);
         }
@@ -126,7 +139,9 @@ export default function DeliveryOrders({ pharmacyId }) {
         let onchainId = null;
         const raw = x.onchainId;
         if (raw !== undefined && raw !== null && String(raw).trim() !== "") {
-          try { onchainId = ethers.toBigInt(String(raw)); } catch {}
+          try {
+            onchainId = ethers.toBigInt(String(raw));
+          } catch {}
         }
 
         return {
@@ -190,7 +205,9 @@ export default function DeliveryOrders({ pharmacyId }) {
     }
 
     fetchAllSensitive();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [pharmacyId, setPageError]);
 
   const total = rows.length;
@@ -263,15 +280,14 @@ export default function DeliveryOrders({ pharmacyId }) {
 
       // ✅ بوب أب نفس اللي في PendingOrders / PickUpSection
       setSuccessModal({
-          title: "Sensitive prescription accepted",
-          message: (
-            <>
-              If accepted by logistics provider, the prescription will appear in
-              <span className="font-semibold"> Pending Orders</span>.
-            </>
-          ),
-        });
-
+        title: "Sensitive prescription accepted",
+        message: (
+          <>
+            If accepted by logistics provider, the prescription will appear in
+            <span className="font-semibold"> Pending Orders</span>.
+          </>
+        ),
+      });
     } catch (err) {
       console.error(err);
 
@@ -306,7 +322,6 @@ export default function DeliveryOrders({ pharmacyId }) {
   return (
     <div className="p-6">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
-
         {/* ✅ البوب أب نفس بوب أب الصيدلية بالضبط */}
         {successModal && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
@@ -325,17 +340,11 @@ export default function DeliveryOrders({ pharmacyId }) {
                   <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
                 </div>
 
-                <h3
-                  className="text-lg font-semibold mb-1"
-                  style={{ color: C.ink }}
-                >
+                <h3 className="text-lg font-semibold mb-1" style={{ color: C.ink }}>
                   {successModal.title}
                 </h3>
 
-                <p
-                  className="text-sm mb-4"
-                  style={{ color: "#4B5563" }}
-                >
+                <p className="text-sm mb-4" style={{ color: "#4B5563" }}>
                   {successModal.message}
                 </p>
 
@@ -354,8 +363,7 @@ export default function DeliveryOrders({ pharmacyId }) {
           </div>
         )}
 
-        {msg && <p className="text-gray-600">{msg}</p>}
-
+        {/* الكروت */}
         {pageItems.length > 0 && (
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {pageItems.map((r) => {
@@ -365,8 +373,11 @@ export default function DeliveryOrders({ pharmacyId }) {
               const facility = r.doctorFacility ? ` — ${r.doctorFacility}` : "";
               const dateTime = r.createdAtTS
                 ? r.createdAtTS.toLocaleString("en-GB", {
-                    day: "2-digit", month: "long", year: "numeric",
-                    hour: "2-digit", minute: "2-digit",
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
                   })
                 : r.createdAt || "-";
 
@@ -374,10 +385,7 @@ export default function DeliveryOrders({ pharmacyId }) {
               const disabled = isPending;
 
               return (
-                <div
-                  key={r._docId}
-                  className="p-4 border rounded-xl bg-white shadow-sm"
-                >
+                <div key={r._docId} className="p-4 border rounded-xl bg-white shadow-sm">
                   {/* محتوى الكارد العلوي */}
                   <div>
                     <div className="text-lg font-bold text-slate-800 truncate">
@@ -385,7 +393,8 @@ export default function DeliveryOrders({ pharmacyId }) {
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Prescription ID: <span className="font-normal">{r.prescriptionId}</span>
+                      Prescription ID:{" "}
+                      <span className="font-normal">{r.prescriptionId}</span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
@@ -397,34 +406,38 @@ export default function DeliveryOrders({ pharmacyId }) {
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Doctor Phone: <span className="font-normal">{r.doctorPhone}</span>
+                      Doctor Phone:{" "}
+                      <span className="font-normal">{r.doctorPhone}</span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Prescribed by{" "}
                       <span className="font-normal">
-                        {prescriber}{facility}
+                        {prescriber}
+                        {facility}
                       </span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Dosage:{" "}
                       <span className="font-normal">
-                        {r.dose || "—"} • {r.frequency || "—"} • {r.durationDays || "—"}
+                        {r.dose || "—"} • {r.frequency || "—"} •{" "}
+                        {r.durationDays || "—"}
                       </span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-2 font-semibold">
                       Medical Condition:{" "}
-                      <span className="font-normal">{r.medicalCondition || "—"}</span>
+                      <span className="font-normal">
+                        {r.medicalCondition || "—"}
+                      </span>
                     </div>
 
                     {/* مساحة ثابتة للنوتس */}
                     <div className="mt-1 min-h-[28px]">
                       {!!r.notes && (
                         <div className="text-sm text-slate-700 font-semibold">
-                          Notes:{" "}
-                          <span className="font-normal">{r.notes}</span>
+                          Notes: <span className="font-normal">{r.notes}</span>
                         </div>
                       )}
                     </div>
@@ -435,7 +448,9 @@ export default function DeliveryOrders({ pharmacyId }) {
                     <button
                       className="w-max px-4 py-2 text-sm rounded-lg transition-colors
                                  flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
-                      style={{ backgroundColor: isPending ? "#D8C2E6" : C.primary }}
+                      style={{
+                        backgroundColor: isPending ? "#D8C2E6" : C.primary,
+                      }}
                       onMouseEnter={(e) => {
                         if (!isPending && !disabled) {
                           e.currentTarget.style.backgroundColor = C.primaryDark;
@@ -470,6 +485,13 @@ export default function DeliveryOrders({ pharmacyId }) {
           </section>
         )}
 
+        {/* ✅ هنا نفس ستايل PendingOrders بالضبط */}
+        {total === 0 && (
+          <p className="text-gray-600 mt-4">
+            {msg || "No delivery prescriptions to accept."}
+          </p>
+        )}
+
         {total > 0 && (
           <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-sm text-gray-700">
@@ -477,7 +499,9 @@ export default function DeliveryOrders({ pharmacyId }) {
             </div>
 
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500">Page {page + 1} of {pageCount}</span>
+              <span className="text-xs text-gray-500">
+                Page {page + 1} of {pageCount}
+              </span>
               <div className="flex gap-2">
                 <button
                   className="px-4 py-2 rounded-lg border text-sm disabled:opacity-50"
