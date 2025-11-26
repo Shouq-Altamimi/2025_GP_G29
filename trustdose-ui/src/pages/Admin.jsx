@@ -1,4 +1,3 @@
-// src/pages/Admin.jsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -38,21 +37,19 @@ function generateTempPassword() {
   return `${a}${b}-${num}`;
 }
 
-/* ================= Sidebar ================ */
 function Sidebar({ open, setOpen, onNav, onLogout }) {
   const location = useLocation();
   const isActive = (p) => location.pathname + location.search === p;
 
   return (
     <>
-      {/* Backdrop */}
       <div
         onClick={() => setOpen(false)}
         className={`fixed inset-0 z-50 bg-black/40 transition-opacity ${
           open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
       />
-      {/* Drawer */}
+    
       <aside
         className="fixed top-0 left-0 z-[60] h-full w-[290px] shadow-2xl"
         style={{
@@ -205,8 +202,6 @@ function Pager({ page, pageCount, total, pageSize, setPage }) {
     </div>
   );
 }
-
-/* ============== helpers ============== */
 function fmtDate(ts) {
   try {
     if (!ts) return "—";
@@ -344,8 +339,6 @@ const normalize = {
     createdAt: d.createdAt || d.created_at || d.created || null,
   }),
 };
-
-/* ============== page ============== */
 export default function Admin() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -353,16 +346,12 @@ export default function Admin() {
   const [active, setActive] = useState(queryTab || "patients");
   const [open, setOpen] = useState(false);
 
-  const [resetModal, setResetModal] = useState(null); // { doctorLabel, tempPassword, expiresAt }
-
-  // sync tab with URL
+  const [resetModal, setResetModal] = useState(null);
   useEffect(() => {
     const s = new URLSearchParams(location.search).get("tab") || "patients";
     if (s !== active) setActive(s);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
 
-  // stats
   const [counts, setCounts] = useState({
     users: 0,
     doctors: 0,
@@ -372,21 +361,19 @@ export default function Admin() {
   });
   const [loadingCards, setLoadingCards] = useState(true);
 
-  // data
+  
   const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [pharmacies, setPharmacies] = useState([]);
   const [logistics, setLogistics] = useState([]);
 
-  // loading per tab
+  
   const [loading, setLoading] = useState({
     patients: true,
     doctors: true,
     pharmacies: true,
     logistics: true,
   });
-
-  // search + paging per tab
   const [qPatients, setQPatients] = useState("");
   const [pPatients, setPPatients] = useState(1);
   const [qDoctors, setQDoctors] = useState("");
@@ -397,7 +384,6 @@ export default function Admin() {
   const [pLogs, setPLogs] = useState(1);
   const PAGE = 10;
 
-  // ✅ تحسين: نحسب الكاونتس من الـ arrays نفسها بدل lengths بس
   useEffect(() => {
     setCounts({
       users:
@@ -413,7 +399,6 @@ export default function Admin() {
     setLoadingCards(false);
   }, [doctors, patients, pharmacies, logistics]);
 
-  /* load tables once */
   useEffect(() => {
     (async () => {
       try {
@@ -482,7 +467,6 @@ export default function Admin() {
     })();
   }, []);
 
-  /* ======== reset doctor temp password ======== */
   async function handleResetDoctor(row) {
     if (!row?.id) return;
 
@@ -661,8 +645,6 @@ export default function Admin() {
             <p className="text-gray-500 text-sm">Manage identities & compliance.</p>
           </div>
         </div>
-
-        {/* top cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mt-7">
           <StatCard
             title="Total Users"
@@ -689,11 +671,7 @@ export default function Admin() {
             accent={C.teal}
           />
         </div>
-
-        {/* pills (tabs) */}
         <Pills tabs={tabs} active={active} onChange={changeTab} />
-
-        {/* ==== CONTENT (one tab visible) ==== */}
         <div className="mt-6 mb-16">
           {/* Patients */}
           {active === "patients" && (
@@ -1100,7 +1078,7 @@ export default function Admin() {
 
       <Footer />
 
-      {/* Sidebar hook-up */}
+      {/* Sidebar */}
       <Sidebar
         open={open}
         setOpen={setOpen}

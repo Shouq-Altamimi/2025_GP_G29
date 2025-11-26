@@ -29,9 +29,6 @@ import {
 } from "firebase/firestore";
 import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "firebase/auth";
 
-/* =========================
-   Auth setup
-   ========================= */
 const auth = getAuth(app);
 if (!auth.currentUser) signInAnonymously(auth).catch(() => {});
 onAuthStateChanged(auth, (u) => u && console.log(" anon uid:", u.uid));
@@ -58,9 +55,6 @@ function ensureAuthReady() {
   return authReadyPromise;
 }
 
-/* =========================
-   Blockchain utils
-   ========================= */
 const DoctorRegistry_ABI = [
   {
     inputs: [
@@ -94,9 +88,6 @@ async function idCompat(text) {
   return (E.utils?.id || E.id)(text);
 }
 
-/* =========================
-   Helpers
-   ========================= */
 function generateTempPassword() {
   const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const a = letters[Math.floor(Math.random() * letters.length)];
@@ -127,9 +118,6 @@ function isUserRejectedError(e) {
   );
 }
 
-/* =========================
-   Firestore
-   ========================= */
 async function saveDoctor_FirestoreMulti(docData) {
   await ensureAuthReady();
   return addDoc(collection(db, "doctors"), { ...docData, createdAt: serverTimestamp() });
@@ -195,9 +183,6 @@ async function isLicenseTaken(licenseNumber) {
   return !qSnap.empty;
 }
 
-/* =========================
-   Blockchain save
-   ========================= */
 async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPassword }) {
   const E = await loadEthers();
   const provider = E.BrowserProvider
@@ -211,9 +196,6 @@ async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPasswo
   return { txHash: tx.hash, block: rc.blockNumber };
 }
 
-/* =========================
-   Sidebar (TrustDose style) + Active state
-   ========================= */
 function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
   const location = useLocation();
   const go = (path) => {
@@ -291,13 +273,10 @@ function SidebarItem({ children, onClick, variant = "solid", active = false }) {
   );
 }
 
-/* =========================
-   Validation (EN-only)
-   ========================= */
 // min 5 chars
 const NAME_RE = /^[A-Za-z ]{5,}$/;
 const SPEC_RE = /^[A-Za-z ]{5,}$/;
-const LIC_RE = /^[A-Za-z0-9]{10}$/; // exactly 10 alphanumeric
+const LIC_RE = /^[A-Za-z0-9]{10}$/; 
 
 function validateLic(v) {
   if (!v) return { ok: false, err: "License number is required." };
@@ -325,7 +304,6 @@ function validateWallet(v) {
   return { ok: true, err: "" };
 }
 
-/* === Sanitizers to force EN-only during typing === */
 function sanitizeName(raw) {
   return raw.replace(/[^A-Za-z ]/g, "").replace(/\s{2,}/g, " ");
 }
@@ -347,9 +325,6 @@ function sanitizeHexLike(raw) {
   return s;
 }
 
-/* =========================
-   UI helpers
-   ========================= */
 function fieldClasses(valid, dirty) {
   const neutral = "border-gray-200 focus:ring-[#B08CC1]";
   if (!dirty) return neutral;
@@ -361,9 +336,6 @@ function ErrorMsg({ children }) {
   return <div className="mt-1 text-xs text-rose-600 text-left">{children}</div>;
 }
 
-/* =========================
-   Page
-   ========================= */
 export default function AdminAddDoctorOnly() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -400,11 +372,9 @@ export default function AdminAddDoctorOnly() {
     wallet: false,
   });
 
-//Metamask error
   const [mmError, setMmError] = useState("");
   const [successModal, setSuccessModal] = useState(null);
 
-  // Validations
   const vContract = validateContract(contractAddress);
   const vName = validateName(name);
   const vSpec = validateSpec(speciality);
@@ -772,7 +742,7 @@ export default function AdminAddDoctorOnly() {
             </ErrorMsg>
           </div>
 
-          {/* Access ID + Temp Password (read-only) */}
+          {/* Access ID + Temp Password  */}
           <div className="mt-4 space-y-2">
             <div className="flex justify-between border border-gray-200 bg-gray-50 px-4 py-2 rounded-2xl text-sm text-gray-700">
               <span>
