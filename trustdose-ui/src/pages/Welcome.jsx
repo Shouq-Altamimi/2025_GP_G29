@@ -251,12 +251,12 @@ export default function Welcome() {
                     Our Vision
                   </h3>
                   <p className="text-sm md:text-base text-[#4A2C59]/80 leading-relaxed font-medium">
-                    "To build a safe and integrated digital health ecosystem
-                    that reduces prescription errors, enhances transparency and
-                    reliability across the medication journey, and leverages
-                    blockchain technology to ensure trusted and tamper-proof
-                    prescription records. All in alignment with Saudi Arabia’s
-                    Vision 2030 for advancing healthcare innovation."
+                  "To revolutionize medication safety by creating a secure, transparent, 
+                    and intelligent digital ecosystem
+                   that ensures every prescription is trusted and safely delivered, 
+                    supporting Saudi Arabia’s Vision 2030 
+                    in advancing innovative,technology-driven healthcare 
+                    transforming patient protection and confidence, dose by dose"
                   </p>
                 </div>
               </div>
@@ -271,9 +271,7 @@ export default function Welcome() {
                     Our Goal
                   </h3>
                   <p className="text-sm md:text-base text-[#4A2C59]/80 leading-relaxed font-medium">
-                    To demonstrate how sensitive prescriptions can be tracked
-                    and verified end-to-end across all roles using modern
-                    technologies.
+                  "Our goal is to redefine trust in medication by delivering a secure, transparent, and seamless journey from doctor to patient building trust, dose by dose"
                   </p>
                 </div>
               </div>
