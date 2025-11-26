@@ -74,27 +74,17 @@ export default function Welcome() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F7F8FC] via-white to-[#F0F4FF] flex flex-col overflow-hidden relative">
-      {/* Background elements */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-40 -left-40 w-80 h-80 rounded-full bg-gradient-to-br from-[#B08CC1]/15 to-[#52B9C4]/10 blur-3xl" />
-        <div className="absolute top-1/3 -right-40 w-96 h-96 rounded-full bg-gradient-to-br from-[#52B9C4]/15 to-[#4A2C59]/10 blur-3xl" />
-        <div className="absolute bottom-40 left-1/3 w-64 h-64 rounded-full bg-gradient-to-br from-[#4A2C59]/10 to-[#B08CC1]/15 blur-3xl" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(74,44,89,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(74,44,89,0.03)_1px,transparent_1px)] bg-[size:50px_50px] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_50%,black,transparent)]" />
-      </div>
-
+    <div className="min-h-screen flex flex-col bg-white">
       {/* Header */}
       <header className="w-full bg-white/80 backdrop-blur-xl border-b border-[#E6E7F0]/50 h-20 flex items-center px-8 relative z-20">
         <div className="flex items-center gap-3">
-          {/* شعار مكبّر بدون تكبير الهيدر */}
-<div className="flex items-center">
-  <img
-    src="/Images/TrustDose_logo.png"
-    alt="TrustDose Logo"
-    className="w-40 h-40 object-contain"
-  />
-</div>
-
+          <div className="flex items-center">
+            <img
+              src="/Images/TrustDose_logo.png"
+              alt="TrustDose Logo"
+              className="w-40 h-40 object-contain"
+            />
+          </div>
         </div>
 
         <div className="ml-auto flex items-center gap-3">
@@ -102,63 +92,70 @@ export default function Welcome() {
             className="px-6 py-2 rounded-xl bg-gradient-to-r from-[#B08CC1] to-[#52B9C4] text-white font-semibold shadow hover:shadow-md transition-all"
             onClick={() => (window.location.href = "/auth")}
           >
-            Get Started
+            Join TrustDose
           </button>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 flex justify-center items-start px-6 py-12 relative z-10">
-        <div className="w-full max-w-6xl space-y-12">
-          {/* Hero Section */}
-          <section className="text-center space-y-6">
-            <div
-              className={`space-y-4 transition-all duration-700 ${
+      {/* ===== Main Content ===== */}
+      <main className="flex-1 flex flex-col relative z-10">
+        {/* ===== FULL-WIDTH PURPLE: Hero + Integrated Ecosystem ===== */}
+        <section className="w-full bg-gradient-to-b from-[#F1E4FF] via-[#F7F0FF] to-[#FCFAFF] relative">
+          <div className="max-w-6xl mx-auto px-6 md:px-10 py-10 md:py-12 space-y-10">
+            {/* Hero */}
+            <section className="text-center space-y-6">
+              <div
+                className={`space-y-4 transition-all duration-700 ${
+                  isVisible
+                    ? "opacity-100 translate-y-0"
+                    : "opacity-0 translate-y-4"
+                }`}
+              >
+                <h1 className="text-3xl md:text-4xl font-black text-transparent leading-tight animate-gradient glow-text"
+                  style={{
+                    backgroundImage: "linear-gradient(to right, #6A2C91, #B08CC1, #66D1D3)",
+                    backgroundSize: "220% 220%",
+                    backgroundClip: "text",
+                    WebkitBackgroundClip: "text",
+                  }}> Welcome to TrustDose
+                </h1>
+
+                <p className="text-base md:text-lg text-[#4A2C59]/80 font-light max-w-2xl mx-auto leading-relaxed">
+                  Trust in Every Dose, Every Delivery.
+                </p>
+              </div>
+
+              {/* Feature */}
+              <div
+                className={`flex flex-wrap justify-center gap-4 mt-6 transition-all duration-700 ${
+                  isVisible
+                    ? "opacity-100 translate-y-0"
+                    : "opacity-0 translate-y-4"
+                }`}
+              >
+                {features.map((feature, index) => (
+                  <div
+                    key={feature.text}
+                    className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/90 backdrop-blur-sm border border-[#E6E7F0]/70 shadow-sm"
+                    style={{ transitionDelay: `${200 + index * 80}ms` }}
+                  >
+                    <div className="text-[#B08CC1]">{feature.icon}</div>
+                    <span className="text-xs md:text-sm font-medium text-[#4A2C59]">
+                      {feature.text}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* title + description */}
+            <section
+              className={`text-center space-y-3 transition-all duration-700 ${
                 isVisible
                   ? "opacity-100 translate-y-0"
                   : "opacity-0 translate-y-4"
               }`}
             >
-              <h1 className="text-3xl md:text-4xl font-black bg-gradient-to-r from-[#4A2C59] via-[#B08CC1] to-[#52B9C4] bg-clip-text text-transparent leading-tight">
-                Welcome to TrustDose
-              </h1>
-              <p className="text-base md:text-lg text-[#4A2C59]/80 font-light max-w-2xl mx-auto leading-relaxed">
-                Trust in Every Dose, Every Delivery.
-              </p>
-            </div>
-
-            {/* Feature chips */}
-            <div
-              className={`flex flex-wrap justify-center gap-4 mt-6 transition-all duration-700 ${
-                isVisible
-                  ? "opacity-100 translate-y-0"
-                  : "opacity-0 translate-y-4"
-              }`}
-            >
-              {features.map((feature, index) => (
-                <div
-                  key={feature.text}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 backdrop-blur-sm border border-[#E6E7F0]/50 shadow-sm"
-                  style={{ transitionDelay: `${200 + index * 80}ms` }}
-                >
-                  <div className="text-[#B08CC1]">{feature.icon}</div>
-                  <span className="text-xs md:text-sm font-medium text-[#4A2C59]">
-                    {feature.text}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Stakeholders Grid */}
-          <section
-            className={`space-y-8 transition-all duration-700 ${
-              isVisible
-                ? "opacity-100 translate-y-0"
-                : "opacity-0 translate-y-4"
-            }`}
-          >
-            <div className="text-center space-y-3">
               <div className="inline-flex items-center gap-2 text-[#52B9C4]">
                 <Users className="w-5 h-5" />
                 <span className="text-xs md:text-sm font-semibold uppercase tracking-wider">
@@ -172,122 +169,155 @@ export default function Welcome() {
                 A seamless workflow connecting every participant in the
                 prescription lifecycle.
               </p>
-            </div>
+            </section>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {roles.map((role) => (
-                <div
-                  key={role.id}
-                  className={`group relative p-6 rounded-3xl bg-white/80 backdrop-blur-sm border border-[#E6E7F0]/50 shadow-lg hover:shadow-2xl transition-all duration-500 transform hover:scale-105 cursor-pointer ${
-                    activeRole === role.id
-                      ? "ring-2 ring-[#B08CC1] bg-white"
-                      : ""
-                  }`}
-                  style={{ transitionDelay: role.delay }}
-                  onMouseEnter={() => setActiveRole(role.id)}
-                  onMouseLeave={() => setActiveRole(null)}
-                >
-                  <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#B08CC1]/5 to-[#52B9C4]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+          {/* Wave separator */}
+          <div className="w-full -mb-1">
+            <svg
+              viewBox="0 0 1440 150"
+              preserveAspectRatio="none"
+              className="w-full h-[80px]"
+            >
+              <path
+                fill="#FFFFFF"
+                d="M0,64L80,74.7C160,85,320,107,480,117.3C640,128,800,128,960,117.3C1120,107,1280,85,1360,74.7L1440,64L1440,150L1360,150C1280,150,1120,150,960,150C800,150,640,150,480,150C320,150,160,150,80,150L0,150Z"
+              />
+            </svg>
+          </div>
+        </section>
 
-                  <div className="relative z-10 space-y-4">
-                    <div
-                      className={`w-14 h-14 rounded-2xl ${role.bgColor} flex items-center justify-center shadow-md group-hover:shadow-lg transition-all duration-300 transform group-hover:scale-110`}
-                    >
-                      {role.icon}
+
+        <section className="w-full flex justify-center px-6 py-12 bg-white">
+          <div className="w-full max-w-6xl space-y-12">
+            {/* Stakeholders Grid */}
+            <section
+              className={`space-y-8 transition-all duration-700 ${
+                isVisible
+                  ? "opacity-100 translate-y-0"
+                  : "opacity-0 translate-y-4"
+              }`}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {roles.map((role) => (
+                  <div
+                    key={role.id}
+                    className={`group relative p-6 rounded-3xl bg-white/80 backdrop-blur-sm border border-[#E6E7F0]/50 shadow-lg hover:shadow-2xl transition-all duration-500 transform hover:scale-105 cursor-pointer ${
+                      activeRole === role.id
+                        ? "ring-2 ring-[#B08CC1] bg-white"
+                        : ""
+                    }`}
+                    style={{ transitionDelay: role.delay }}
+                    onMouseEnter={() => setActiveRole(role.id)}
+                    onMouseLeave={() => setActiveRole(null)}
+                  >
+                    <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#B08CC1]/5 to-[#52B9C4]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+                    <div className="relative z-10 space-y-4">
+                      <div
+                        className={`w-14 h-14 rounded-2xl ${role.bgColor} flex items-center justify-center shadow-md group-hover:shadow-lg transition-all duration-300 transform group-hover:scale-110`}
+                      >
+                        {role.icon}
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-base md:text-lg font-bold text-[#4A2C59]">
+                          {role.title}
+                        </h3>
+                        <p className="text-xs md:text-sm text-[#4A2C59]/70 leading-relaxed font-medium">
+                          {role.description}
+                        </p>
+                      </div>
                     </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* Vision / Goal / Team */}
+            <section
+              className={`space-y-8 transition-all duration-700 ${
+                isVisible
+                  ? "opacity-100 translate-y-0"
+                  : "opacity-0 translate-y-4"
+              }`}
+            >
+              {/* Vision Card */}
+              <div className="group relative p-8 rounded-3xl bg-gradient-to-br from-[#FCFAFE] to-[#F7F3FD] border border-[#D9C7E9] shadow-md hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-1 hover:scale-[1.015]">
+                <div className="absolute top-6 right-6 w-12 h-12 rounded-2xl bg-gradient-to-br from-[#B08CC1]/10 to-[#52B9C4]/10 flex items-center justify-center">
+                  <Globe className="w-6 h-6 text-[#4A2C59]" />
+                </div>
+                <div className="space-y-4">
+                  <h3 className="text-xl md:text-2xl font-bold text-[#4A2C59]">
+                    Our Vision
+                  </h3>
+                  <p className="text-sm md:text-base text-[#4A2C59]/80 leading-relaxed font-medium">
+                    "To build a safe and integrated digital health ecosystem
+                    that reduces prescription errors, enhances transparency and
+                    reliability across the medication journey, and leverages
+                    blockchain technology to ensure trusted and tamper-proof
+                    prescription records. All in alignment with Saudi Arabia’s
+                    Vision 2030 for advancing healthcare innovation."
+                  </p>
+                </div>
+              </div>
+
+              {/* Goal Card */}
+              <div className="group relative p-8 rounded-3xl bg-gradient-to-br from-[#FCFAFE] to-[#F7F3FD] border border-[#D9C7E9] shadow-md hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-1 hover:scale-[1.015]">
+                <div className="absolute top-6 right-6 w-12 h-12 rounded-2xl bg-gradient-to-br from-[#52B9C4]/10 to-[#B08CC1]/10 flex items-center justify-center">
+                  <Zap className="w-6 h-6 text-[#4A2C59]" />
+                </div>
+                <div className="space-y-4">
+                  <h3 className="text-xl md:text-2xl font-bold text-[#4A2C59]">
+                    Our Goal
+                  </h3>
+                  <p className="text-sm md:text-base text-[#4A2C59]/80 leading-relaxed font-medium">
+                    To demonstrate how sensitive prescriptions can be tracked
+                    and verified end-to-end across all roles using modern
+                    technologies.
+                  </p>
+                </div>
+              </div>
+
+              {/* Team Card */}
+              <div className="group relative p-8 rounded-3xl bg-gradient-to-br from-[#FCFAFE] to-[#F7F3FD] border border-[#D9C7E9] shadow-md hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-1 hover:scale-[1.015]">
+                <div className="absolute top-6 right-6 w-12 h-12 rounded-2xl bg-gradient-to-br from-[#4A2C59]/10 to-[#B08CC1]/10 flex items-center justify-center">
+                  <GraduationCap className="w-6 h-6 text-[#4A2C59]" />
+                </div>
+                <div className="space-y-4">
+                  <h3 className="text-xl md:text-2xl font-bold text-[#4A2C59]">
+                    Our Team
+                  </h3>
+                  <div className="space-y-3">
+                    <p className="text-sm md:text-base text-[#4A2C59]/80 leading-relaxed font-medium">
+                      A team of Information Technology students at King Saud
+                      University.
+                    </p>
                     <div className="space-y-2">
-                      <h3 className="text-base md:text-lg font-bold text-[#4A2C59]">
-                        {role.title}
-                      </h3>
-                      <p className="text-xs md:text-sm text-[#4A2C59]/70 leading-relaxed font-medium">
-                        {role.description}
+                      <div className="flex items-center gap-2 text-sm">
+                        <Users className="w-4 h-4 text-[#B08CC1]" />
+                        <span className="font-semibold text-[#4A2C59]">
+                          Team Members:
+                        </span>
+                      </div>
+                      <p className="text-xs md:text-sm text-[#4A2C59]/70 font-medium">
+                        Maha, Ftoon, Shoug, Daad, AlJawhara
+                      </p>
+                      <div className="flex items-center gap-2 text-sm mt-3">
+                        <Crown className="w-4 h-4 text-[#52B9C4]" />
+                        <span className="font-semibold text-[#4A2C59]">
+                          Supervised by:
+                        </span>
+                      </div>
+                      <p className="text-xs md:text-sm text-[#4A2C59]/70 font-medium">
+                        Dr. Nourah AlRossais
                       </p>
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Vision / Goal / Team stacked vertically */}
-          <section
-            className={`space-y-8 transition-all duration-700 ${
-              isVisible
-                ? "opacity-100 translate-y-0"
-                : "opacity-0 translate-y-4"
-            }`}
-          >
-            {/* Vision Card */}
-            <div className="group relative p-8 rounded-3xl bg-gradient-to-br from-white to-[#F7F8FC] border border-[#E6E7F0]/50 shadow-lg hover:shadow-xl transition-all duration-500">
-              <div className="absolute top-6 right-6 w-12 h-12 rounded-2xl bg-gradient-to-br from-[#B08CC1]/10 to-[#52B9C4]/10 flex items-center justify-center">
-                <Globe className="w-6 h-6 text-[#4A2C59]" />
               </div>
-              <div className="space-y-4">
-                <h3 className="text-xl md:text-2xl font-bold text-[#4A2C59]">
-                  Our Vision
-                </h3>
-                <p className="text-sm md:text-base text-[#4A2C59]/80 leading-relaxed font-medium">
-                  "To build a safe and integrated digital health ecosystem that reduces prescription errors, enhances transparency and reliability across the medication journey, and leverages blockchain technology to ensure trusted and tamper-proof prescription records — all in alignment with Saudi Arabia’s Vision 2030 for advancing healthcare innovation."
-                </p>
-              </div>
-            </div>
-
-            {/* Goal Card */}
-            <div className="group relative p-8 rounded-3xl bg-gradient-to-br from-white to-[#F7F8FC] border border-[#E6E7F0]/50 shadow-lg hover:shadow-xl transition-all duration-500">
-              <div className="absolute top-6 right-6 w-12 h-12 rounded-2xl bg-gradient-to-br from-[#52B9C4]/10 to-[#B08CC1]/10 flex items-center justify-center">
-                <Zap className="w-6 h-6 text-[#4A2C59]" />
-              </div>
-              <div className="space-y-4">
-                <h3 className="text-xl md:text-2xl font-bold text-[#4A2C59]">
-                  Our Goal
-                </h3>
-                <p className="text-sm md:text-base text-[#4A2C59]/80 leading-relaxed font-medium">
-                  To demonstrate how sensitive prescriptions can be tracked and
-                  verified end-to-end across all roles using modern
-                  technologies.
-                </p>
-              </div>
-            </div>
-
-            {/* Team Card */}
-            <div className="group relative p-8 rounded-3xl bg-gradient-to-br from-white to-[#F7F8FC] border border-[#E6E7F0]/50 shadow-lg hover:shadow-xl transition-all duration-500">
-              <div className="absolute top-6 right-6 w-12 h-12 rounded-2xl bg-gradient-to-br from-[#4A2C59]/10 to-[#B08CC1]/10 flex items-center justify-center">
-                <GraduationCap className="w-6 h-6 text-[#4A2C59]" />
-              </div>
-              <div className="space-y-4">
-                <h3 className="text-xl md:text-2xl font-bold text-[#4A2C59]">
-                  Our Team
-                </h3>
-                <div className="space-y-3">
-                  <p className="text-sm md:text-base text-[#4A2C59]/80 leading-relaxed font-medium">
-                    A team of Information Technology students at King Saud
-                    University.
-                  </p>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Users className="w-4 h-4 text-[#B08CC1]" />
-                      <span className="font-semibold text-[#4A2C59]">
-                        Team Members:
-                      </span>
-                    </div>
-                    <p className="text-xs md:text-sm text-[#4A2C59]/70 font-medium">
-                      Maha, Ftoon, Shoug, Daad, AlJoharah
-                    </p>
-                    <div className="flex items-center gap-2 text-sm mt-3">
-                      <Crown className="w-4 h-4 text-[#52B9C4]" />
-                      <span className="font-semibold text-[#4A2C59]">
-                        Supervised by:
-                      </span>
-                    </div>
-                    <p className="text-xs md:text-sm text-[#4A2C59]/70 font-medium">
-                      Dr. Norah AlRossais
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
+            </section>
+          </div>
+        </section>
       </main>
     </div>
   );
