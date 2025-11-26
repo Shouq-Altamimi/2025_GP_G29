@@ -774,15 +774,10 @@ export default function PatientPage() {
                             </div>
                           )}
                         {p.sensitivity === "Sensitive" && (
-  <div style={{
-    textAlign: "center",
-    fontWeight: 700,
-    margin: "8px 0",
-    fontSize: 15,
-    color: "#374151"
-  }}>
-    Logistics Phone: {logisticsPhone}
-  </div>
+   <Row
+    label="Logistics Phone"
+    value={logisticsPhone || "+966504181110"}
+  />
 )}
 
 
