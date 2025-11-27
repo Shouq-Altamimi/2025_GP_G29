@@ -6,13 +6,28 @@ import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
 import { db } from "../firebase.js";
 import {
-  collection, doc, getDoc, getDocs,
-  query, where, limit as fsLimit,
-  updateDoc, deleteField, serverTimestamp,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  limit as fsLimit,
+  updateDoc,
+  deleteField,
+  serverTimestamp,
 } from "firebase/firestore";
 import {
-  FilePlus2, User, LogOut, X, Eye, EyeOff, Lock,
-  CheckCircle, XCircle, Circle
+  FilePlus2,
+  User,
+  LogOut,
+  X,
+  Eye,
+  EyeOff,
+  Lock,
+  CheckCircle,
+  XCircle,
+  Circle,
 } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
@@ -30,7 +45,7 @@ async function sha256Hex(str) {
   const data = new TextEncoder().encode(String(str));
   const digest = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(digest))
-    .map(b => b.toString(16).padStart(2, "0"))
+    .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
@@ -43,14 +58,14 @@ async function pbkdf2Hex(password, saltB64, iter = 100000) {
     false,
     ["deriveBits"]
   );
-  const salt = Uint8Array.from(atob(String(saltB64)), c => c.charCodeAt(0));
+  const salt = Uint8Array.from(atob(String(saltB64)), (c) => c.charCodeAt(0));
   const bits = await crypto.subtle.deriveBits(
     { name: "PBKDF2", hash: "SHA-256", salt, iterations: Number(iter) || 100000 },
     keyMaterial,
     256
   );
   return Array.from(new Uint8Array(bits))
-    .map(b => b.toString(16).padStart(2, "0"))
+    .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
@@ -103,17 +118,9 @@ function normalizeDoctor(raw) {
   return {
     name: pickStr(raw, ["name"]),
 
-    healthFacility: pickStr(raw, [
-      "healthFacility",
-      "facility",
-      "facilityName",
-    ]),
+    healthFacility: pickStr(raw, ["healthFacility", "facility", "facilityName"]),
 
-    speciality: pickStr(raw, [
-      "speciality",
-      "specialty",
-      "specialization",
-    ]),
+    speciality: pickStr(raw, ["speciality", "specialty", "specialization"]),
 
     licenseNumber: pickStr(raw, ["licenseNumber", "licenseNo"]),
     DoctorID: pickStr(raw, ["DoctorID", "doctorId", "accessId"]),
@@ -127,15 +134,49 @@ function normalizeDoctor(raw) {
 
 function validateAndNormalizePhone(raw) {
   const original = String(raw || "").trim();
-  if (/\s/.test(original)) return { ok: false, reason: "No spaces allowed." };
-  if (/[٠-٩۰-۹]/.test(original)) return { ok: false, reason: "English digits only (0–9)." };
-  if (!/^\+?[0-9]+$/.test(original)) return { ok: false, reason: "Digits 0–9 only (and optional leading +)." };
-  if (/^05\d{8}$/.test(original)) {
+
+  if (original === "") {
+    return { ok: false, reason: "Enter phone number." };
+  }
+
+  if (/\s/.test(original)) {
+    return { ok: false, reason: "No spaces allowed." };
+  }
+
+  if (/[٠-٩۰-۹]/.test(original)) {
+    return { ok: false, reason: "English digits only (0–9)." };
+  }
+
+  if (!/^[0-9]+$/.test(original)) {
+    return { ok: false, reason: "Digits 0–9 only (no + or symbols)." };
+  }
+
+  if (original.startsWith("05")) {
+    if (!/^05\d{8}$/.test(original)) {
+      return {
+        ok: false,
+        reason: "The phone number you entered isn’t valid. It must be 10 digits starting with 05.",
+      };
+    }
     const last8 = original.slice(2);
     return { ok: true, normalized: `+9665${last8}` };
   }
-  if (/^\+9665\d{8}$/.test(original)) return { ok: true, normalized: original };
-  return { ok: false, reason: "Must start with 05 or +9665 followed by 8 digits." };
+
+  if (original.startsWith("9665")) {
+    if (!/^9665\d{8}$/.test(original)) {
+      return {
+        ok: false,
+        reason: "The phone number you entered isn’t valid. It must be 12 digits starting with 9665.",
+      };
+    }
+    const last8 = original.slice(4);
+    return { ok: true, normalized: `+9665${last8}` };
+  }
+
+  return {
+    ok: false,
+    reason: "The phone number you entered isn’t valid. It must start with 05 or 9665.",
+  };
 }
 
 function AlertBanner({ children }) {
@@ -198,8 +239,7 @@ export default function DoctorHeader() {
 
       setShowEmailAlert(!norm.email);
       setShowResetAlert(
-        norm.requirePasswordChange === true ||
-        (!!norm.email && !norm.passwordUpdatedAt)
+        norm.requirePasswordChange === true || (!!norm.email && !norm.passwordUpdatedAt)
       );
     })();
   }, [isDoctorPage, location.pathname]);
@@ -254,7 +294,9 @@ export default function DoctorHeader() {
         <>
           <div
             onClick={() => setOpen(false)}
-            className={`fixed inset-0 z-40 bg-black/40 transition-opacity ${open ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+            className={`fixed inset-0 z-40 bg-black/40 transition-opacity ${
+              open ? "opacity-100" : "opacity-0 pointer-events-none"
+            }`}
           />
           <aside
             className="fixed top-0 left-0 z-50 h-full w-[290px] shadow-2xl"
@@ -267,7 +309,10 @@ export default function DoctorHeader() {
           >
             <div className="flex items-center justify-between px-4 py-4">
               <img src="/Images/TrustDose_logo.png" alt="TrustDose" className="h-7 w-auto" />
-              <button onClick={() => setOpen(false)} className="h-9 w-9 grid place-items-center rounded-lg hover:bg-white/20 text-white">
+              <button
+                onClick={() => setOpen(false)}
+                className="h-9 w-9 grid place-items-center rounded-lg hover:bg-white/20 text-white"
+              >
                 <X size={18} />
               </button>
             </div>
@@ -275,14 +320,20 @@ export default function DoctorHeader() {
             <nav className="px-3">
               <DrawerItem
                 active={location.pathname.startsWith("/doctor")}
-                onClick={() => { navigate("/doctor"); setOpen(false); }}
+                onClick={() => {
+                  navigate("/doctor");
+                  setOpen(false);
+                }}
               >
                 <FilePlus2 size={18} />
                 <span>Create Prescription</span>
               </DrawerItem>
 
               <DrawerItem
-                onClick={() => { setShowAccount(true); setOpen(false); }}
+                onClick={() => {
+                  setShowAccount(true);
+                  setOpen(false);
+                }}
               >
                 <User size={18} />
                 <span>My Profile</span>
@@ -314,13 +365,18 @@ export default function DoctorHeader() {
 }
 
 function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
-  const base = "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
+  const base =
+    "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
   const styles = active
     ? "bg-white text-[#5B3A70]"
     : variant === "ghost"
     ? "text-white/90 hover:bg-white/10"
     : "bg-white/25 text-white hover:bg-white/35";
-  return <button onClick={onClick} className={`${base} ${styles}`}>{children}</button>;
+  return (
+    <button onClick={onClick} className={`${base} ${styles}`}>
+      {children}
+    </button>
+  );
 }
 
 function Row({ label, value }) {
@@ -338,43 +394,48 @@ function Row({ label, value }) {
 function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   const [phone, setPhone] = useState(doctor?.phone || "");
   const [initialPhone, setInitialPhone] = useState(doctor?.phone || "");
-  const [phoneInfo, setPhoneInfo] = useState({ ok: false, reason: "", normalized: "" });
+  const [phoneError, setPhoneError] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState(""); // success | error | ""
 
   const [editingPhone, setEditingPhone] = useState(false);
   const phoneRef = useRef(null);
-  useEffect(() => { if (editingPhone) setTimeout(() => phoneRef.current?.focus(), 0); }, [editingPhone]);
+
+  useEffect(() => {
+    if (editingPhone) {
+      setTimeout(() => phoneRef.current?.focus(), 0);
+    }
+  }, [editingPhone]);
 
   useEffect(() => {
     setPhone(doctor?.phone || "");
     setInitialPhone(doctor?.phone || "");
+    setPhoneError("");
   }, [doctor?.phone]);
 
-  useEffect(() => setPhoneInfo(validateAndNormalizePhone(phone)), [phone]);
+  async function isDoctorPhoneTaken(phoneNormalized, selfDoctorDocId) {
+    const [docSnap, patSnap, pharmSnap, logSnap] = await Promise.all([
+      getDocs(
+        query(collection(db, "doctors"), where("phone", "==", phoneNormalized), fsLimit(5))
+      ),
+      getDocs(
+        query(collection(db, "patients"), where("phone", "==", phoneNormalized), fsLimit(5))
+      ),
+      getDocs(
+        query(collection(db, "pharmacies"), where("phone", "==", phoneNormalized), fsLimit(5))
+      ),
+      getDocs(
+        query(collection(db, "logistics"), where("phone", "==", phoneNormalized), fsLimit(5))
+      ),
+    ]);
 
-  const canSave = phoneInfo.ok && !saving && phone !== initialPhone;
-  const hasPhone = !!initialPhone;
+    const usedByOtherDoctor = docSnap.docs.some((d) => d.id !== selfDoctorDocId);
+    const usedByOthers = !patSnap.empty || !pharmSnap.empty || !logSnap.empty;
 
-  useEffect(() => {
-    function onKey(e) { if (e.key === "Escape") onClose?.(); }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  async function isDoctorPhoneTaken(phoneNormalized) {
-    const q1 = query(
-      collection(db, "doctors"),
-      where("phone", "==", phoneNormalized),
-      fsLimit(5)
-    );
-    const snap = await getDocs(q1);
-    if (snap.empty) return false;
-    return true;
+    return usedByOtherDoctor || usedByOthers;
   }
 
-  // Email helper
   async function isDoctorEmailTaken(emailLower, selfId) {
     const q1 = query(collection(db, "doctors"), where("email", "==", emailLower), fsLimit(1));
     const snap = await getDocs(q1);
@@ -383,22 +444,32 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
     return doc0.id !== selfId;
   }
 
+  const canSave = editingPhone && !saving && !!phone;
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") onClose?.();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   async function save() {
-    const pInfo = validateAndNormalizePhone(phone);
-    if (!pInfo.ok) {
-      setMsgType("error");
-      setMsg(pInfo.reason || "Invalid phone.");
+    const info = validateAndNormalizePhone(phone);
+
+    if (!info.ok) {
+      setPhoneError(
+        info.reason ||
+          "The phone number you entered isn’t valid. Please check and try again."
+      );
       return;
     }
     if (!doctorDocId) {
-      setMsgType("error");
-      setMsg("Doctor record not found.");
+      setPhoneError("We couldn’t find your doctor record. Please try again.");
       return;
     }
-
-    if (phone === initialPhone) {
-      setMsgType("error");
-      setMsg("You are already using this phone number.");
+    if (info.normalized === initialPhone) {
+      setPhoneError("The phone number you entered is already saved on your profile.");
       return;
     }
 
@@ -407,16 +478,17 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       setMsg("");
       setMsgType("");
 
-      const taken = await isDoctorPhoneTaken(pInfo.normalized);
+      const taken = await isDoctorPhoneTaken(info.normalized, doctorDocId);
       if (taken) {
-        setMsgType("error");
-        setMsg("This phone number is already used by another doctor.");
+        setPhoneError(
+          "The phone number you entered is already registered in our system."
+        );
         setSaving(false);
         return;
       }
 
       const payload = {
-        phone: pInfo.normalized,
+        phone: info.normalized,
         updatedAt: serverTimestamp(),
         phoneLocal: deleteField(),
       };
@@ -424,6 +496,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       await updateDoc(doc(db, "doctors", doctorDocId), payload);
       setInitialPhone(payload.phone);
       onSaved?.({ phone: payload.phone });
+      setPhoneError("");
       setMsgType("success");
       setMsg("Saved ✓");
       setEditingPhone(false);
@@ -432,14 +505,14 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
         setMsgType("");
       }, 1500);
     } catch (e) {
-      setMsgType("error");
-      setMsg(e?.message || "Failed to save.");
+      setPhoneError(
+        "Something went wrong while saving your phone number. Please try again."
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  // Email state
   const [emailInput, setEmailInput] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
@@ -450,11 +523,16 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       setEmailMsg("");
       const raw = String(emailInput || "").trim().toLowerCase();
       const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
-      if (!ok) { setEmailMsg("Please enter a valid email."); return; }
+      if (!ok) {
+        setEmailMsg("Please enter a valid email.");
+        return;
+      }
 
       const taken = await isDoctorEmailTaken(raw, String(doctorDocId || ""));
       if (taken) {
-        setEmailMsg("This email is already used by another doctor. Please use a different email.");
+        setEmailMsg(
+          "This email is already used by another doctor. Please use a different email."
+        );
         return;
       }
 
@@ -466,18 +544,30 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
         redirect: "/doctor",
       });
 
-      const settings = { url: `${BASE}/auth-email?${params.toString()}`, handleCodeInApp: true };
+      const settings = {
+        url: `${BASE}/auth-email?${params.toString()}`,
+        handleCodeInApp: true,
+      };
       setEmailLoading(true);
       await sendSignInLinkToEmail(getAuth(), raw, settings);
 
-      localStorage.setItem("td_email_pending", JSON.stringify({ email: raw, ts: Date.now() }));
+      localStorage.setItem(
+        "td_email_pending",
+        JSON.stringify({ email: raw, ts: Date.now() })
+      );
       setEmailMsg("Verification link sent! Check your email.");
     } catch (e) {
-      setEmailMsg(`Firebase: ${e?.code || e?.message || "Unable to send verification link."}`);
+      setEmailMsg(
+        `Firebase: ${
+          e?.code || e?.message || "Unable to send verification link."
+        }`
+      );
     } finally {
       setEmailLoading(false);
     }
   }
+
+  const hasPhone = !!initialPhone;
 
   return (
     <>
@@ -486,34 +576,58 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
         <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border p-5">
           {/* Title */}
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold" style={{ color: C.ink }}>My Profile</h3>
-            <button onClick={onClose} className="h-8 w-8 grid place-items-center rounded-lg hover:bg-gray-100" aria-label="Close">✕</button>
+            <h3 className="text-lg font-semibold" style={{ color: C.ink }}>
+              My Profile
+            </h3>
+            <button
+              onClick={onClose}
+              className="h-8 w-8 grid place-items-center rounded-lg hover:bg-gray-100"
+              aria-label="Close"
+            >
+              ✕
+            </button>
           </div>
 
           <div className="space-y-5 text-sm" aria-live="polite">
             {/* Personal Details */}
             <div className="rounded-xl border bg-white p-4">
-              <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>Personal Info</div>
+              <div
+                className="text-base font-semibold mb-2"
+                style={{ color: C.ink }}
+              >
+                Personal Info
+              </div>
               <div className="space-y-2">
                 <Row label="Name" value={doctor?.name || "—"} />
                 <Row label="Health Facility" value={doctor?.healthFacility || "—"} />
                 <Row label="Speciality" value={(doctor?.speciality || "—").trim()} />
                 <Row label="Doctor ID" value={doctor?.DoctorID || "—"} />
-                <Row label="License No." value={doctor?.licenseNumber || "—"} />
+                <Row label="License Number" value={doctor?.licenseNumber || "—"} />
               </div>
             </div>
 
             {/* Contact Info */}
             <div className="rounded-xl border bg-white p-4">
-              <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>Contact Info</div>
+              <div
+                className="text-base font-semibold mb-2"
+                style={{ color: C.ink }}
+              >
+                Contact Info
+              </div>
 
               {/* Phone block */}
               <div className="mb-4">
-                <div className="flex items-center justify-between mb-1">
+               <div className="flex items-center justify-between mb-1">
                   <span className="text-gray-700 font-medium">Phone</span>
                   {!editingPhone && (
                     <button
-                      onClick={() => setEditingPhone(true)}
+                      onClick={() => {
+                        setEditingPhone(true);
+                        setPhone("");
+                        setMsg("");
+                        setMsgType("");
+                        setPhoneError("");
+                      }}
                       className="px-3 py-1.5 rounded-lg text-white"
                       style={{ background: C.primary }}
                     >
@@ -522,40 +636,59 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                   )}
                 </div>
 
+
                 {!editingPhone ? (
-                  <div className="font-medium text-gray-900">{initialPhone || "—"}</div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      ref={phoneRef}
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="05xxxxxxxx or +9665xxxxxxxx (no spaces)"
-                      inputMode="tel"
-                      pattern="[+0-9]*"
-                      dir="ltr"
-                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
-                      style={{ outlineColor: C.primary }}
-                      onKeyDown={(e) => {
-                        if (e.key === " " || /[٠-٩۰-۹]/.test(e.key)) e.preventDefault();
-                      }}
-                    />
-                    <button
-                      onClick={save}
-                      disabled={!canSave}
-                      className="px-3 py-2 rounded-lg text:white disabled:opacity-50"
-                      style={{ background: C.primary, color: "#fff" }}
-                    >
-                      {saving ? "Saving..." : "Save"}
-                    </button>
+                  <div className="font-medium text-gray-900">
+                    {initialPhone || "—"}
                   </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={phoneRef}
+                        value={phone}
+                        onChange={(e) => {
+                          const onlyDigits = e.target.value.replace(/[^0-9]/g, "");
+                          setPhone(onlyDigits);
+                          setMsg("");
+                          setMsgType("");
+                          setPhoneError("");
+                        }}
+                        placeholder="05xxxxxxxx (10 digits) or 9665xxxxxxxx (12 digits)"
+                        inputMode="tel"
+                        pattern="[0-9]*"
+                        maxLength={phone.startsWith("05") ? 10 : 12}
+                        dir="ltr"
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
+                        style={{ outlineColor: C.primary }}
+                        onKeyDown={(e) => {
+                          if (
+                            e.key === " " ||
+                            e.key === "+" ||
+                            /[٠-٩۰-۹]/.test(e.key)
+                          )
+                            e.preventDefault();
+                        }}
+                      />
+                      <button
+                        onClick={save}
+                        disabled={!canSave}
+                        className="px-3 py-2 rounded-lg disabled:opacity-50"
+                        style={{ background: C.primary, color: "#fff" }}
+                      >
+                        {saving ? "Saving..." : "Save"}
+                      </button>
+                    </div>
+                    {phoneError && (
+                      <div className="mt-1 text-xs text-rose-600">
+                        {phoneError}
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {msgType === "success" && !!msg && (
                   <div className="text-green-700 font-medium mt-2">{msg}</div>
-                )}
-                {msgType === "error" && !!msg && (
-                  <div className="text-rose-700 mt-2">{msg}</div>
                 )}
               </div>
 
@@ -564,8 +697,17 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                 <div className="mb-1 text-gray-700 font-medium">Email</div>
                 {hasEmail ? (
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-gray-800">{doctor.email}</span>
-                    <span className="text-[12px] px-2 py-0.5 rounded-full border" style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}>
+                    <span className="font-medium text-gray-800">
+                      {doctor.email}
+                    </span>
+                    <span
+                      className="text-[12px] px-2 py-0.5 rounded-full border"
+                      style={{
+                        background: "#F1F8F5",
+                        color: "#166534",
+                        borderColor: "#BBE5C8",
+                      }}
+                    >
                       Verified
                     </span>
                   </div>
@@ -590,7 +732,16 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                       </button>
                     </div>
                     {!!emailMsg && (
-                      <div className="mt-2 text-sm" style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : (emailMsg.includes("already used") ? "#991B1B" : "#166534") }}>
+                      <div
+                        className="mt-2 text-sm"
+                        style={{
+                          color: emailMsg.includes("Firebase")
+                            ? "#991B1B"
+                            : emailMsg.includes("already used")
+                            ? "#991B1B"
+                            : "#166534",
+                        }}
+                      >
                         {emailMsg}
                       </div>
                     )}
@@ -651,11 +802,27 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
 
     let label = "Weak";
     let color = "#ef4444";
-    if (score >= 4) { label = "Medium"; color = "#f59e0b"; }
-    if (score >= 5) { label = "Strong"; color = "#10b981"; }
+    if (score >= 4) {
+      label = "Medium";
+      color = "#f59e0b";
+    }
+    if (score >= 5) {
+      label = "Strong";
+      color = "#10b981";
+    }
 
     const width = Math.min(100, Math.round((score / 6) * 100));
-    return { score, label, color, width, hasLower, hasUpper, hasDigit, hasSymbol, len8 };
+    return {
+      score,
+      label,
+      color,
+      width,
+      hasLower,
+      hasUpper,
+      hasDigit,
+      hasSymbol,
+      len8,
+    };
   }
   const st = passwordStrength(newPass);
   const passOk = st.hasLower && st.hasUpper && st.hasDigit && st.len8;
@@ -663,7 +830,11 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
   function Req({ ok, label }) {
     return (
       <div className="flex items-center gap-2 text-sm leading-6">
-        {ok ? <CheckCircle size={18} className="text-green-600" /> : <Circle size={18} className="text-gray-400" />}
+        {ok ? (
+          <CheckCircle size={18} className="text-green-600" />
+        ) : (
+          <Circle size={18} className="text-gray-400" />
+        )}
         <span className={ok ? "text-green-700" : "text-gray-700"}>{label}</span>
       </div>
     );
@@ -671,7 +842,8 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
 
   const handleResetPassword = async () => {
     try {
-      setMsg(""); setMsgType("");
+      setMsg("");
+      setMsgType("");
 
       if (!oldPass || !newPass || !confirmPass) {
         setMsg("Please fill all fields");
@@ -716,15 +888,13 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
       }
 
       await updateDoc(docRef, {
-password: await sha256Hex(newPass),
-  passwordUpdatedAt: serverTimestamp(),
-  requirePasswordChange: false,
-  "tempPassword.valid": false,
-  "tempPassword.expiresAtMs": 0,
-  "tempPassword.value": deleteField(),
-
-});
-
+        password: await sha256Hex(newPass),
+        passwordUpdatedAt: serverTimestamp(),
+        requirePasswordChange: false,
+        "tempPassword.valid": false,
+        "tempPassword.expiresAtMs": 0,
+        "tempPassword.value": deleteField(),
+      });
 
       setMsg("Password updated successfully! ✓");
       setMsgType("success");
@@ -802,20 +972,29 @@ password: await sha256Hex(newPass),
           {showReqs && (
             <>
               <div className="mt-3 flex flex-col gap-2">
-                <Req ok={st.hasUpper}  label="Uppercase (A–Z)" />
-                <Req ok={st.hasLower}  label="Lowercase (a–z)" />
-                <Req ok={st.hasDigit}  label="Digit (0–9)" />
+                <Req ok={st.hasUpper} label="Uppercase (A–Z)" />
+                <Req ok={st.hasLower} label="Lowercase (a–z)" />
+                <Req ok={st.hasDigit} label="Digit (0–9)" />
                 <Req ok={st.hasSymbol} label="Symbol (!@#$…)" />
-                <Req ok={st.len8}      label="Length ≥ 8" />
+                <Req ok={st.len8} label="Length ≥ 8" />
               </div>
 
               <div className="mt-3">
                 <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
-                  <div className="h-2 rounded-full transition-all" style={{ width: `${st.width}%`, background: st.color }} />
+                  <div
+                    className="h-2 rounded-full transition-all"
+                    style={{ width: `${st.width}%`, background: st.color }}
+                  />
                 </div>
                 <div className="mt-2 text-sm">
-                  Strength: <span style={{ color: st.color, fontWeight: 700 }}>{st.label}</span>
-                  <span className="text-gray-600"> &nbsp; (min 8 chars, include a–z, A–Z, 0–9)</span>
+                  Strength:{" "}
+                  <span style={{ color: st.color, fontWeight: 700 }}>
+                    {st.label}
+                  </span>
+                  <span className="text-gray-600">
+                    {" "}
+                    &nbsp; (min 8 chars, include a–z, A–Z, 0–9)
+                  </span>
                 </div>
               </div>
             </>
@@ -859,7 +1038,7 @@ password: await sha256Hex(newPass),
             className={`p-3 rounded-lg text-sm ${
               msgType === "success"
                 ? "bg-green-50 text-green-800 border border-green-200"
-                : "bg-rose-50 text-rose-800 border border-rose-200"
+                : "bg-rose-50 text-rose-800 border-rose-200 border"
             }`}
           >
             {msg}
@@ -874,7 +1053,12 @@ password: await sha256Hex(newPass),
             !newPass ||
             !confirmPass ||
             newPass !== confirmPass ||
-            !(newPass.length >= 8 && /[a-z]/.test(newPass) && /[A-Z]/.test(newPass) && /\d/.test(newPass))
+            !(
+              newPass.length >= 8 &&
+              /[a-z]/.test(newPass) &&
+              /[A-Z]/.test(newPass) &&
+              /\d/.test(newPass)
+            )
           }
           className="w-full py-2.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-[1.02]"
           style={{ background: C.primary }}
