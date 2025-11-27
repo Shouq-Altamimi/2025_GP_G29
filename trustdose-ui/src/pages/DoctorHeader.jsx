@@ -117,16 +117,12 @@ function normalizeDoctor(raw) {
 
   return {
     name: pickStr(raw, ["name"]),
-
     healthFacility: pickStr(raw, ["healthFacility", "facility", "facilityName"]),
-
     speciality: pickStr(raw, ["speciality", "specialty", "specialization"]),
-
     licenseNumber: pickStr(raw, ["licenseNumber", "licenseNo"]),
     DoctorID: pickStr(raw, ["DoctorID", "doctorId", "accessId"]),
     phone: pickStr(raw, ["phone", "mobile"]),
     email: pickStr(raw, ["email"]),
-
     requirePasswordChange: raw?.requirePasswordChange ?? false,
     passwordUpdatedAt: raw?.passwordUpdatedAt ?? null,
   };
@@ -177,6 +173,53 @@ function validateAndNormalizePhone(raw) {
     ok: false,
     reason: "The phone number you entered isn’t valid. It must start with 05 or 9665.",
   };
+}
+
+/* ===== Email helpers (نفس منطق الصيدلية) ===== */
+const COMMON_EMAIL_DOMAINS = [
+  "gmail.com",
+  "outlook.com",
+  "hotmail.com",
+  "yahoo.com",
+  "icloud.com",
+  "live.com",
+  "student.ksu.edu.sa",
+  "ksu.edu.sa",
+];
+
+function validateTrustDoseEmail(raw) {
+  const email = String(raw || "").trim().toLowerCase();
+  if (!email) return { ok: false, reason: "Please enter a valid email." };
+
+  const match = email.match(/^[^\s@]+@([^\s@]+\.[^\s@]+)$/);
+  if (!match) return { ok: false, reason: "Please enter a valid email." };
+
+  const domain = match[1].toLowerCase();
+  if (!COMMON_EMAIL_DOMAINS.includes(domain)) {
+    return {
+      ok: false,
+      reason: "Please enter a valid email (e.g. name@gmail.com or name@outlook.com).",
+    };
+  }
+
+  return { ok: true, email };
+}
+
+// يتأكد أن الإيميل غير مستخدم في أي دور (دكتور/صيدلية/مريض/لوجستيك)
+async function isEmailTakenAnyRole(email, currentDocId) {
+  const collectionsList = ["doctors", "pharmacies", "patients", "logistics"];
+  const trimmed = String(email || "").trim().toLowerCase();
+  const current = String(currentDocId || "");
+
+  for (const col of collectionsList) {
+    const q = query(collection(db, col), where("email", "==", trimmed));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const conflict = snap.docs.find((d) => d.id !== current);
+      if (conflict) return true;
+    }
+  }
+  return false;
 }
 
 function AlertBanner({ children }) {
@@ -436,14 +479,6 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
     return usedByOtherDoctor || usedByOthers;
   }
 
-  async function isDoctorEmailTaken(emailLower, selfId) {
-    const q1 = query(collection(db, "doctors"), where("email", "==", emailLower), fsLimit(1));
-    const snap = await getDocs(q1);
-    if (snap.empty) return false;
-    const doc0 = snap.docs[0];
-    return doc0.id !== selfId;
-  }
-
   const canSave = editingPhone && !saving && !!phone;
 
   useEffect(() => {
@@ -521,26 +556,30 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   async function sendVerifyLink() {
     try {
       setEmailMsg("");
-      const raw = String(emailInput || "").trim().toLowerCase();
-      const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
-      if (!ok) {
-        setEmailMsg("Please enter a valid email.");
+
+      // 1) validate pattern + domain
+      const v = validateTrustDoseEmail(emailInput);
+      if (!v.ok) {
+        setEmailMsg(v.reason || "Please enter a valid email.");
         return;
       }
+      const email = v.email;
 
-      const taken = await isDoctorEmailTaken(raw, String(doctorDocId || ""));
+      // 2) check uniqueness across all roles
+      const taken = await isEmailTakenAnyRole(email, String(doctorDocId || ""));
       if (taken) {
         setEmailMsg(
-          "This email is already used by another doctor. Please use a different email."
+          "This email is already used by another account. Please use a different email."
         );
         return;
       }
 
+      // 3) send verification link
       const BASE = window.location.origin;
       const params = new URLSearchParams({
         col: "doctors",
         doc: String(doctorDocId || ""),
-        e: raw,
+        e: email,
         redirect: "/doctor",
       });
 
@@ -549,19 +588,25 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
         handleCodeInApp: true,
       };
       setEmailLoading(true);
-      await sendSignInLinkToEmail(getAuth(), raw, settings);
+      await sendSignInLinkToEmail(getAuth(), email, settings);
 
       localStorage.setItem(
         "td_email_pending",
-        JSON.stringify({ email: raw, ts: Date.now() })
+        JSON.stringify({ email, ts: Date.now() })
       );
-      setEmailMsg("Verification link sent! Check your email.");
-    } catch (e) {
       setEmailMsg(
-        `Firebase: ${
-          e?.code || e?.message || "Unable to send verification link."
-        }`
+        "A verification link has been sent to your email. Open it, then return to the app."
       );
+    } catch (e) {
+      if (e?.code === "auth/too-many-requests" || e?.code === "auth/quota-exceeded") {
+        setEmailMsg("Too many verification emails were requested. Please try again later.");
+      } else if (e?.code === "auth/invalid-email") {
+        setEmailMsg("Please enter a valid email.");
+      } else {
+        setEmailMsg(
+          `Firebase: ${e?.code || e?.message || "Unable to send verification link."}`
+        );
+      }
     } finally {
       setEmailLoading(false);
     }
@@ -617,7 +662,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
 
               {/* Phone block */}
               <div className="mb-4">
-               <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1">
                   <span className="text-gray-700 font-medium">Phone</span>
                   {!editingPhone && (
                     <button
@@ -635,7 +680,6 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                     </button>
                   )}
                 </div>
-
 
                 {!editingPhone ? (
                   <div className="font-medium text-gray-900">
@@ -735,11 +779,12 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                       <div
                         className="mt-2 text-sm"
                         style={{
-                          color: emailMsg.includes("Firebase")
-                            ? "#991B1B"
-                            : emailMsg.includes("already used")
-                            ? "#991B1B"
-                            : "#166534",
+                          color:
+                            emailMsg.startsWith("Too many") ||
+                            emailMsg.startsWith("This email") ||
+                            emailMsg.startsWith("Please enter")
+                              ? "#991B1B"
+                              : "#166534",
                         }}
                       >
                         {emailMsg}
