@@ -180,7 +180,7 @@ export default function Doctor() {
 
   const [q, setQ] = useState("");
   const [searchMsg, setSearchMsg] = useState("");
-  const [validationMsg, setValidationMsg] = useState(""); // ✅ جديد مثل الصيدلية
+  const [validationMsg, setValidationMsg] = useState(""); 
   const [searched, setSearched] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
 
@@ -239,10 +239,9 @@ export default function Doctor() {
     setSelectedPatient(null);
     setSearched(false);
     setSearchMsg("");
-    setValidationMsg(""); // ✅ نمسح الرسالة
+    setValidationMsg(""); 
   }
 
-  // ✅ نفس فكرة الصيدلية: فاليديشن "ريال تايم"
   function handleQChange(v) {
     let digits = String(v).replace(/[^0-9]/g, "").slice(0, 10);
     setQ(digits);
@@ -288,7 +287,7 @@ export default function Doctor() {
     if (!idOverride) setQ(natDigits);
     setIsLoading(true);
     setSearchMsg("");
-    setValidationMsg(""); // ✅ تجاوزنا الفاليديشن بنجاح
+    setValidationMsg(""); 
 
     try {
       const rec = await fetchPatientByNationalId(natDigits);
@@ -519,7 +518,6 @@ export default function Doctor() {
               )}
             </div>
 
-            {/* ✅ زر البحث نفس الصيدلي بالضبط من ناحية faded / disable */}
             <button
               onClick={() => runSearch()}
               disabled={isLoading || !q.trim() || !!validationMsg}

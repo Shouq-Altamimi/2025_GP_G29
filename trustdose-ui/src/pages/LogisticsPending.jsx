@@ -30,7 +30,6 @@ const C = {
 const PAGE_SIZE = 6;
 const DELIVERY_CONFIRMATION_ADDRESS = "0x9F48629bE7F22f13C3d752759F046B1261393FE0";
 
-/* Timestamp formatter */
 function formatFsTimestamp(v) {
   if (!v) return "-";
   try {
@@ -131,7 +130,6 @@ export default function Logistics() {
         }
       }
 
-      // === 🔍 الفلترة الرئيسية ===
       const candidates = [
         [
           where("sensitivity", "==", "Sensitive"),
@@ -163,12 +161,10 @@ export default function Logistics() {
         return;
       }
 
-      // نبني الصفوف + نجيب رقم جوال المريض من مجموعة patients
       const data = await Promise.all(
         snap.docs.map(async (d) => {
           const x = d.data();
 
-          // ========= جلب رقم جوال المريض من patients =========
           let patientPhone = "-";
           const natId = x.nationalID;
           if (natId) {
@@ -183,7 +179,6 @@ export default function Logistics() {
               console.error("Failed to load patient phone", e);
             }
           }
-          // ====================================================
 
           return {
             _docId: d.id,
@@ -221,7 +216,6 @@ export default function Logistics() {
     return () => (mounted = false);
   }, []);
 
-  // فلتر احتياطي
   const visible = rows.filter(
     (r) =>
       r.acceptDelivery &&

@@ -368,7 +368,6 @@ export default function Logistics() {
           <p className="text-gray-600 mt-4">No active delivery orders.</p>
         )}
 
-        {/* PAGINATION */}
         {total > 0 && (
           <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-sm text-gray-700">

@@ -396,7 +396,6 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       return;
     }
 
-    // لو نفس الرقم القديم بالضبط → نمنع التحديث
     if (phone === initialPhone) {
       setMsgType("error");
       setMsg("You are already using this phone number.");
@@ -408,7 +407,6 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       setMsg("");
       setMsgType("");
 
-      // تشيك تكرار الرقم في الدكاترة
       const taken = await isDoctorPhoneTaken(pInfo.normalized);
       if (taken) {
         setMsgType("error");

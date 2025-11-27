@@ -35,7 +35,6 @@ import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
-/* ============ shared helpers (نفس الدكتور) ============ */
 
 function pickStr(obj, keys) {
   for (const k of keys) {
@@ -98,7 +97,6 @@ async function verifyCurrentPassword(docData, inputPwd) {
     }
   }
 
-  // PBKDF2-SHA256
   if (
     docData?.passwordAlgo === "PBKDF2-SHA256" &&
     docData?.passwordSalt &&
@@ -115,7 +113,6 @@ async function verifyCurrentPassword(docData, inputPwd) {
     }
   }
 
-  // legacy hash field
   if (docData?.passwordHash && !docData?.passwordSalt) {
     const h = await sha256Hex(cur);
     if (h === String(docData.passwordHash)) {
@@ -123,7 +120,6 @@ async function verifyCurrentPassword(docData, inputPwd) {
     }
   }
 
-  // legacy password field (hash or plaintext)
   if (docData?.password) {
     const p = String(docData.password);
     if (isHex64(p)) {
@@ -346,7 +342,6 @@ export default function LogisticsHeader() {
                 <span>Delivery Orders</span>
               </DrawerItem>
 
-              {/* ✅ Pending page في السايد بار */}
               <DrawerItem
                 active={location.pathname === "/logistics/pending"}
                 onClick={() => {
@@ -440,7 +435,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
         return;
       }
 
-      // ✅ تحقق أن الإيميل غير مكرر في كل الداتابيس
       const taken = await isEmailTakenGlobally(raw, "logistics", docId);
       if (taken) {
         setEmailMsg("This email is already used in another account.");
