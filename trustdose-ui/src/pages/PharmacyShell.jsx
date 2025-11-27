@@ -92,6 +92,7 @@ function normalizePharmacy(raw) {
   return {
     name: pickStr(raw, ["name"]),
     pharmacyName: pickStr(raw, ["pharmacyName", "name"]),
+
     PharmacyID: pickStr(raw, ["PharmacyID"]),
     BranchID: pickStr(raw, ["BranchID"]),
     address: pickStr(raw, ["address"]),
@@ -119,6 +120,55 @@ function validateAndNormalizePhone(raw) {
   if (/^05\d{8}$/.test(original)) return { ok: true, normalized: `+9665${original.slice(2)}` };
   if (/^\+9665\d{8}$/.test(original)) return { ok: true, normalized: original };
   return { ok: false, reason: "Must start with 05 or +9665 followed by 8 digits." };
+}
+
+/* ===== Email helpers (مطابقة منطق الدكتور تقريباً) ===== */
+const COMMON_EMAIL_DOMAINS = [
+  "gmail.com",
+  "outlook.com",
+  "hotmail.com",
+  "yahoo.com",
+  "icloud.com",
+  "live.com",
+  "student.ksu.edu.sa",
+  "ksu.edu.sa",
+];
+
+function validateTrustDoseEmail(raw) {
+  const email = String(raw || "").trim().toLowerCase();
+  if (!email) return { ok: false, reason: "Please enter a valid email." };
+
+  // basic pattern
+  const match = email.match(/^[^\s@]+@([^\s@]+\.[^\s@]+)$/);
+  if (!match) return { ok: false, reason: "Please enter a valid email." };
+
+  const domain = match[1].toLowerCase();
+  if (!COMMON_EMAIL_DOMAINS.includes(domain)) {
+    return {
+      ok: false,
+      reason: "Please enter a valid email (e.g. name@gmail.com or name@outlook.com).",
+    };
+  }
+
+  return { ok: true, email };
+}
+
+// يتأكد أن الإيميل ما هو مستخدم في أي كوليكشن (دكتور/صيدلية/مريض/لوجستيك)
+async function isEmailTakenAnyRole(email, currentDocId) {
+  const collections = ["doctors", "pharmacies", "patients", "logistics"];
+  const trimmed = String(email || "").trim().toLowerCase();
+  const current = String(currentDocId || "");
+
+  for (const col of collections) {
+    const q = query(collection(db, col), where("email", "==", trimmed));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      // لو فيه أكثر من مستند، تأكد أنه مو نفس الحساب الحالي
+      const conflict = snap.docs.find(d => d.id !== current);
+      if (conflict) return true;
+    }
+  }
+  return false;
 }
 
 /* =============== Alert (doctor-style) =============== */
@@ -470,26 +520,45 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
   async function sendVerifyLink() {
     try {
       setEmailMsg("");
-      const raw = String(emailInput || "").trim().toLowerCase();
-      const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
-      if (!ok) {
-        setEmailMsg("Please enter a valid email.");
+
+      // 1) تحقق من الفورمات + الدومين
+      const v = validateTrustDoseEmail(emailInput);
+      if (!v.ok) {
+        setEmailMsg(v.reason || "Please enter a valid email.");
         return;
       }
+      const email = v.email;
+
+      // 2) تأكد أن الإيميل مو مستخدم في أي حساب ثاني
+      const taken = await isEmailTakenAnyRole(email, String(pharmacyDocId || ""));
+      if (taken) {
+        setEmailMsg("This email is already used by another account. Please use a different email.");
+        return;
+      }
+
+      // 3) إرسال رابط التحقق
       const BASE = window.location.origin;
       const params = new URLSearchParams({
         col: "pharmacies",
         doc: String(pharmacyDocId || ""),
-        e: raw,
+        e: email,
         redirect: "/pharmacy",
       });
       const settings = { url: `${BASE}/auth-email?${params.toString()}`, handleCodeInApp: true };
       setEmailLoading(true);
-      await sendSignInLinkToEmail(getAuth(), raw, settings);
-      localStorage.setItem("td_email_pending", JSON.stringify({ email: raw, ts: Date.now() }));
+      await sendSignInLinkToEmail(getAuth(), email, settings);
+
+      localStorage.setItem("td_email_pending", JSON.stringify({ email, ts: Date.now() }));
       setEmailMsg("A verification link has been sent to your email. Open it, then return to the app.");
     } catch (e) {
-      setEmailMsg(`Firebase: ${e?.code || e?.message || "Unable to send verification link."}`);
+      // نعطي رسالة أوضح بدال كود Firebase الخام
+      if (e?.code === "auth/too-many-requests" || e?.code === "auth/quota-exceeded") {
+        setEmailMsg("Too many verification emails were requested. Please try again later.");
+      } else if (e?.code === "auth/invalid-email") {
+        setEmailMsg("Please enter a valid email.");
+      } else {
+        setEmailMsg(`Firebase: ${e?.code || e?.message || "Unable to send verification link."}`);
+      }
     } finally {
       setEmailLoading(false);
     }
@@ -614,7 +683,7 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                     {!!emailMsg && (
                       <div
                         className="mt-2 text-sm"
-                        style={{ color: emailMsg.includes("Firebase") ? "#991B1B" : "#166534" }}
+                        style={{ color: emailMsg.startsWith("Too many") || emailMsg.startsWith("This email") || emailMsg.startsWith("Please enter") ? "#991B1B" : "#166534" }}
                       >
                         {emailMsg}
                       </div>
