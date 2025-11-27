@@ -298,7 +298,7 @@ export default function Welcome() {
                         </span>
                       </div>
                       <p className="text-xs md:text-sm text-[#4A2C59]/70 font-medium">
-                        Maha, Ftoon, Shoug, Daad, AlJawhara
+                        Maha, Ftoon, Shouq, Daad, AlJawhara
                       </p>
                       <div className="flex items-center gap-2 text-sm mt-3">
                         <Crown className="w-4 h-4 text-[#52B9C4]" />

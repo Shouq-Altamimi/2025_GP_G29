@@ -28,7 +28,7 @@ const C = {
 };
 
 const PAGE_SIZE = 6;
-const DELIVERY_CONFIRMATION_ADDRESS = "0x9F48629bE7F22f13C3d752759F046B1261393FE0";
+const DELIVERY_CONFIRMATION_ADDRESS = "0xa05fCdA2Db1A521710FD4013f8adB252fF7C5d91";
 
 function formatFsTimestamp(v) {
   if (!v) return "-";

@@ -26,7 +26,7 @@ const RX_STATUS = { DELIVERY_REQUESTED: "DELIVERY_REQUESTED", PHARM_ACCEPTED: "P
 const PAGE_SIZE = 6;
 
 // ======== عقد DeliveryAccept ========
-const DELIVERY_ACCEPT_ADDRESS = "0x1CcbC36fAe3A3b39c482d679B8a05C5c4665986a";
+const DELIVERY_ACCEPT_ADDRESS = "0x99ce3aB6CC8fCeFfc36f045e0CAbf9D2EE941D35";
 const DELIVERY_ACCEPT_ABI = DELIVERY_ACCEPT?.abi ?? [];
 
 /* ========== helpers ========== */
