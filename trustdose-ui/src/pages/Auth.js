@@ -1440,144 +1440,169 @@ else if (!verified && role === "logistics" && user.password) {
             )}
 
             {/*  Phone  */}
-            <Label required>Phone</Label>
-            <div style={{ position: "relative" }}>
-              <input
-                value={phone}
-                onChange={(e) => {
-                  let val = e.target.value;
+           {/*  Phone  */}
+<Label required>Phone</Label>
+<div style={{ position: "relative" }}>
+  <input
+    value={phone}
+    onChange={(e) => {
+      let val = e.target.value;
 
-                  if (!val.startsWith("+966")) {
-                    val = "+966" + val.replace(/^\+?966?/, "");
-                  }
+      // نمنع العربي
+      if (hasArabic(val)) return;
 
-                  if (hasArabic(val)) return;
+      // نشيل المسافات
+      val = val.replace(/\s/g, "");
 
-                  val = val.replace(/\s/g, "");
+      // نثبت البادئة +966
+      if (!val.startsWith("+966")) {
+        val = "+966" + val.replace(/^\+?966?/, "");
+      }
 
-                  const afterPrefix = val.slice(4);
-                  if (afterPrefix && !/^[0-9]*$/.test(afterPrefix)) return;
+      // الجزء بعد +966
+      const afterPrefix = val.slice(4);
 
-                  if (val.length > 13) return;
+      // لازم كلها أرقام
+      if (afterPrefix && !/^[0-9]*$/.test(afterPrefix)) return;
 
-                  setPhone(val);
-                }}
-                onPaste={(e) => {
-                  e.preventDefault();
-                  const paste = e.clipboardData.getData("text").trim();
-                  if (hasArabic(paste)) return;
+      // 🔒 قفل: ٩ خانات فقط بعد +966
+      if (afterPrefix.length > 9) return;
 
-                  let cleaned = paste.replace(/\s/g, "");
+      setPhone(val);
+    }}
+    onPaste={(e) => {
+      e.preventDefault();
+      let paste = e.clipboardData.getData("text").trim();
+      if (hasArabic(paste)) return;
 
-                  if (cleaned.startsWith("05")) {
-                    setPhone("+966" + cleaned.slice(1));
-                  } else if (cleaned.startsWith("5")) {
-                    setPhone("+966" + cleaned);
-                  } else if (cleaned.startsWith("+9665")) {
-                    setPhone(cleaned);
-                  } else if (cleaned.match(/^9665\d{8}$/)) {
-                    setPhone("+" + cleaned);
-                  } else {
-                    setPhone(
-                      "+966" + cleaned.replace(/^\+?966?5?/, "")
-                    );
-                  }
-                }}
-                placeholder="+966 5xxxxxxxx"
-                style={{
-                  ...inputBase,
-                  ...inputCompact,
-                  paddingLeft: "14px",
-                }}
-                onFocus={(e) => {
-                  if (!phone || phone === "") {
-                    setPhone("+966");
-                  }
-                  Object.assign(
-                    e.currentTarget.style,
-                    inputFocus(
-                      !(
-                        phone === "" ||
-                        phone === "+966" ||
-                        (phoneInfo.ok && !phoneTaken)
-                      ) && !!phone
-                    )
-                  );
-                }}
-                onBlur={(e) => {
-                  if (phone === "+966") {
-                    setPhone("");
-                  }
-                  Object.assign(e.currentTarget.style, {
-                    borderColor: "#DFE3E8",
-                    boxShadow: "0 3px 14px rgba(0,0,0,.04)",
-                  });
-                }}
-                required
-                onKeyDown={(e) => {
-                  const allowedControl = [
-                    "Backspace",
-                    "Delete",
-                    "ArrowLeft",
-                    "ArrowRight",
-                    "Tab",
-                    "Home",
-                    "End",
-                  ];
+      paste = paste.replace(/\s/g, "");
 
-                  if (e.key === " ") {
-                    e.preventDefault();
-                    return;
-                  }
+      let local = paste;
 
-                  if (allowedControl.includes(e.key)) {
-                    if (
-                      (e.key === "Backspace" || e.key === "Delete") &&
-                      phone.length <= 4
-                    ) {
-                      e.preventDefault();
-                      return;
-                    }
-                    return;
-                  }
+      // نضبط البداية
+      if (local.startsWith("+966")) {
+        local = local.slice(4);
+      } else if (local.startsWith("966")) {
+        local = local.slice(3);
+      } else if (local.startsWith("05")) {
+        local = local.slice(1); // نخليها 5xxxxxxxx
+      }
 
-                  if (!/^[0-9]$/.test(e.key)) {
-                    e.preventDefault();
-                    return;
-                  }
+      // نخليها أرقام بس
+      local = local.replace(/\D/g, "");
 
-                  if (phone === "+966" && e.key !== "5") {
-                    e.preventDefault();
-                    return;
-                  }
-                }}
-              />
-            </div>
-            <div
-              style={{ marginTop: -6, marginBottom: 8, fontSize: 12 }}
-            >
-              {(!phone || phone === "+966") && (
-                <span style={{ color: "#888" }}>
-                  Enter phone: +966 5xxxxxxxx (9 digits after +966)
-                </span>
-              )}
-              {phone && phone !== "+966" && !phoneInfo.ok && (
-                <span style={{ color: "#b91c1c" }}>
-                  {phoneInfo.reason}
-                </span>
-              )}
-              {phone && phone !== "+966" && phoneInfo.ok && !phoneTaken && (
-                <span style={{ color: "#065f46" }}>
-                  ✓ Valid phone number
-                  {phoneChecking && " • checking..."}
-                </span>
-              )}
-              {phone && phoneInfo.ok && phoneTaken && (
-                <span style={{ color: "#b91c1c" }}>
-                  Already registered
-                </span>
-              )}
-            </div>
+      // لازم تبدأ بـ 5
+      if (!local.startsWith("5")) {
+        local = "5" + local.replace(/^5*/, "");
+      }
+
+      // 🔒 نوقف عند ٩ خانات بعد +966
+      local = local.slice(0, 9);
+
+      const finalVal = "+966" + local;
+      setPhone(finalVal);
+    }}
+    placeholder="+966 5xxxxxxxx"
+    style={{
+      ...inputBase,
+      ...inputCompact,
+      paddingLeft: "14px",
+    }}
+    onFocus={(e) => {
+      if (!phone || phone === "") {
+        setPhone("+966");
+      }
+      Object.assign(
+        e.currentTarget.style,
+        inputFocus(
+          !(
+            phone === "" ||
+            phone === "+966" ||
+            (phoneInfo.ok && !phoneTaken)
+          ) && !!phone
+        )
+      );
+    }}
+    onBlur={(e) => {
+      if (phone === "+966") {
+        setPhone("");
+      }
+      Object.assign(e.currentTarget.style, {
+        borderColor: "#DFE3E8",
+        boxShadow: "0 3px 14px rgba(0,0,0,.04)",
+      });
+    }}
+    required
+    onKeyDown={(e) => {
+      const allowedControl = [
+        "Backspace",
+        "Delete",
+        "ArrowLeft",
+        "ArrowRight",
+        "Tab",
+        "Home",
+        "End",
+      ];
+
+      if (e.key === " ") {
+        e.preventDefault();
+        return;
+      }
+
+      // أزرار التحكم
+      if (allowedControl.includes(e.key)) {
+        if (
+          (e.key === "Backspace" || e.key === "Delete") &&
+          phone.length <= 4
+        ) {
+          e.preventDefault();
+          return;
+        }
+        return;
+      }
+
+      // لازم رقم
+      if (!/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        return;
+      }
+
+      // أول رقم بعد +966 لازم يكون 5
+      if (phone === "+966" && e.key !== "5") {
+        e.preventDefault();
+        return;
+      }
+
+      const afterPrefix = phone.slice(4);
+
+      // 🔒 إذا فيه ٩ أرقام بعد +966 نمنع أي رقم زيادة
+      if (afterPrefix.length >= 9) {
+        e.preventDefault();
+        return;
+      }
+    }}
+  />
+</div>
+<div style={{ marginTop: -6, marginBottom: 8, fontSize: 12 }}>
+  {(!phone || phone === "+966") && (
+    <span style={{ color: "#888" }}>
+      Enter phone: +966 5xxxxxxxx (9 digits after +966)
+    </span>
+  )}
+  {phone && phone !== "+966" && !phoneInfo.ok && (
+    <span style={{ color: "#b91c1c" }}>{phoneInfo.reason}</span>
+  )}
+  {phone && phone !== "+966" && phoneInfo.ok && !phoneTaken && (
+    <span style={{ color: "#065f46" }}>
+      ✓ Valid phone number
+      {phoneChecking && " • checking..."}
+    </span>
+  )}
+  {phone && phoneInfo.ok && phoneTaken && (
+    <span style={{ color: "#b91c1c" }}>Already registered</span>
+  )}
+</div>
+
 
             {/*  Full name  */}
             <Label required>Full name</Label>

@@ -12,9 +12,7 @@ import {
   limit as fsLimit,
 } from "firebase/firestore";
 
-/* =========================
-   0) Local mapping 
-   ========================= */
+
 const DOCTOR_MAP = {
   "0x4F5b09D9940a1fF83463De89BD25C216fBd86E5C": {
     name: "Khalid Altamimi",
@@ -22,9 +20,7 @@ const DOCTOR_MAP = {
   },
 };
 
-/* =========================
-   Helpers
-   ========================= */
+
 const isNid = (v) => /^\d{10,12}$/.test(String(v || "").trim());
 
 function resolveNidFromAnywhere() {
@@ -49,9 +45,6 @@ async function sha256HexPrefixed(input) {
   return "0x" + hex;
 }
 
-/* =========================
-   Fetch patient by ID
-   ========================= */
 async function fetchPatientByFlexibleId(nid) {
   try {
     const ref1 = doc(db, "patients", String(nid));
@@ -80,9 +73,7 @@ async function fetchPatientByFlexibleId(nid) {
   return null;
 }
 
-/* =========================
-   Fetch prescriptions
-   ========================= */
+
 async function fetchPrescriptionsSmart(foundDocId, nid) {
   const out = new Map();
   let lastError = "";
@@ -124,70 +115,10 @@ async function fetchPrescriptionsSmart(foundDocId, nid) {
   return { items, blocked: false, error: lastError };
 }
 
-/* =========================
-   Hydrate doctor & pharmacist info 
-   ========================= */
-/*async function hydrateNames(items) {
-  const out = [];
-  for (const p of items) {
-    const doctorName =
-      p.doctorName ||
-      p.doctorFullName ||
-      p.prescriberName ||
-      p.createdByName ||
-      p.practitionerName ||
-      p.practitionerFullName ||
-      (p.doctor && p.doctor.name) ||
-      "";
-
-   const facilityName =
-  p.doctorFacility ||
-  p.facilityName ||
-  p.facility ||
-  p.healthFacility ||
-  p.healthcareFacility ||
-  p.clinicName ||
-  p.hospitalName ||
-  p.locationName ||
-  p.pharmacyName ||
-  p?.doctor?.facility ||
-  p?.doctor?.hospital ||
-  p?.doctor?.facilityName ||
-  (p.facility && p.facility.name) ||
-  (p.hospital && p.hospital.name) ||
-  "";
-
-
-    // Pharmacist + Pharmacy fallbacks
-    const pharmacistName =
-      p.pharmacistName ||
-      p.dispensedBy ||
-      p.verifiedBy ||
-      (p.pharmacist && p.pharmacist.name) ||
-      "";
-
-    const pharmacyName =
-      p.pharmacyName ||
-      p.pharmacyFacility ||
-      p.pharmacy ||
-      p.dispenseLocation ||
-      "";
-
-    out.push({
-      ...p,
-      _doctorName: doctorName || "—",
-      _facilityName: facilityName || "—",
-      _pharmacistName: pharmacistName || "—",
-      _pharmacyName: pharmacyName || "—",
-    });
-  }
-  return out;
-}*/
 
 async function hydrateNames(items) {
   const out = [];
 
-  // ========== نجيب أول صيدلية ==========
   let globalPharmacyName = "—";
   try {
     const col = collection(db, "pharmacies");
@@ -202,14 +133,12 @@ async function hydrateNames(items) {
 
   for (const p of items) {
 
-    // ========== Doctor Name (من الوصفة فقط) ==========
     const doctorName =
       p.doctorName ||
       p.doctorFullName ||
       p.createdByName ||
       "";
 
-    // ========== Healthcare Facility (من doctors collection) ==========
     let facilityName = "—";
 
     try {
@@ -220,20 +149,18 @@ async function hydrateNames(items) {
 
         if (!snap.empty) {
           const d = snap.docs[0].data();
-          if (d.facility) facilityName = d.facility;   // ← facility الحقيقي من الداتابيس
+          if (d.facility) facilityName = d.facility;   
         }
       }
     } catch (e) {
       console.log("doctor facility fetch failed", e);
     }
 
-    // ========== Push النهائي ==========
     out.push({
       ...p,
       _doctorName: doctorName,
-      _facilityName: facilityName,       // ← Healthcare Facility
-      _pharmacyName: globalPharmacyName,  // ← Pharmacy Name فقط
-      // 🚫 _pharmacistName محذوف
+      _facilityName: facilityName,       
+      _pharmacyName: globalPharmacyName,  
     });
   }
 
@@ -242,9 +169,7 @@ async function hydrateNames(items) {
 
 
 
-/* =========================
-   UI helpers
-   ========================= */
+
 const TD = {
   brand: {
     ink: "#334155",
@@ -331,16 +256,12 @@ function WelcomeHeader({ name }) {
   );
 }
 
-/* =========================
-   Patient Page
-   ========================= */
+
 export default function PatientPage() {
   const [nid, setNid] = useState(null);
-    // ========== Get logistics company name once from Firebase ==========
   const [logisticsName, setLogisticsName] = useState("—");
   const [logisticsPhone, setLogisticsPhone] = useState("—");
 
-/////////////////////////////////////////////////////////////////
 
   useEffect(() => {
     (async () => {
@@ -350,7 +271,6 @@ export default function PatientPage() {
         if (!snap.empty) {
           const first = snap.docs[0].data();
 
-          // نحاول نقرأ أكثر من اسم حقل عشان نغطي كل الحالات
           const name =
             first.companyName ||
             first.name ||
@@ -379,7 +299,6 @@ export default function PatientPage() {
     })();
   }, []);
 
-/////////////////////////////////////////////////////////////////////////////
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [patient, setPatient] = useState(null);
@@ -387,7 +306,7 @@ export default function PatientPage() {
   const [openIds, setOpenIds] = useState({});
   const [showEmailAlert, setShowEmailAlert] = useState(false);
 
-  // Pagination
+  
   const [page, setPage] = useState(1);
   const PER_PAGE = 3;
 
@@ -415,11 +334,10 @@ export default function PatientPage() {
 
         setPatient(found.data);
 
-        // Show alert if the patient has no email saved
         setShowEmailAlert(!found.data.email);
 
         setRx(pres);
-        setPage(1); // reset page when data changes
+        setPage(1); 
       } catch (e) {
         setErr(e?.message || String(e));
       } finally {
@@ -431,10 +349,9 @@ export default function PatientPage() {
   const fullName = useMemo(() => patient?.name || "-", [patient]);
   const toggleOpen = (id) => setOpenIds((s) => ({ ...s, [id]: !s[id] }));
 
-  // ✅ زر My Profile يفتح مودال PShell عن طريق حدث Window
   const openProfile = () => window.dispatchEvent(new Event("openPatientProfile"));
 
-  // Pagination derived values
+  
   const total = rx.items.length;
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
   const safePage = Math.min(Math.max(1, page), totalPages);
@@ -442,7 +359,7 @@ export default function PatientPage() {
   const endIdx = Math.min(startIdx + PER_PAGE, total);
   const pageItems = rx.items.slice(startIdx, endIdx);
 
-  // Pagination bar (will be pinned to bottom via flex)
+  
   const PaginationBar = () => (
     <div
       style={{
@@ -496,9 +413,16 @@ export default function PatientPage() {
       </div>
     </div>
   );
+  function getCurrentStep(p) {
+  if (p.deliveredToPatient) return 4;
+  if (p.logisticsAccepted && p.dispensed) return 3;
+  if (p.acceptDelivery) return 2;
+  return 1;
+}
+
 
   return (
-    // ===== Page wrapper as flex column to pin pagination to bottom =====
+   
     <div
       style={{
         minHeight: "100vh",
@@ -507,7 +431,7 @@ export default function PatientPage() {
         flexDirection: "column",
       }}
     >
-      {/* Email alert (optional) */}
+      
       {showEmailAlert && (
         <div
           style={{
@@ -553,7 +477,6 @@ export default function PatientPage() {
         </div>
       )}
 
-      {/* ===== Main content container grows, pagination sits at bottom ===== */}
       <div
         style={{
             maxWidth: 1120,
@@ -562,7 +485,7 @@ export default function PatientPage() {
             width: "100%",
             display: "flex",
             flexDirection: "column",
-            flex: 1, // take remaining height
+            flex: 1, 
           }}
       >
         {loading && <div>Loading...</div>}
@@ -573,7 +496,6 @@ export default function PatientPage() {
             <WelcomeHeader name={fullName} />
             <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Prescriptions</h2>
 
-            {/* Grid: two relaxed columns */}
             <div
               style={{
                 display: "grid",
@@ -588,7 +510,6 @@ export default function PatientPage() {
                 const status = computeStatus(p);
                 const createdDate = fmtDate(p.createdAt);
                 const createdFull = fmtDateTime(p.createdAt);
-                //const dispensedAt = p.dispensedAt || p.dispensedOn || p.fulfilledAt || null;
                 const dispensedAt =
   p.dispensedAt?.toDate ? p.dispensedAt :
   p.dispensedOn?.toDate ? p.dispensedOn :
@@ -626,7 +547,6 @@ export default function PatientPage() {
                       overflow: "hidden",
                     }}
                   >
-                    {/* Header */}
                     <div
                       style={{
                         display: "flex",
@@ -645,7 +565,6 @@ export default function PatientPage() {
                       </div>
                     </div>
 
-                    {/* Summary */}
                     <div
                       style={{
                         display: "grid",
@@ -692,7 +611,6 @@ export default function PatientPage() {
                       </button>
                     </div>
 
-                    {/* Details */}
                     {isOpen && (
                       <div style={{ display: "grid", gap: 12, padding: 16 }}>
                         <div style={{ fontWeight: 700, color: "#374151" }}>Prescription Details</div>
@@ -704,14 +622,7 @@ export default function PatientPage() {
                         <Row label="Pharmacy Name" value={pharmacy} />
                         {p.sensitivity === "Sensitive" && (
   <>
-    <Row
-      label="Logistics Company"
-      value={
-        logisticsName !== "—"
-          ? logisticsName
-          : (p.logisticsName || "Dr. Sulaiman Al Habib Logistics")
-      }
-    />
+   
   </>
 )}
 
@@ -748,37 +659,157 @@ export default function PatientPage() {
                                 }}
                               >
                                {p.sensitivity === "Sensitive" ? (
-                                 <>
-     Sensitive — (Delivery)
-    {p.acceptDelivery || p.logisticsAccepted || p.dispensed ? (
-      <>
-        {" "}
-        •{" "}
-        {p.logisticsAccepted === true && p.dispensed === true
-          ? "Delivered to you"
-          : p.acceptDelivery === true && p.dispensed === true
-          ? "Handed to logistics"
-          : p.logisticsAccepted === true
-          ? "Accepted by logistics"
-          : p.acceptDelivery === true
-          ? "Accepted by pharmacy"
-          : ""
-        }
-      </>
-    ) : null}
+  <>
+    Sensitive — (Delivery)
   </>
 ) : (
   "Non-Sensitive — (Pickup)"
 )}
+
                                </div>
                             </div>
                           )}
-                        {p.sensitivity === "Sensitive" && (
-   <Row
-    label="Logistics Phone"
-    value={logisticsPhone || "+966504181110"}
-  />
+                          
+{p.sensitivity === "Sensitive" && (
+  <div
+    style={{
+      marginTop: 14,
+      paddingTop: 14,
+      borderTop: "1px solid #e5e7eb",
+    }}
+  >
+    <div
+      style={{
+        fontWeight: 700,
+        color: "#374151",
+        marginBottom: 10,
+        fontSize: 16,
+      }}
+    >
+      Logistics Provider Details
+    </div>
+
+    <Row
+      label="Logistics Provider"
+      value={
+        logisticsName !== "—"
+          ? logisticsName
+          : p.logisticsName || "—"
+      }
+    />
+
+    <Row
+      label="Logistics Phone"
+      value={logisticsPhone || "—"}
+    />
+  </div>
 )}
+
+ {p.sensitivity === "Sensitive" && (() => {
+
+  const step = getCurrentStep(p);
+
+  const green = "#52B9C4";
+  const purple = "#B08CC1";
+  const gray = "#e5e7eb";
+
+  const colorFor = (s) => {
+    if (step >= s) return green;
+    if (step + 1 === s) return purple;
+    return gray;
+  };
+
+  const circleStyle = (s) => ({
+    width: 40,
+    height: 40,
+    borderRadius: "50%",
+    background: colorFor(s),
+    border: `4px solid ${colorFor(s)}`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    transition: "0.3s",
+    margin: "0 auto",           
+  });
+
+  const dotStyle = (s) => ({
+    width: 12,
+    height: 12,
+    borderRadius: "50%",
+    background: step >= s || step + 1 === s ? "white" : "#a3a3a3",
+  });
+
+  const lineStyle = (s) => ({
+    height: 4,
+    flex: 1,
+    background: colorFor(s),
+    transition: "0.3s",
+    margin: "0 25px",
+
+  });
+
+  const labelStyle = {
+    marginTop: 8,
+    fontSize: 12,
+    textAlign: "center",
+  };
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div
+        style={{
+          fontWeight: 700,
+          fontSize: 16,
+          marginBottom: 18,
+          color: TD.brand.ink,
+        }}
+      >
+        Delivery Status
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
+
+        <div style={{ width: "120px" }}>
+          <div style={circleStyle(1)}>
+            <div style={dotStyle(1)}></div>
+          </div>
+          <div style={labelStyle}>Order Placed</div>
+        </div>
+
+        <div style={lineStyle(2)}></div>
+
+        <div style={{ width: "120px" }}>
+          <div style={circleStyle(2)}>
+            <div style={dotStyle(2)}></div>
+          </div>
+          <div style={labelStyle}>Accepted by Pharmacy</div>
+        </div>
+
+        <div style={lineStyle(3)}></div>
+
+        <div style={{ width: "120px" }}>
+          <div style={circleStyle(3)}>
+            <div style={dotStyle(3)}></div>
+          </div>
+          <div style={labelStyle}>Your medicine is safely on the way</div>
+        </div>
+
+        <div style={lineStyle(4)}></div>
+
+        <div style={{ width: "120px" }}>
+          <div style={circleStyle(4)}>
+            <div style={dotStyle(4)}></div>
+          </div>
+          <div style={labelStyle}>Delivered safely to the patient</div>
+        </div>
+
+      </div>
+    </div>
+  );
+})()}
+
+
+
 
 
 
@@ -791,10 +822,8 @@ export default function PatientPage() {
               })}
             </div>
 
-            {/* Spacer pushes pagination to the very bottom when content is short */}
             <div style={{ flex: 1 }} />
 
-            {/* Bottom pagination (always at page end) */}
             <PaginationBar />
           </>
         )}
