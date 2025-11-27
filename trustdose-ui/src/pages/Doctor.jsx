@@ -425,9 +425,6 @@ export default function Doctor() {
       setMcTouched(false);
       setMedSearchKey((k) => k + 1);
 
-      setRxMsg("Prescription created & confirmed on-chain ✓");
-      setTimeout(() => setRxMsg(""), 3000);
-
       setShowSuccessPopup(true);
     } catch (e) {
       console.error("createPrescription failed:", e);
@@ -609,19 +606,19 @@ export default function Doctor() {
                 Create New Prescription
               </h2>
 
-              {!!rxMsg && (
-                <div
-                  className="p-3 rounded-lg mb-4 flex items-center gap-2 border"
-                  style={
-                    rxMsg.includes("✓")
-                      ? { background: "#EFFAF1", color: "#166534", borderColor: "#BBE5C8" }
-                      : { background: "#FEF2F2", color: "#991B1B", borderColor: "#FECACA" }
-                  }
-                >
-                  {rxMsg.includes("✓") ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
-                  {rxMsg}
-                </div>
-              )}
+                {!!rxMsg && (
+                        <div
+                          className="p-3 rounded-lg mb-4 flex items-center gap-2 border"
+                          style={{
+                            background: "#FEF2F2",
+                            color: "#991B1B",
+                            borderColor: "#FECACA",
+                          }}
+                        >
+                          <AlertCircle size={18} />
+                          {rxMsg}
+                        </div>
+                      )}
 
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
