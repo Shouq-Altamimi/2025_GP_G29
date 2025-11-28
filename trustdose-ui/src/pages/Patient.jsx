@@ -149,7 +149,7 @@ async function hydrateNames(items) {
 
         if (!snap.empty) {
           const d = snap.docs[0].data();
-          if (d.facility) facilityName = d.facility;   
+facilityName = "Dr. Sulaiman Al Habib Hospital";
         }
       }
     } catch (e) {
