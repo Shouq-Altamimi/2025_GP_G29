@@ -733,7 +733,6 @@ export default function Doctor() {
                       "10 days",
                       "14 days",
                       "21 days",
-                      "30 days",
                       "1 month",
                       "2 months",
                       "3 months",
