@@ -813,7 +813,7 @@ function getCurrentStep(p) {
           <div style={circleStyle(5)}>
             <div style={dotStyle(5)}></div>
           </div>
-          <div style={labelStyle}>Delivered safely to the patient</div>
+          <div style={labelStyle}>Delivered safely to you</div>
         </div>
 
       </div>
