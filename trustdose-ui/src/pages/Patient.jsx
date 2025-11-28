@@ -413,12 +413,14 @@ export default function PatientPage() {
       </div>
     </div>
   );
-  function getCurrentStep(p) {
-  if (p.deliveredToPatient) return 4;
-  if (p.logisticsAccepted && p.dispensed) return 3;
+function getCurrentStep(p) {
+  if (p.deliveryConfirmed) return 5;
+  if (p.dispensed) return 4;
+  if (p.logisticsAccepted) return 3;
   if (p.acceptDelivery) return 2;
   return 1;
 }
+
 
 
   return (
@@ -729,7 +731,7 @@ export default function PatientPage() {
     alignItems: "center",
     justifyContent: "center",
     transition: "0.3s",
-    margin: "0 auto",           
+    margin: "0 auto",
   });
 
   const dotStyle = (s) => ({
@@ -744,8 +746,7 @@ export default function PatientPage() {
     flex: 1,
     background: colorFor(s),
     transition: "0.3s",
-    margin: "0 25px",
-
+    margin: "0 10px",
   });
 
   const labelStyle = {
@@ -753,6 +754,9 @@ export default function PatientPage() {
     fontSize: 12,
     textAlign: "center",
   };
+
+  const step3Label = "Accepted by Logistics";
+  const step4Label = "Your medicine is safely on the way";
 
   return (
     <div style={{ marginTop: 28 }}>
@@ -768,7 +772,7 @@ export default function PatientPage() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
-
+        
         <div style={{ width: "120px" }}>
           <div style={circleStyle(1)}>
             <div style={dotStyle(1)}></div>
@@ -791,7 +795,7 @@ export default function PatientPage() {
           <div style={circleStyle(3)}>
             <div style={dotStyle(3)}></div>
           </div>
-          <div style={labelStyle}>Your medicine is safely on the way</div>
+          <div style={labelStyle}>Accepted by   <br /> Logistics Provider</div>
         </div>
 
         <div style={lineStyle(4)}></div>
@@ -799,6 +803,15 @@ export default function PatientPage() {
         <div style={{ width: "120px" }}>
           <div style={circleStyle(4)}>
             <div style={dotStyle(4)}></div>
+          </div>
+          <div style={labelStyle}>{step4Label}</div>
+        </div>
+
+        <div style={lineStyle(5)}></div>
+
+        <div style={{ width: "120px" }}>
+          <div style={circleStyle(5)}>
+            <div style={dotStyle(5)}></div>
           </div>
           <div style={labelStyle}>Delivered safely to the patient</div>
         </div>
