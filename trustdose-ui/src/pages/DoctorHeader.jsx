@@ -586,7 +586,6 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
     try {
       setEmailMsg("");
 
-      // 1) validate pattern + domain
       const v = validateTrustDoseEmail(emailInput);
       if (!v.ok) {
         setEmailMsg(v.reason || "Please enter a valid email.");
@@ -594,7 +593,6 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       }
       const email = v.email;
 
-      // 2) check uniqueness across all roles
       const taken = await isEmailTakenAnyRole(email, String(doctorDocId || ""));
       if (taken) {
         setEmailMsg(
@@ -603,7 +601,6 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
         return;
       }
 
-      // 3) send verification link
       const BASE = window.location.origin;
       const params = new URLSearchParams({
         col: "doctors",
