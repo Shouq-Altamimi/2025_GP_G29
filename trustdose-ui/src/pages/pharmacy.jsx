@@ -18,16 +18,17 @@ import {
   doc as fsDoc,
   updateDoc,
   serverTimestamp,
+  limit, 
 } from "firebase/firestore";
 
 import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 
-const PRESCRIPTION_ADDRESS = "0xEea65FEcea9c4a89e697747F0EA7AC78e4317EC0";
-const DISPENSE_ADDRESS = "0x0b5D0Cbd033453a16B99D34a46DEC04d11F95622";
+const PRESCRIPTION_ADDRESS = "0x9AFA155F27D3A2bd1AcF79B397Da3B2d5Ee36ea0";
+const DISPENSE_ADDRESS = "0xC85905aB760084b421AeE8b97d38651700e8C2A3";
 
-// ===== Pagination size =====
+
 const PAGE_SIZE = 6;
 
 async function getSignerEnsured() {
@@ -229,11 +230,10 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
 
   const [dispensingId, setDispensingId] = useState(null);
 
-  // ✅ popup state
+
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [popupRxRef, setPopupRxRef] = useState("");
 
-  // ✅ نجيب setPageError من الـ PharmacyShell عشان نطلع البانر الأحمر فوق الـ Welcome
   const outletCtx = useOutletContext?.() || {};
   const setPageError = outletCtx.setPageError || (() => {});
 
@@ -295,7 +295,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       notes: data.notes || "",
 
       doctorName: docName,
-      doctorPhone: docPhone,
+      doctorPhone: docPhone, // 📌 فقط نسخة احتياطية، لكن العرض حيكون من doctors
       doctorFacility: data.doctorFacility || "",
 
       frequency: freq,
@@ -335,14 +335,48 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     setPage(0); // reset pagination on input change
   }
 
+  // ✅ فنكشن تقرأ رقم الدكتور من جدول doctors بالاسم
+  async function enrichWithDoctorPhone(list) {
+    const cache = new Map(); // name -> phone
+    const out = [];
+
+    for (const item of list) {
+      const name = (item.doctorName || "").trim();
+      if (!name) {
+        out.push({ ...item, doctorPhoneResolved: item.doctorPhone || "" });
+        continue;
+      }
+
+      if (!cache.has(name)) {
+        const doctorsRef = collection(db, "doctors");
+        const qDoc = query(
+          doctorsRef,
+          where("name", "==", name),
+          limit(1)
+        );
+        const snap = await getDocs(qDoc);
+        const data = !snap.empty ? snap.docs[0].data() : null;
+        cache.set(name, data?.phone || "");
+      }
+
+      const phoneFromDoctors = cache.get(name);
+      out.push({
+        ...item,
+        doctorPhoneResolved: phoneFromDoctors || item.doctorPhone || "",
+      });
+    }
+
+    return out;
+  }
+
   async function runSearch() {
     setSearched(true);
     setLoading(true);
     setError("");
     setResults([]);
     setInfoMsg("");
-    setPage(0); // reset to first page on new search
-    setPageError(""); // نمسح أي بانر قديم
+    setPage(0); 
+    setPageError("");
 
     if (validationMsg) {
       setLoading(false);
@@ -388,7 +422,8 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
             return;
           }
 
-          setResults([n]);
+          const hydrated = await enrichWithDoctorPhone([n]);
+          setResults(hydrated);
         } else {
           setResults([]);
         }
@@ -466,7 +501,9 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
           (b.createdAtTS?.getTime?.() || 0) -
           (a.createdAtTS?.getTime?.() || 0)
       );
-      setResults(list);
+
+      const hydrated = await enrichWithDoctorPhone(list);
+      setResults(hydrated);
     } catch (e) {
       console.error(e);
       setError("Error fetching from database. Please try again.");
@@ -507,7 +544,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
       setLoading(true);
       setError("");
       setInfoMsg("");
-      setPageError(""); // نمسح أي بانر خطأ قبل ما نبدأ محاولة جديدة
+      setPageError(""); 
 
       const signer = await getSignerEnsured();
       const pharmacistAddr = await signer.getAddress();
@@ -581,7 +618,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
         `Prescription ${item.ref} dispensed on-chain ✓`
       );
 
-      // ✅ فعّل بوب أب النجاح
+   
       setPopupRxRef(
         item.ref || item.prescriptionID || item._docId || ""
       );
@@ -589,10 +626,10 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     } catch (e) {
       console.error(e);
 
-      // ✅ MetaMask رفضت → نرسل نفس الرسالة للـ Shell عشان يطلع البانر الأحمر
+     
       if (e?.code === "ACTION_REJECTED" || e?.code === 4001) {
         setPageError("MetaMask request was declined. Please try again.");
-        setError(""); // ما نعرض رسالة ثانية تحت
+        setError(""); 
       } else {
         setError(niceErr(e));
         setPageError("Error occurred. Please try again.");
@@ -603,7 +640,6 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     }
   }
 
-  // ===== Derived pagination values
   const total = results.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const start = page * PAGE_SIZE;
@@ -737,18 +773,21 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
                 : "";
               const medTitle = r.medicineLabel || r.medicine || "—";
 
+              const finalDoctorPhone =
+                r.doctorPhoneResolved || r.doctorPhone || "—";
+
               return (
                 <div
                   key={r._docId}
                   className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between"
                 >
                   <div>
-                    {/* Title */}
+                 
                     <div className="text-lg font-bold text-slate-800 truncate">
                       {medTitle}
                     </div>
 
-                    {/* Pharmacy extras */}
+                 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Prescription ID:{" "}
                       <span className="font-normal">
@@ -773,11 +812,11 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Doctor Phone:{" "}
                       <span className="font-normal">
-                        {String(r.doctorPhone || "—")}
+                        {String(finalDoctorPhone)}
                       </span>
                     </div>
 
-                    {/* Details */}
+                   
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Prescribed by{" "}
                       <span className="font-normal">
@@ -802,7 +841,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
                       </span>
                     </div>
 
-                    {/* Notes area */}
+                   
                     <div className="mt-1 min-h-[28px]">
                       {!!r.notes && (
                         <div className="text-sm text-slate-700 font-semibold">
@@ -874,7 +913,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
                     </div>
                   </div>
 
-                  {/* date */}
+             
                   <div className="text-right text-xs text-gray-500 mt-1">
                     Prescription issued on {dateTime}
                   </div>
@@ -883,7 +922,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
             })}
           </section>
 
-          {/* Pagination footer (like Doctor page) */}
+     
           <div className="mt-auto pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-sm text-gray-700">
               Showing {end} out of {total} prescriptions
@@ -919,7 +958,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
         </>
       )}
 
-      {/* ✅ Success popup like Doctor */}
+
       {showSuccessPopup && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
           <div
@@ -975,7 +1014,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
   );
 }
 
-/* Delivery & Pending (unchanged visuals) */
+
 function DeliverySection({ rows = [], setRxs, addNotification }) {
   function acceptOrder(rxRef) {
     setRxs((prev) =>

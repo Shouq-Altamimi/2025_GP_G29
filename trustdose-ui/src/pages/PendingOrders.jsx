@@ -1,4 +1,3 @@
-// src/pages/PendingOrders.jsx
 "use client";
 
 import React from "react";
@@ -15,12 +14,11 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
-// ===== Ethers / Contracts =====
 import { ethers } from "ethers";
 import LOGISTICS_RECEIVE from "../contracts/LogisticsReceive.json";
 import { Loader2, FileText, CheckCircle2 } from "lucide-react";
 
-const LOGISTICS_RECEIVE_ADDRESS = "0x7B3A3284660aAcbBb99674c2352931cd99015763";
+const LOGISTICS_RECEIVE_ADDRESS = "0x34DE5e8cFd2aDd4181288085F6c934F152784F6d";
 
 const C = {
   primary: "#B08CC1",
@@ -30,7 +28,6 @@ const C = {
 };
 const PAGE_SIZE = 6;
 
-/* ========== helpers ========== */
 function formatFsTimestamp(v) {
   if (!v) return "-";
   try {
@@ -58,14 +55,12 @@ async function getSignerEnsured() {
 export default function PendingOrders({ pharmacyId }) {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState([]);
-  const [msg, setMsg] = React.useState(""); // رسالة "No pending..."
+  const [msg, setMsg] = React.useState(""); 
   const [page, setPage] = React.useState(0);
   const [processingId, setProcessingId] = React.useState(null);
 
-  // ✅ بوب أب النجاح
   const [successModal, setSuccessModal] = React.useState(null);
 
-  // ✅ ناخذ setPageError من الـ Shell
   const outletCtx = useOutletContext?.() || {};
   const setPageError = outletCtx.setPageError || (() => {});
 
@@ -76,7 +71,7 @@ export default function PendingOrders({ pharmacyId }) {
       setLoading(true);
       setRows([]);
       setMsg("");
-      setPageError(""); // نمسح أي خطأ قديم
+      setPageError(""); 
 
       const col = collection(db, "prescriptions");
 
@@ -258,7 +253,6 @@ export default function PendingOrders({ pharmacyId }) {
   return (
     <div className="p-6">
       <div className="mx-auto w-full max-w-6xl px-4">
-        {/* ✅ Success popup مطابق للصيدلية والدكتور */}
         {successModal && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
             <div
@@ -426,14 +420,12 @@ export default function PendingOrders({ pharmacyId }) {
           </section>
         )}
 
-        {/* No pending prescriptions message */}
         {total === 0 && (
           <p className="text-gray-600 mt-4">
             {msg || "No pending delivery prescriptions."}
           </p>
         )}
 
-        {/* Pagination */}
         {total > 0 && (
           <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-sm text-gray-700">

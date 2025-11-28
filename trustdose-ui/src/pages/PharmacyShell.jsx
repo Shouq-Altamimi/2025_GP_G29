@@ -38,7 +38,6 @@ import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
-/* ================= helpers ================= */
 function pickStr(obj, keys) {
   for (const k of keys) {
     const v = obj?.[k];
@@ -80,18 +79,15 @@ function randomSaltB64(len = 16) {
 }
 const isHex64 = (s) => typeof s === "string" && /^[a-f0-9]{64}$/i.test(s);
 
-/* === verifyCurrentPassword (اللي كان ناقص) === */
 async function verifyCurrentPassword(docData, inputPwd) {
   const cur = String(inputPwd ?? "").trim();
 
-  // 1) tempPassword (لو لسه ما تغيّر الباسوورد)
   if (docData?.tempPassword?.valid && docData?.tempPassword?.value) {
     if (cur === String(docData.tempPassword.value)) {
       return { ok: true, mode: "TEMP" };
     }
   }
 
-  // 2) المخطط الجديد PBKDF2-SHA256
   if (
     docData?.passwordAlgo === "PBKDF2-SHA256" &&
     docData?.passwordSalt &&
@@ -104,7 +100,6 @@ async function verifyCurrentPassword(docData, inputPwd) {
     }
   }
 
-  // 3) legacy: hash في passwordHash بدون salt
   if (docData?.passwordHash && !docData?.passwordSalt) {
     const h = await sha256Hex(cur);
     if (h === String(docData.passwordHash)) {
@@ -112,9 +107,6 @@ async function verifyCurrentPassword(docData, inputPwd) {
     }
   }
 
-  // 4) legacy: حقل password نفسه يمكن يكون:
-  //    - يا hex sha256
-  //    - يا plaintext قديم
   if (docData?.password) {
     const p = String(docData.password);
     if (isHex64(p)) {
@@ -128,7 +120,6 @@ async function verifyCurrentPassword(docData, inputPwd) {
   return { ok: false };
 }
 
-/* ===== phone helpers (مطابقة للدكتور/اللوجستكس) ===== */
 function hasArabic(str) {
   return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
     String(str || "")
@@ -190,7 +181,6 @@ function validateAndNormalizePhone(raw) {
   };
 }
 
-/* ===== Email helpers ===== */
 const COMMON_EMAIL_DOMAINS = [
   "gmail.com",
   "outlook.com",
@@ -220,7 +210,6 @@ function validateTrustDoseEmail(raw) {
   return { ok: true, email };
 }
 
-// يتأكد أن الإيميل ما هو مستخدم في أي كوليكشن (دكتور/صيدلية/مريض/لوجستيك)
 async function isEmailTakenAnyRole(email, currentDocId) {
   const collections = ["doctors", "pharmacies", "patients", "logistics"];
   const trimmed = String(email || "").trim().toLowerCase();
@@ -237,7 +226,6 @@ async function isEmailTakenAnyRole(email, currentDocId) {
   return false;
 }
 
-/* =============== Alert (doctor-style) =============== */
 function AlertBanner({ children }) {
   return (
     <div style={{ margin: "0 24px 16px 24px" }}>
@@ -282,7 +270,6 @@ function normalizePharmacy(raw) {
   };
 }
 
-/* ================= Shell ================= */
 export default function PharmacyShell() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -384,7 +371,6 @@ export default function PharmacyShell() {
         </AlertBanner>
       )}
 
-      {/* بانر الخطأ الأحمر */}
       {pageError && (
         <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
           <div className="mb-4 p-4 rounded-xl flex items-center gap-2 text-red-700 bg-red-100 border border-red-300">
@@ -394,7 +380,6 @@ export default function PharmacyShell() {
         </div>
       )}
 
-      {/* Welcome + subtitle */}
       {isPharmacyPage && (
         <div className="mx-auto w-full max-w-6xl px-4 md:px-6 mt-4">
           <div className="mb-6 flex items-center gap-3">

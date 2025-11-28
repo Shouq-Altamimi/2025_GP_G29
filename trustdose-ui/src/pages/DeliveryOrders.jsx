@@ -16,20 +16,18 @@ import {
   updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import { Loader2, CheckCircle2 } from "lucide-react"; // ✅ نفس الأيقونة حق الصيدلية
+import { Loader2, CheckCircle2 } from "lucide-react";
 import { ethers } from "ethers";
 import DELIVERY_ACCEPT from "../contracts/DeliveryAccept.json";
-
-// ========== ألوان ثابتة ==========
+ 
 const C = { primary: "#B08CC1", primaryDark: "#9F76B4", teal: "#52B9C4", ink: "#4A2C59" };
 const RX_STATUS = { DELIVERY_REQUESTED: "DELIVERY_REQUESTED", PHARM_ACCEPTED: "PHARM_ACCEPTED" };
 const PAGE_SIZE = 6;
-
-// ======== عقد DeliveryAccept ========
-const DELIVERY_ACCEPT_ADDRESS = "0x99ce3aB6CC8fCeFfc36f045e0CAbf9D2EE941D35";
+ 
+const DELIVERY_ACCEPT_ADDRESS = "0x4D246bBf058E61116DDE9a2615a1d8663C10E2F2";
 const DELIVERY_ACCEPT_ABI = DELIVERY_ACCEPT?.abi ?? [];
 
-/* ========== helpers ========== */
+
 function formatFsTimestamp(v) {
   if (!v) return "-";
   try {
@@ -53,12 +51,12 @@ export default function DeliveryOrders({ pharmacyId }) {
   const [rows, setRows] = React.useState([]);
   const [msg, setMsg] = React.useState("");
   const [page, setPage] = React.useState(0);
-  const [pending, setPending] = React.useState({}); // prescriptionId -> true
+  const [pending, setPending] = React.useState({}); 
 
-  // ✅ حالة البوب أب (نفس فكرة الصيدلية بس بعنوان/رسالة)
+
+ 
   const [successModal, setSuccessModal] = React.useState(null);
 
-  // ✅ نجيب setPageError من الـ Shell عشان نظهر البانر الأحمر فوق الـ Welcome
   const outletCtx = useOutletContext?.() || {};
   const setPageError = outletCtx.setPageError || (() => {});
 
@@ -69,8 +67,7 @@ export default function DeliveryOrders({ pharmacyId }) {
       setLoading(true);
       setRows([]);
       setMsg("");
-      setPageError(""); // نمسح أي خطأ قديم في البانر
-
+      setPageError(""); 
       const col = collection(db, "prescriptions");
 
       async function runQ(wheres, useOrder = true) {
@@ -123,7 +120,6 @@ export default function DeliveryOrders({ pharmacyId }) {
 
       if (!snap || snap.empty) {
         if (mounted) {
-          // ✅ نفس فكرة PendingOrders لكن للجملة الجديدة
           setMsg("No delivery prescriptions to accept.");
           setRows([]);
           setLoading(false);
@@ -135,7 +131,6 @@ export default function DeliveryOrders({ pharmacyId }) {
         const x = d.data() || {};
         const displayId = x.prescriptionID || d.id;
 
-        // onchainId يجب أن يأتي من Firestore فقط
         let onchainId = null;
         const raw = x.onchainId;
         if (raw !== undefined && raw !== null && String(raw).trim() !== "") {
@@ -146,7 +141,7 @@ export default function DeliveryOrders({ pharmacyId }) {
 
         return {
           _docId: d.id,
-          prescriptionId: displayId, // للعرض فقط
+          prescriptionId: displayId, 
           prescriptionNum: typeof x.prescriptionNum === "number" ? x.prescriptionNum : null,
           onchainId,
           patientName: x.patientName || "-",
@@ -169,10 +164,8 @@ export default function DeliveryOrders({ pharmacyId }) {
         };
       });
 
-      // لا نعرض اللي already acceptDelivery = true
       const filtered = rawData.filter((r) => !r.acceptDelivery);
 
-      // ترتيب إضافي (اختياري)
       filtered.sort((a, b) => {
         const aTime = a.createdAtTS instanceof Date ? a.createdAtTS.getTime() : 0;
         const bTime = b.createdAtTS instanceof Date ? b.createdAtTS.getTime() : 0;
@@ -182,7 +175,7 @@ export default function DeliveryOrders({ pharmacyId }) {
           typeof a.prescriptionNum === "number"
             ? a.prescriptionNum
             : (() => {
-                const n = Number(a.prescriptionId?.toString().replace(/^[a-z]/i, "")); // يشيل أول حرف لو موجود
+                const n = Number(a.prescriptionId?.toString().replace(/^[a-z]/i, "")); 
                 return Number.isNaN(n) ? 0 : n;
               })();
 
@@ -190,7 +183,7 @@ export default function DeliveryOrders({ pharmacyId }) {
           typeof b.prescriptionNum === "number"
             ? b.prescriptionNum
             : (() => {
-                const n = Number(b.prescriptionId?.toString().replace(/^[a-z]/i, "")); // يشيل أول حرف لو موجود
+                const n = Number(b.prescriptionId?.toString().replace(/^[a-z]/i, "")); 
                 return Number.isNaN(n) ? 0 : n;
               })();
 
@@ -216,19 +209,17 @@ export default function DeliveryOrders({ pharmacyId }) {
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = rows.slice(start, end);
 
-  // ======== تهيئة العقد عبر Ethers ========
   function getDeliveryAcceptProvider() {
     if (!window.ethereum) throw new Error("MetaMask is not available");
     return new ethers.BrowserProvider(window.ethereum);
   }
 
-  // ======== حدث زر Accept ========
   async function handleAccept(r) {
     const key = String(r.prescriptionId);
     if (pending[key]) return;
 
     setPending((s) => ({ ...s, [key]: true }));
-    setPageError(""); // نمسح الخطأ قبل ما نبدأ محاولة جديدة
+    setPageError(""); 
 
     try {
       const ref = doc(db, "prescriptions", r._docId);
@@ -238,7 +229,6 @@ export default function DeliveryOrders({ pharmacyId }) {
       const freshData = fresh.data();
 
       if (freshData.dispensed === true) {
-        // لسه نخليه Alert لأنه حالة مختلفة عن متاماسك
         alert("This prescription was already dispensed. You cannot accept delivery.");
         setRows((arr) => arr.filter((x) => x._docId !== r._docId));
         return;
@@ -249,7 +239,6 @@ export default function DeliveryOrders({ pharmacyId }) {
         return;
       }
 
-      // لو عندنا onchainId نستدعي العقد، لو ما عندنا نكمل بدون بلوك تشين
       let txHash = null;
       if (r.onchainId != null) {
         const provider = getDeliveryAcceptProvider();
@@ -262,7 +251,6 @@ export default function DeliveryOrders({ pharmacyId }) {
         txHash = tx.hash;
       }
 
-      // ✅ نحدّث Firestore -> acceptDelivery فقط (dispensed تبقى false)
       const updatePayload = {
         acceptDelivery: true,
         acceptDeliveryAt: serverTimestamp(),
@@ -278,7 +266,6 @@ export default function DeliveryOrders({ pharmacyId }) {
 
       console.log("Marked acceptDelivery", txHash ? "with tx " + txHash : "without on-chain tx");
 
-      // ✅ بوب أب نفس اللي في PendingOrders / PickUpSection
       setSuccessModal({
         title: "Sensitive prescription accepted",
         message: (
@@ -291,13 +278,12 @@ export default function DeliveryOrders({ pharmacyId }) {
     } catch (err) {
       console.error(err);
 
-      // ✅ هنا نضبط رسالة متاماسك بالضبط زي الصفحات الثانية
       let m = "Error occurred. Please try again.";
       if (err?.code === "ACTION_REJECTED" || err?.code === 4001) {
         m = "MetaMask request was declined. Please try again.";
       }
 
-      setPageError(m); // تظهر كبانر أحمر فوق الـ Welcome من الـ Shell
+      setPageError(m); 
     } finally {
       setPending((s) => {
         const t = { ...s };
@@ -322,7 +308,6 @@ export default function DeliveryOrders({ pharmacyId }) {
   return (
     <div className="p-6">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
-        {/* ✅ البوب أب نفس بوب أب الصيدلية بالضبط */}
         {successModal && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
             <div
@@ -363,7 +348,6 @@ export default function DeliveryOrders({ pharmacyId }) {
           </div>
         )}
 
-        {/* الكروت */}
         {pageItems.length > 0 && (
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {pageItems.map((r) => {
@@ -386,7 +370,6 @@ export default function DeliveryOrders({ pharmacyId }) {
 
               return (
                 <div key={r._docId} className="p-4 border rounded-xl bg-white shadow-sm">
-                  {/* محتوى الكارد العلوي */}
                   <div>
                     <div className="text-lg font-bold text-slate-800 truncate">
                       {r.medicineLabel || "—"}
@@ -433,7 +416,6 @@ export default function DeliveryOrders({ pharmacyId }) {
                       </span>
                     </div>
 
-                    {/* مساحة ثابتة للنوتس */}
                     <div className="mt-1 min-h-[28px]">
                       {!!r.notes && (
                         <div className="text-sm text-slate-700 font-semibold">
@@ -443,7 +425,6 @@ export default function DeliveryOrders({ pharmacyId }) {
                     </div>
                   </div>
 
-                  {/* زر Accept تحت النوتس مباشرة */}
                   <div className="mt-1">
                     <button
                       className="w-max px-4 py-2 text-sm rounded-lg transition-colors
@@ -475,7 +456,6 @@ export default function DeliveryOrders({ pharmacyId }) {
                     </button>
                   </div>
 
-                  {/* التاريخ تحت الزر بمسافة بسيطة */}
                   <div className="text-right text-xs text-gray-500 mt-1">
                     Prescription issued on {dateTime}
                   </div>
@@ -485,7 +465,6 @@ export default function DeliveryOrders({ pharmacyId }) {
           </section>
         )}
 
-        {/* ✅ هنا نفس ستايل PendingOrders بالضبط */}
         {total === 0 && (
           <p className="text-gray-600 mt-4">
             {msg || "No delivery prescriptions to accept."}
