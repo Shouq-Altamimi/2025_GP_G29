@@ -1,4 +1,3 @@
-// src/pages/Welcome.jsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -97,9 +96,8 @@ export default function Welcome() {
         </div>
       </header>
 
-      {/* ===== Main Content ===== */}
       <main className="flex-1 flex flex-col relative z-10">
-        {/* ===== FULL-WIDTH PURPLE: Hero + Integrated Ecosystem ===== */}
+        
         <section className="w-full bg-gradient-to-b from-[#F1E4FF] via-[#F7F0FF] to-[#FCFAFF] relative">
           <div className="max-w-6xl mx-auto px-6 md:px-10 py-10 md:py-12 space-y-10">
             {/* Hero */}
@@ -125,7 +123,7 @@ export default function Welcome() {
                 </p>
               </div>
 
-              {/* Feature */}
+
               <div
                 className={`flex flex-wrap justify-center gap-4 mt-6 transition-all duration-700 ${
                   isVisible
@@ -148,7 +146,7 @@ export default function Welcome() {
               </div>
             </section>
 
-            {/* title + description */}
+            
             <section
               className={`text-center space-y-3 transition-all duration-700 ${
                 isVisible
@@ -172,7 +170,6 @@ export default function Welcome() {
             </section>
           </div>
 
-          {/* Wave separator */}
           <div className="w-full -mb-1">
             <svg
               viewBox="0 0 1440 150"
@@ -190,7 +187,6 @@ export default function Welcome() {
 
         <section className="w-full flex justify-center px-6 py-12 bg-white">
           <div className="w-full max-w-6xl space-y-12">
-            {/* Stakeholders Grid */}
             <section
               className={`space-y-8 transition-all duration-700 ${
                 isVisible
@@ -233,7 +229,7 @@ export default function Welcome() {
               </div>
             </section>
 
-            {/* Vision / Goal / Team */}
+            
             <section
               className={`space-y-8 transition-all duration-700 ${
                 isVisible
@@ -241,7 +237,7 @@ export default function Welcome() {
                   : "opacity-0 translate-y-4"
               }`}
             >
-              {/* Vision Card */}
+              
               <div className="group relative p-8 rounded-3xl bg-gradient-to-br from-[#FCFAFE] to-[#F7F3FD] border border-[#D9C7E9] shadow-md hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-1 hover:scale-[1.015]">
                 <div className="absolute top-6 right-6 w-12 h-12 rounded-2xl bg-gradient-to-br from-[#B08CC1]/10 to-[#52B9C4]/10 flex items-center justify-center">
                   <Globe className="w-6 h-6 text-[#4A2C59]" />
@@ -261,7 +257,6 @@ export default function Welcome() {
                 </div>
               </div>
 
-              {/* Goal Card */}
               <div className="group relative p-8 rounded-3xl bg-gradient-to-br from-[#FCFAFE] to-[#F7F3FD] border border-[#D9C7E9] shadow-md hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-1 hover:scale-[1.015]">
                 <div className="absolute top-6 right-6 w-12 h-12 rounded-2xl bg-gradient-to-br from-[#52B9C4]/10 to-[#B08CC1]/10 flex items-center justify-center">
                   <Zap className="w-6 h-6 text-[#4A2C59]" />
@@ -276,7 +271,7 @@ export default function Welcome() {
                 </div>
               </div>
 
-              {/* Team Card */}
+              
               <div className="group relative p-8 rounded-3xl bg-gradient-to-br from-[#FCFAFE] to-[#F7F3FD] border border-[#D9C7E9] shadow-md hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-1 hover:scale-[1.015]">
                 <div className="absolute top-6 right-6 w-12 h-12 rounded-2xl bg-gradient-to-br from-[#4A2C59]/10 to-[#B08CC1]/10 flex items-center justify-center">
                   <GraduationCap className="w-6 h-6 text-[#4A2C59]" />

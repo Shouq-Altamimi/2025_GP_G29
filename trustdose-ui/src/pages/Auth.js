@@ -668,7 +668,7 @@ export default function TrustDoseAuth() {
       }
 
       if (!user) {
-        // Search using all doctor ID fields
+        // Search using all doctor ID 
         for (const f of idFields) {
           try {
             const q = query(collection(db, coll), where(f, "==", id));
@@ -693,7 +693,7 @@ export default function TrustDoseAuth() {
       console.log("🔐 Verifying password for role:", role);
 
       let verified = false;
-      // apply tempPassword for doctors
+      //  tempPassword for doctors
       console.log("LOGIN DEBUG → doctor:", {
         enteredPassword: pass,
         tempPassword: user.tempPassword,

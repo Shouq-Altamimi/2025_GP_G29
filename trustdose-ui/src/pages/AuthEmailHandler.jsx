@@ -81,7 +81,7 @@ export default function AuthEmailHandler() {
         await signInWithEmailLink(auth, email, href);
         console.log("✅ Sign in successful");
 
-        //  التشييك على تكرار الإيميل 
+      
         setStatus("🔍 Checking email...");
         console.log("🔍 Checking if email already exists...");
 
@@ -91,7 +91,7 @@ export default function AuthEmailHandler() {
           const q = query(collection(db, col), where("email", "==", email));
           const snapshot = await getDocs(q);
           
-          // لو لقى الإيميل في مستند غير المستند الحالي
+         
           if (!snapshot.empty && snapshot.docs[0].id !== documentId) {
             console.error(`❌ Email exists in ${col}`);
             setStatus("❌ This email is already registered");
@@ -110,19 +110,19 @@ export default function AuthEmailHandler() {
         setStatus("💾 Saving email...");
         console.log("💾 Updating Firestore...");
 
-        // حفظ الإيميل
+     
         await updateDoc(doc(db, safeCol, documentId), {
           email,
           emailVerifiedAt: serverTimestamp(),
         });
         console.log("✅ Email saved successfully");
 
-        // Sign out
+       
         try {
           await signOut(auth);
         } catch {}
 
-        // Clear localStorage
+       
         try {
           localStorage.removeItem("td_email_pending");
         } catch {}
@@ -165,7 +165,7 @@ export default function AuthEmailHandler() {
     >
       <div className="max-w-md w-full mx-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 text-center border border-gray-100">
-          {/* Logo */}
+         
           <div className="mb-6">
             <img
               src="/Images/TrustDose_logo.png"
@@ -177,7 +177,7 @@ export default function AuthEmailHandler() {
             />
           </div>
 
-          {/* Status message */}
+      
           <div
             className={`text-lg font-medium mb-2 ${
               error ? "text-red-600" : status.includes("✅") ? "text-green-600" : "text-gray-700"
@@ -186,14 +186,13 @@ export default function AuthEmailHandler() {
             {status}
           </div>
 
-          {/* Loading spinner */}
+          
           {!error && !status.includes("✅") && (
             <div className="mt-4">
               <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-purple-600 border-r-transparent"></div>
             </div>
           )}
 
-          {/* Error button */}
           {error && (
             <button
               onClick={() => nav(fallbackRedirect, { replace: true })}

@@ -1,4 +1,4 @@
-// src/App.js
+
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
@@ -6,50 +6,50 @@ import TrustDoseAuth from "./pages/Auth";
 import AdminDashboard from "./pages/AdminDashboard";
 import DoctorHome from "./DoctorHome";
 
-// الطبيب
+
 import Doctor from "./pages/Doctor";
 import Shell from "./pages/DoctorHeader.jsx";
 
-// المريض
+
 import PShell from "./pages/PShell.jsx";
 import Patient from "./pages/Patient";
 import PrescriptionsPage from "./pages/PrescriptionsPage";
 
-// الصيدلية
+
 import PharmacyShell from "./pages/PharmacyShell";
 import Pharmacy from "./pages/pharmacy.jsx";
 import DeliveryOrders from "./pages/DeliveryOrders.jsx";
 import PendingOrders from "./pages/PendingOrders.jsx";
 
-// البريد / إعادة تعيين
+
 import AuthEmailHandler from "./pages/AuthEmailHandler";
 import PasswordReset from "./pages/PasswordReset";
 
-// الحماية بالأدوار
+
 import RequireAuth from "./auth/RequireAuth";
 import Admin from "./pages/Admin";
 
-// اللوجستك
+
 import LogisticsHeader from "./pages/LogisticsHeader.jsx";
 import Logistics from "./pages/Logistics.jsx";
 import LogisticsPending from "./pages/LogisticsPending.jsx";
 
-// صفحة الترحيب
+
 import Welcome from "./pages/Welcome";
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Landing Page */}
+       
         <Route path="/" element={<Welcome />} />
 
-        {/* صفحات عامة */}
+      
         <Route path="/auth" element={<TrustDoseAuth />} />
         <Route path="/auth-email" element={<AuthEmailHandler />} />
         <Route path="/password-reset" element={<PasswordReset />} />
 
-        {/* الأدمن */}
+    
         <Route
           path="/admin"
           element={
@@ -67,7 +67,7 @@ export default function App() {
           }
         />
 
-        {/* الطبيب */}
+      
         <Route
           path="/doctor-home"
           element={
@@ -87,7 +87,7 @@ export default function App() {
           <Route path="/prescriptions" element={<PrescriptionsPage />} />
         </Route>
 
-        {/* المريض */}
+        
         <Route
           path="/patient"
           element={
@@ -100,7 +100,7 @@ export default function App() {
           <Route path="prescriptions" element={<PrescriptionsPage />} />
         </Route>
 
-        {/* الصيدلية */}
+        
         <Route
           path="/pharmacy"
           element={
@@ -122,7 +122,7 @@ export default function App() {
           />
         </Route>
 
-        {/* اللوجستك */}
+       
         <Route
           path="/logistics"
           element={
@@ -136,7 +136,7 @@ export default function App() {
           <Route path="pending" element={<LogisticsPending />} />
         </Route>
 
-        {/* 404 */}
+
         <Route path="*" element={<div style={{ padding: 24 }}>Page not found</div>} />
       </Routes>
     </BrowserRouter>
