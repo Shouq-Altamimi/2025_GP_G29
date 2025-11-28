@@ -36,9 +36,7 @@ import {
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
-/* =========================
-   Auth helper
-   ========================= */
+
 async function ensureAuthReady() {
   const auth = getAuth();
   if (!auth.currentUser) {
@@ -50,9 +48,7 @@ async function ensureAuthReady() {
   return auth;
 }
 
-/* =========================
-   Crypto helpers
-   ========================= */
+
 const enc = new TextEncoder();
 function bytesToHex(arr) {
   return [...new Uint8Array(arr)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -99,7 +95,6 @@ function parseItersFromAlgo(algo) {
 async function verifyPatientPassword(inputPw, docData) {
   const algo = String(docData?.passwordAlgo || "").toUpperCase();
 
-  // PBKDF2
   if (algo.startsWith("PBKDF2") && docData?.passwordHash && docData?.passwordSalt) {
     const iters = Number(docData?.passwordIter) || parseItersFromAlgo(algo) || 100_000;
     const saltBytes = base64ToBytes(docData.passwordSalt);
@@ -107,13 +102,11 @@ async function verifyPatientPassword(inputPw, docData) {
     return derived === docData.passwordHash;
   }
 
-  // SHA-256 hex
   if (docData?.password && /^[a-f0-9]{64}$/i.test(docData.password)) {
     const hex = await sha256Hex(inputPw);
     return hex.toLowerCase() === String(docData.password).toLowerCase();
   }
 
-  // Legacy plain
   if (typeof docData?.password === "string") return inputPw === docData.password;
 
   return false;
@@ -132,9 +125,7 @@ async function buildPBKDF2Update(newPassword, iterations = 100_000) {
   };
 }
 
-/* =========================
-   Data helpers
-   ========================= */
+
 function pickStr(obj, keys) {
   for (const k of keys) {
     const v = obj?.[k];
@@ -177,9 +168,7 @@ function resolvePatientId() {
   return null;
 }
 
-/* =========================
-   PShell (Patient)
-   ========================= */
+
 export default function PShell() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -230,7 +219,6 @@ export default function PShell() {
     })();
   }, []);
 
-  // open My Profile from Patient.jsx alert button
   useEffect(() => {
     const openProfile = () => setShowProfile(true);
     window.addEventListener("openPatientProfile", openProfile);
@@ -253,14 +241,12 @@ export default function PShell() {
         }}
       />
 
-      {/* child routes */}
       <div className="flex-1">
         <Outlet />
       </div>
 
       <Footer />
 
-      {/* Sidebar */}
       {isPatientPage && patientDocId && (
         <>
           <div
@@ -309,7 +295,6 @@ export default function PShell() {
         </>
       )}
 
-      {/* My Profile modal */}
       {showProfile && (
         <PatientProfileModal
           patient={patient}
@@ -321,9 +306,7 @@ export default function PShell() {
   );
 }
 
-/* =========================
-   Shared UI
-   ========================= */
+
 function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
   const base =
     "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
@@ -349,7 +332,6 @@ function Row({ label, value }) {
   );
 }
 
-// PHONE HELPERS (مطابقة للّوجستكس/الدكتور)
 function hasArabic(str) {
   return /[\u0600-\u06FF]/.test(String(str || ""));
 }
@@ -383,9 +365,7 @@ async function isPatientPhoneTaken(phoneNormalized, selfId) {
   return snap.docs.some((d) => d.id !== selfId);
 }
 
-/* =========================
-   My Profile modal
-   ========================= */
+
 function PatientProfileModal({ patient, patientDocId, onClose }) {
   const P = {
     fullName: patient?.fullName || "—",
@@ -522,7 +502,6 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
     try {
       const info = validateAndNormalizePhone(phone);
 
-      // 1) فورمات غلط
       if (!info.ok) {
         setPhoneError(
           info.reason ||
@@ -532,14 +511,12 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
         return;
       }
 
-      // 2) ما لقينا مريض
       if (!patientDocId) {
         setPhoneError("We couldn’t find your patient record. Please try again.");
         setPhone("+966");
         return;
       }
 
-      // 3) نفس الرقم القديم
       if (info.normalized === initialPhone) {
         setPhoneError(
           "The phone number you entered is already saved on your profile."
@@ -548,7 +525,6 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
         return;
       }
 
-      // 4) رقم مستخدم من مريض آخر
       const taken = await isPatientPhoneTaken(info.normalized, patientDocId);
       if (taken) {
         setPhoneError(
@@ -558,7 +534,6 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
         return;
       }
 
-      // 5) كل شيء تمام → حفظ
       await updateDoc(doc(db, "patients", patientDocId), {
   phone: info.normalized,
   updatedAt: new Date(),
@@ -608,7 +583,6 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
               <Row label="Full Name" value={P.fullName} />
               <Row label="National ID" value={P.nationalId} />
 
-              {/* ===== PHONE BLOCK (مطابق للوجستكس/الدكتور) ===== */}
               <div className="mt-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-gray-700 font-medium">Phone</span>
@@ -796,7 +770,6 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
             </div>
           </div>
 
-          {/* Email block */}
           <div className="rounded-xl border bg-white p-4 mb-4">
             <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
               Email
@@ -907,9 +880,7 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
   );
 }
 
-/* =========================
-   Password Section (checklist + strength on typing)
-   ========================= */
+
 function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
@@ -1058,7 +1029,6 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
       </div>
 
       <div className="space-y-3">
-        {/* Current */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             Current Password <span className="text-rose-600">*</span>
@@ -1083,7 +1053,6 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           </div>
         </div>
 
-        {/* New */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             New Password <span className="text-rose-600">*</span>
@@ -1139,7 +1108,6 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           )}
         </div>
 
-        {/* Confirm */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             Confirm New Password <span className="text-rose-600">*</span>
@@ -1171,7 +1139,6 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           )}
         </div>
 
-        {/* Status */}
         {msg && (
           <div
             className={`p-3 rounded-lg text-sm ${
@@ -1184,7 +1151,6 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           </div>
         )}
 
-        {/* Submit */}
         <button
           onClick={doUpdate}
           disabled={

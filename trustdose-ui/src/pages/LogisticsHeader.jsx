@@ -148,7 +148,6 @@ function validateAndNormalizePhone(raw) {
 async function verifyCurrentPassword(docData, inputPwd) {
   const cur = String(inputPwd ?? "").trim();
 
-  // tempPassword (plaintext)
   if (docData?.tempPassword?.valid && docData?.tempPassword?.value) {
     if (cur === String(docData.tempPassword.value)) {
       return { ok: true, mode: "TEMP" };
@@ -221,7 +220,6 @@ function AlertBanner({ children }) {
   );
 }
 
-/* ============ Email helpers ============ */
 
 const ALL_USER_COLLECTIONS = [
   "doctors",
@@ -284,7 +282,6 @@ async function isEmailTakenGlobally(email, selfCollection, selfDocId) {
   return false;
 }
 
-/* ============ main layout ============ */
 
 export default function LogisticsHeader() {
   const location = useLocation();
@@ -345,7 +342,6 @@ export default function LogisticsHeader() {
         }}
       />
 
-      {/* Alert: verify email only */}
       {showEmailAlert && (
         <AlertBanner>
           ⚠️ Please verify your email so you can change your password later.{" "}
@@ -364,7 +360,6 @@ export default function LogisticsHeader() {
 
       <Footer />
 
-      {/* Sidebar drawer */}
       {isLogisticsPage && docId && (
         <>
           <div
@@ -453,7 +448,6 @@ export default function LogisticsHeader() {
   );
 }
 
-/* ============ small components ============ */
 
 function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
   const base =
@@ -481,9 +475,7 @@ function Row({ label, value }) {
   );
 }
 
-/* =========================
-   Account modal (Logistics)
-   ========================= */
+
 
 function AccountModal({ user, docId, onClose, onSaved }) {
   const [phone, setPhone] = useState(user?.phone || "");
@@ -574,7 +566,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
     }
   }
 
-  // EMAIL STATE
   const [emailInput, setEmailInput] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
@@ -584,7 +575,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
     try {
       setEmailMsg("");
 
-      // 1) pattern + domain check
       const v = validateTrustDoseEmail(emailInput);
       if (!v.ok) {
         setEmailMsg(v.reason || "Please enter a valid email.");
@@ -592,7 +582,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
       }
       const email = v.email;
 
-      // 2) global uniqueness (كل الأدوار)
       const taken = await isEmailTakenGlobally(email, "logistics", docId);
       if (taken) {
         setEmailMsg(
@@ -601,7 +590,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
         return;
       }
 
-      // 3) send Firebase verification link
       const BASE = window.location.origin;
       const params = new URLSearchParams({
         col: "logistics",
@@ -617,7 +605,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
       setEmailLoading(true);
       await sendSignInLinkToEmail(getAuth(), email, settings);
 
-      // نحفظ الإيميل مؤقت في localStorage فقط
       localStorage.setItem(
         "td_email_pending",
         JSON.stringify({ email, ts: Date.now() })
@@ -647,7 +634,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
       <div className="fixed inset-0 bg-black/40 z-50" onClick={onClose} />
       <div className="fixed inset-0 z-50 grid place-items-center px-4 overflow-y-auto py-8">
         <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border p-5">
-          {/* Title */}
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-semibold" style={{ color: C.ink }}>
               My Profile
@@ -662,7 +648,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
           </div>
 
           <div className="space-y-5 text-sm" aria-live="polite">
-            {/* Logistics Details */}
             <div className="rounded-xl border bg-white p-4">
               <div
                 className="text-base font-semibold mb-2"
@@ -677,7 +662,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
               </div>
             </div>
 
-            {/* Contact Info: Phone + Email */}
             <div className="rounded-xl border bg-white p-4">
               <div
                 className="text-base font-semibold mb-2"
@@ -686,7 +670,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
                 Contact Info
               </div>
 
-              {/* Phone */}
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-gray-700 font-medium">Phone</span>
@@ -877,7 +860,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
                 )}
               </div>
 
-              {/* Email */}
               <div>
                 <div className="mb-1 text-gray-700 font-medium">Email</div>
 
@@ -938,7 +920,6 @@ function AccountModal({ user, docId, onClose, onSaved }) {
               </div>
             </div>
 
-            {/* Password (only if email exists) */}
             {hasEmail && (
               <PasswordResetSection
                 user={user}
@@ -953,9 +934,7 @@ function AccountModal({ user, docId, onClose, onSaved }) {
   );
 }
 
-/* =========================
-   Password Reset (Logistics)
-   ========================= */
+
 
 function PasswordResetSection({ user, docId, onSaved }) {
   const [showOld, setShowOld] = useState(false);
@@ -1115,7 +1094,6 @@ function PasswordResetSection({ user, docId, onSaved }) {
       </div>
 
       <div className="space-y-3">
-        {/* Current */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             Current Password <span className="text-rose-600">*</span>
@@ -1140,7 +1118,6 @@ function PasswordResetSection({ user, docId, onSaved }) {
           </div>
         </div>
 
-        {/* New */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             New Password <span className="text-rose-600">*</span>
@@ -1196,7 +1173,6 @@ function PasswordResetSection({ user, docId, onSaved }) {
           )}
         </div>
 
-        {/* Confirm */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             Confirm New Password <span className="text-rose-600">*</span>
