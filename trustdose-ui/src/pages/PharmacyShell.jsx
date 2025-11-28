@@ -8,13 +8,31 @@ import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
 import { db } from "../firebase.js";
 import {
-  collection, doc, getDoc, getDocs,
-  query, where, limit as fsLimit,
-  updateDoc, deleteField, serverTimestamp,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  limit as fsLimit,
+  updateDoc,
+  deleteField,
+  serverTimestamp,
 } from "firebase/firestore";
 import {
-  ClipboardList, PackageCheck, Clock, User, LogOut, X,
-  Eye, EyeOff, Lock, CheckCircle, XCircle, Circle, AlertCircle
+  ClipboardList,
+  PackageCheck,
+  Clock,
+  User,
+  LogOut,
+  X,
+  Eye,
+  EyeOff,
+  Lock,
+  CheckCircle,
+  XCircle,
+  Circle,
+  AlertCircle,
 } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
@@ -32,33 +50,48 @@ function pickStr(obj, keys) {
 async function sha256Hex(str) {
   const data = new TextEncoder().encode(String(str));
   const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 async function pbkdf2Hex(password, saltB64, iter = 100000) {
   const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(String(password)), "PBKDF2", false, ["deriveBits"]);
-  const salt = Uint8Array.from(atob(String(saltB64)), c => c.charCodeAt(0));
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(String(password)),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const salt = Uint8Array.from(atob(String(saltB64)), (c) => c.charCodeAt(0));
   const bits = await crypto.subtle.deriveBits(
     { name: "PBKDF2", hash: "SHA-256", salt, iterations: Number(iter) || 100000 },
     keyMaterial,
     256
   );
-  return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(bits))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 function randomSaltB64(len = 16) {
   const buf = new Uint8Array(len);
   crypto.getRandomValues(buf);
   return btoa(String.fromCharCode(...buf));
 }
-const isHex64 = s => typeof s === "string" && /^[a-f0-9]{64}$/i.test(s);
+const isHex64 = (s) => typeof s === "string" && /^[a-f0-9]{64}$/i.test(s);
 
+/* === verifyCurrentPassword (اللي كان ناقص) === */
 async function verifyCurrentPassword(docData, inputPwd) {
   const cur = String(inputPwd ?? "").trim();
 
+  // 1) tempPassword (لو لسه ما تغيّر الباسوورد)
   if (docData?.tempPassword?.valid && docData?.tempPassword?.value) {
-    if (cur === String(docData.tempPassword.value)) return { ok: true, mode: "TEMP" };
+    if (cur === String(docData.tempPassword.value)) {
+      return { ok: true, mode: "TEMP" };
+    }
   }
 
+  // 2) المخطط الجديد PBKDF2-SHA256
   if (
     docData?.passwordAlgo === "PBKDF2-SHA256" &&
     docData?.passwordSalt &&
@@ -66,14 +99,22 @@ async function verifyCurrentPassword(docData, inputPwd) {
     docData?.passwordHash
   ) {
     const h = await pbkdf2Hex(cur, docData.passwordSalt, docData.passwordIter);
-    if (h === String(docData.passwordHash)) return { ok: true, mode: "PBKDF2" };
+    if (h === String(docData.passwordHash)) {
+      return { ok: true, mode: "PBKDF2" };
+    }
   }
 
+  // 3) legacy: hash في passwordHash بدون salt
   if (docData?.passwordHash && !docData?.passwordSalt) {
     const h = await sha256Hex(cur);
-    if (h === String(docData.passwordHash)) return { ok: true, mode: "SHA256_LEGACY_hashField" };
+    if (h === String(docData.passwordHash)) {
+      return { ok: true, mode: "SHA256_LEGACY_hashField" };
+    }
   }
 
+  // 4) legacy: حقل password نفسه يمكن يكون:
+  //    - يا hex sha256
+  //    - يا plaintext قديم
   if (docData?.password) {
     const p = String(docData.password);
     if (isHex64(p)) {
@@ -87,42 +128,69 @@ async function verifyCurrentPassword(docData, inputPwd) {
   return { ok: false };
 }
 
-function normalizePharmacy(raw) {
-  if (!raw) return null;
-  return {
-    name: pickStr(raw, ["name"]),
-    pharmacyName: pickStr(raw, ["pharmacyName", "name"]),
+/* ===== phone helpers (مطابقة للدكتور/اللوجستكس) ===== */
+function hasArabic(str) {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
+    String(str || "")
+  );
+}
 
-    PharmacyID: pickStr(raw, ["PharmacyID"]),
-    BranchID: pickStr(raw, ["BranchID"]),
-    address: pickStr(raw, ["address"]),
-    phone: pickStr(raw, ["phone"]),
-    email: pickStr(raw, ["email"]),
+function toEnglishDigits(s) {
+  if (!s) return "";
+  let out = "";
+  for (const ch of String(s)) {
+    const code = ch.charCodeAt(0);
+    if (code >= 0x0660 && code <= 0x0669) out += String(code - 0x0660);
+    else if (code >= 0x06f0 && code <= 0x06f9) out += String(code - 0x06f0);
+    else out += ch;
+  }
+  return out;
+}
 
-    requirePasswordChange: raw?.requirePasswordChange ?? false,
-    passwordUpdatedAt: raw?.passwordUpdatedAt ?? null,
-
-    // legacy / new password fields:
-    password: raw?.password || "",
-    passwordHash: raw?.passwordHash || "",
-    passwordSalt: raw?.passwordSalt || "",
-    passwordIter: raw?.passwordIter || 0,
-    passwordAlgo: raw?.passwordAlgo || "",
-    tempPassword: raw?.tempPassword || null,
-  };
+function isDigitsLike(s) {
+  return /^\+?\d+$/.test(s || "");
 }
 
 function validateAndNormalizePhone(raw) {
-  const original = String(raw || "").trim();
-  if (/\s/.test(original)) return { ok: false, reason: "No spaces allowed." };
-  if (/[٠-٩۰-۹]/.test(original)) return { ok: false, reason: "English digits only (0–9)." };
-  if (!/^\+?[0-9]+$/.test(original)) return { ok: false, reason: "Digits 0–9 only (and optional leading +)." };
-  if (/^05\d{8}$/.test(original)) return { ok: true, normalized: `+9665${original.slice(2)}` };
-  if (/^\+9665\d{8}$/.test(original)) return { ok: true, normalized: original };
-  return { ok: false, reason: "Must start with 05 or +9665 followed by 8 digits." };
+  const original = String(raw || "");
+
+  if (hasArabic(original)) {
+    return { ok: false, reason: "Arabic characters not allowed." };
+  }
+
+  if (/\s/.test(original)) {
+    return { ok: false, reason: "Phone number must not contain spaces." };
+  }
+
+  const cleaned = toEnglishDigits(original).trim();
+  if (!isDigitsLike(cleaned)) {
+    return {
+      ok: false,
+      reason: "Phone should contain digits only (and optional leading +).",
+    };
+  }
+
+  if (/^05\d{8}$/.test(cleaned)) {
+    const last8 = cleaned.slice(2);
+    return { ok: true, normalized: `+9665${last8}` };
+  }
+
+  if (/^\+9665\d{8}$/.test(cleaned)) {
+    return { ok: true, normalized: cleaned };
+  }
+
+  if (/^9665\d{8}$/.test(cleaned)) {
+    const last8 = cleaned.slice(4);
+    return { ok: true, normalized: `+9665${last8}` };
+  }
+
+  return {
+    ok: false,
+    reason: "Phone must start with 05 or +9665 (9 digits after 5).",
+  };
 }
 
-/* ===== Email helpers (مطابقة منطق الدكتور تقريباً) ===== */
+/* ===== Email helpers ===== */
 const COMMON_EMAIL_DOMAINS = [
   "gmail.com",
   "outlook.com",
@@ -138,7 +206,6 @@ function validateTrustDoseEmail(raw) {
   const email = String(raw || "").trim().toLowerCase();
   if (!email) return { ok: false, reason: "Please enter a valid email." };
 
-  // basic pattern
   const match = email.match(/^[^\s@]+@([^\s@]+\.[^\s@]+)$/);
   if (!match) return { ok: false, reason: "Please enter a valid email." };
 
@@ -163,8 +230,7 @@ async function isEmailTakenAnyRole(email, currentDocId) {
     const q = query(collection(db, col), where("email", "==", trimmed));
     const snap = await getDocs(q);
     if (!snap.empty) {
-      // لو فيه أكثر من مستند، تأكد أنه مو نفس الحساب الحالي
-      const conflict = snap.docs.find(d => d.id !== current);
+      const conflict = snap.docs.find((d) => d.id !== current);
       if (conflict) return true;
     }
   }
@@ -192,6 +258,30 @@ function AlertBanner({ children }) {
   );
 }
 
+function normalizePharmacy(raw) {
+  if (!raw) return null;
+  return {
+    name: pickStr(raw, ["name"]),
+    pharmacyName: pickStr(raw, ["pharmacyName", "name"]),
+
+    PharmacyID: pickStr(raw, ["PharmacyID"]),
+    BranchID: pickStr(raw, ["BranchID"]),
+    address: pickStr(raw, ["address"]),
+    phone: pickStr(raw, ["phone"]),
+    email: pickStr(raw, ["email"]),
+
+    requirePasswordChange: raw?.requirePasswordChange ?? false,
+    passwordUpdatedAt: raw?.passwordUpdatedAt ?? null,
+
+    password: raw?.password || "",
+    passwordHash: raw?.passwordHash || "",
+    passwordSalt: raw?.passwordSalt || "",
+    passwordIter: raw?.passwordIter || 0,
+    passwordAlgo: raw?.passwordAlgo || "",
+    tempPassword: raw?.tempPassword || null,
+  };
+}
+
 /* ================= Shell ================= */
 export default function PharmacyShell() {
   const location = useLocation();
@@ -206,7 +296,6 @@ export default function PharmacyShell() {
   const [showEmailAlert, setShowEmailAlert] = useState(false);
   const [showResetAlert, setShowResetAlert] = useState(false);
 
-  // رسالة خطأ قادمة من الصفحات الداخلية
   const [pageError, setPageError] = useState("");
 
   useEffect(() => {
@@ -216,7 +305,6 @@ export default function PharmacyShell() {
       const userPharmacyID = localStorage.getItem("userId");
       if (role !== "pharmacy" || !userPharmacyID) return;
 
-      // try doc by id, then query by PharmacyID
       let snap = await getDoc(doc(db, "pharmacies", String(userPharmacyID)));
       if (!snap.exists()) {
         const qs = await getDocs(
@@ -239,7 +327,6 @@ export default function PharmacyShell() {
     })();
   }, [isPharmacyPage, location.pathname]);
 
-  // كل ما تغيّرت الصفحة نمسح رسالة الخطأ
   useEffect(() => {
     setPageError("");
   }, [location.pathname]);
@@ -250,11 +337,11 @@ export default function PharmacyShell() {
     navigate("/auth");
   }
 
-  const isPickActive  = location.pathname === "/pharmacy" || location.pathname.startsWith("/pharmacy/pickup");
+  const isPickActive =
+    location.pathname === "/pharmacy" || location.pathname.startsWith("/pharmacy/pickup");
   const isDelivActive = location.pathname.startsWith("/pharmacy/delivery");
-  const isPendActive  = location.pathname.startsWith("/pharmacy/pending");
+  const isPendActive = location.pathname.startsWith("/pharmacy/pending");
 
-  // subtitle تحت الـ Welcome
   let subtitleText = "";
   if (isPickActive) {
     subtitleText = "Pick-up orders awaiting patient arrival";
@@ -266,7 +353,12 @@ export default function PharmacyShell() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header hideMenu={false} onMenuClick={() => { if (isPharmacyPage && pharmacyDocId) setOpen(true); }} />
+      <Header
+        hideMenu={false}
+        onMenuClick={() => {
+          if (isPharmacyPage && pharmacyDocId) setOpen(true);
+        }}
+      />
 
       {/* Alerts */}
       {showEmailAlert && (
@@ -331,7 +423,6 @@ export default function PharmacyShell() {
       )}
 
       <div className="flex-1">
-        {/* نمرر setPageError للصفحات الداخلية */}
         <Outlet context={{ setPageError }} />
       </div>
 
@@ -342,7 +433,9 @@ export default function PharmacyShell() {
         <>
           <div
             onClick={() => setOpen(false)}
-            className={`fixed inset-0 z-40 bg-black/40 transition-opacity ${open ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+            className={`fixed inset-0 z-40 bg-black/40 transition-opacity ${
+              open ? "opacity-100" : "opacity-0 pointer-events-none"
+            }`}
           />
           <aside
             className="fixed top-0 left-0 z-50 h-full w-[290px] shadow-2xl"
@@ -367,7 +460,10 @@ export default function PharmacyShell() {
             <nav className="px-3">
               <DrawerItem
                 active={isPickActive}
-                onClick={() => { navigate("/pharmacy"); setOpen(false); }}
+                onClick={() => {
+                  navigate("/pharmacy");
+                  setOpen(false);
+                }}
               >
                 <ClipboardList size={18} />
                 <span>Pick Up Orders</span>
@@ -375,7 +471,10 @@ export default function PharmacyShell() {
 
               <DrawerItem
                 active={isDelivActive}
-                onClick={() => { navigate("/pharmacy/delivery"); setOpen(false); }}
+                onClick={() => {
+                  navigate("/pharmacy/delivery");
+                  setOpen(false);
+                }}
               >
                 <PackageCheck size={18} />
                 <span>Delivery Orders</span>
@@ -383,13 +482,21 @@ export default function PharmacyShell() {
 
               <DrawerItem
                 active={isPendActive}
-                onClick={() => { navigate("/pharmacy/pending"); setOpen(false); }}
+                onClick={() => {
+                  navigate("/pharmacy/pending");
+                  setOpen(false);
+                }}
               >
                 <Clock size={18} />
                 <span>Pending Orders</span>
               </DrawerItem>
 
-              <DrawerItem onClick={() => { setShowAccount(true); setOpen(false); }}>
+              <DrawerItem
+                onClick={() => {
+                  setShowAccount(true);
+                  setOpen(false);
+                }}
+              >
                 <User size={18} />
                 <span>My Profile</span>
               </DrawerItem>
@@ -411,7 +518,8 @@ export default function PharmacyShell() {
           onSaved={(d) => {
             setPharmacy((p) => ({ ...p, ...d }));
             if (d.email) setShowEmailAlert(false);
-            if (d.requirePasswordChange === false || d.passwordUpdatedAt) setShowResetAlert(false);
+            if (d.requirePasswordChange === false || d.passwordUpdatedAt)
+              setShowResetAlert(false);
           }}
         />
       )}
@@ -421,7 +529,8 @@ export default function PharmacyShell() {
 
 /* =============== small components =============== */
 function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
-  const base = "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
+  const base =
+    "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
   const styles = active
     ? "bg-white text-[#5B3A70]"
     : variant === "ghost"
@@ -448,41 +557,62 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
   // Phone
   const [phone, setPhone] = useState(pharmacy?.phone || "");
   const [initialPhone, setInitialPhone] = useState(pharmacy?.phone || "");
-  const [phoneInfo, setPhoneInfo] = useState({ ok: false, reason: "", normalized: "" });
+  const [phoneError, setPhoneError] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
-  const [msgType, setMsgType] = useState(""); // success | error | ""
+  const [msgType, setMsgType] = useState(""); // success | ""
 
   const [editingPhone, setEditingPhone] = useState(false);
   const phoneRef = useRef(null);
-  useEffect(() => { if (editingPhone) setTimeout(() => phoneRef.current?.focus(), 0); }, [editingPhone]);
+  useEffect(() => {
+    if (editingPhone) {
+      setTimeout(() => phoneRef.current?.focus(), 0);
+    }
+  }, [editingPhone]);
 
   useEffect(() => {
     setPhone(pharmacy?.phone || "");
     setInitialPhone(pharmacy?.phone || "");
+    setPhoneError("");
   }, [pharmacy?.phone]);
 
-  useEffect(() => setPhoneInfo(validateAndNormalizePhone(phone)), [phone]);
-
-  const canSave = phoneInfo.ok && !saving && phone !== initialPhone;
+  const phoneInfo = validateAndNormalizePhone(phone || "");
+  const hasTypedPhone = !!phone && phone !== "+966";
   const hasPhone = !!initialPhone;
 
-  async function save() {
-    const pInfo = validateAndNormalizePhone(phone);
-    if (!pInfo.ok) {
-      setMsgType("error");
-      setMsg(pInfo.reason || "Invalid phone.");
+  const canSavePhone =
+    editingPhone &&
+    !saving &&
+    hasTypedPhone &&
+    phone.length === 13 &&
+    phoneInfo.ok &&
+    !phoneError;
+
+  async function isPharmacyPhoneTaken(phoneNormalized, selfDocId) {
+    const snap = await getDocs(
+      query(collection(db, "pharmacies"), where("phone", "==", phoneNormalized), fsLimit(5))
+    );
+    return snap.docs.some((d) => d.id !== selfDocId);
+  }
+
+  async function savePhone() {
+    const info = validateAndNormalizePhone(phone);
+
+    if (!info.ok) {
+      setPhoneError(
+        info.reason || "The phone number you entered isn’t valid. Please check and try again."
+      );
+      setPhone("+966");
       return;
     }
     if (!pharmacyDocId) {
-      setMsgType("error");
-      setMsg("Pharmacy record not found.");
+      setPhoneError("We couldn’t find your pharmacy record. Please try again.");
+      setPhone("+966");
       return;
     }
-
-    if (phone === initialPhone) {
-      setMsgType("error");
-      setMsg("You are already using this phone number.");
+    if (info.normalized === initialPhone) {
+      setPhoneError("The phone number you entered is already saved on your profile.");
+      setPhone("+966");
       return;
     }
 
@@ -490,12 +620,26 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
       setSaving(true);
       setMsg("");
       setMsgType("");
+      setPhoneError("");
 
-      const payload = { phone: pInfo.normalized, updatedAt: new Date(), phoneLocal: deleteField() };
+      const taken = await isPharmacyPhoneTaken(info.normalized, pharmacyDocId);
+      if (taken) {
+        setPhoneError("The phone number you entered is already registered in our system.");
+        setPhone("+966");
+        setSaving(false);
+        return;
+      }
+
+      const payload = {
+        phone: info.normalized,
+        updatedAt: serverTimestamp(),
+        phoneLocal: deleteField(),
+      };
+
       await updateDoc(doc(db, "pharmacies", pharmacyDocId), payload);
-
       setInitialPhone(payload.phone);
       onSaved?.({ phone: payload.phone });
+      setPhoneError("");
       setMsgType("success");
       setMsg("Saved ✓");
       setEditingPhone(false);
@@ -504,8 +648,11 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
         setMsgType("");
       }, 1500);
     } catch (e) {
-      setMsgType("error");
-      setMsg(e?.message || "Failed to save.");
+      console.error(e);
+      setPhoneError(
+        "Something went wrong while saving your phone number. Please try again."
+      );
+      setPhone("+966");
     } finally {
       setSaving(false);
     }
@@ -521,7 +668,6 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
     try {
       setEmailMsg("");
 
-      // 1) تحقق من الفورمات + الدومين
       const v = validateTrustDoseEmail(emailInput);
       if (!v.ok) {
         setEmailMsg(v.reason || "Please enter a valid email.");
@@ -529,14 +675,14 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
       }
       const email = v.email;
 
-      // 2) تأكد أن الإيميل مو مستخدم في أي حساب ثاني
       const taken = await isEmailTakenAnyRole(email, String(pharmacyDocId || ""));
       if (taken) {
-        setEmailMsg("This email is already used by another account. Please use a different email.");
+        setEmailMsg(
+          "This email is already used by another account. Please use a different email."
+        );
         return;
       }
 
-      // 3) إرسال رابط التحقق
       const BASE = window.location.origin;
       const params = new URLSearchParams({
         col: "pharmacies",
@@ -544,20 +690,29 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
         e: email,
         redirect: "/pharmacy",
       });
-      const settings = { url: `${BASE}/auth-email?${params.toString()}`, handleCodeInApp: true };
+      const settings = {
+        url: `${BASE}/auth-email?${params.toString()}`,
+        handleCodeInApp: true,
+      };
       setEmailLoading(true);
       await sendSignInLinkToEmail(getAuth(), email, settings);
 
-      localStorage.setItem("td_email_pending", JSON.stringify({ email, ts: Date.now() }));
-      setEmailMsg("A verification link has been sent to your email. Open it, then return to the app.");
+      localStorage.setItem(
+        "td_email_pending",
+        JSON.stringify({ email, ts: Date.now() })
+      );
+      setEmailMsg(
+        "A verification link has been sent to your email. Open it, then return to the app."
+      );
     } catch (e) {
-      // نعطي رسالة أوضح بدال كود Firebase الخام
       if (e?.code === "auth/too-many-requests" || e?.code === "auth/quota-exceeded") {
         setEmailMsg("Too many verification emails were requested. Please try again later.");
       } else if (e?.code === "auth/invalid-email") {
         setEmailMsg("Please enter a valid email.");
       } else {
-        setEmailMsg(`Firebase: ${e?.code || e?.message || "Unable to send verification link."}`);
+        setEmailMsg(
+          `Firebase: ${e?.code || e?.message || "Unable to send verification link."}`
+        );
       }
     } finally {
       setEmailLoading(false);
@@ -570,7 +725,9 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
       <div className="fixed inset-0 z-50 grid place-items-center px-4 overflow-y-auto py-8">
         <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold" style={{ color: C.ink }}>My Profile</h3>
+            <h3 className="text-lg font-semibold" style={{ color: C.ink }}>
+              My Profile
+            </h3>
             <button
               onClick={onClose}
               className="h-8 w-8 grid place-items-center rounded-lg hover:bg-gray-100"
@@ -580,12 +737,20 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
             </button>
           </div>
 
-          <div className="space-y-5 text-sm">
+          <div className="space-y-5 text-sm" aria-live="polite">
             {/* Pharmacy Info */}
             <div className="rounded-xl border bg-white p-4">
-              <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>Pharmacy Info</div>
+              <div
+                className="text-base font-semibold mb-2"
+                style={{ color: C.ink }}
+              >
+                Pharmacy Info
+              </div>
               <div className="space-y-2">
-                <Row label="Pharmacy" value={pharmacy?.pharmacyName || pharmacy?.name || "—"} />
+                <Row
+                  label="Pharmacy"
+                  value={pharmacy?.pharmacyName || pharmacy?.name || "—"}
+                />
                 <Row label="Pharmacy ID" value={pharmacy?.BranchID || "—"} />
                 <Row label="Address" value={pharmacy?.address || "—"} />
               </div>
@@ -593,15 +758,26 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
 
             {/* Contact Info */}
             <div className="rounded-xl border bg-white p-4">
-              <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>Contact Info</div>
+              <div
+                className="text-base font-semibold mb-2"
+                style={{ color: C.ink }}
+              >
+                Contact Info
+              </div>
 
-              {/* Phone */}
+              {/* Phone block */}
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-gray-700 font-medium">Phone</span>
                   {!editingPhone && (
                     <button
-                      onClick={() => setEditingPhone(true)}
+                      onClick={() => {
+                        setEditingPhone(true);
+                        setPhone("");
+                        setMsg("");
+                        setMsgType("");
+                        setPhoneError("");
+                      }}
                       className="px-3 py-1.5 rounded-lg text-white"
                       style={{ background: C.primary }}
                     >
@@ -615,35 +791,165 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                     {initialPhone || "—"}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      ref={phoneRef}
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="05xxxxxxxx or +9665xxxxxxxx (no spaces)"
-                      inputMode="tel"
-                      pattern="[+0-9]*"
-                      dir="ltr"
-                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
-                      style={{ outlineColor: C.primary }}
-                      onKeyDown={(e) => { if (e.key === " " || /[٠-٩۰-۹]/.test(e.key)) e.preventDefault(); }}
-                    />
-                    <button
-                      onClick={save}
-                      disabled={!canSave}
-                      className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
-                      style={{ background: C.primary }}
-                    >
-                      {saving ? "Saving..." : "Save"}
-                    </button>
-                  </div>
+                  <>
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={phoneRef}
+                        value={phone}
+                        onChange={(e) => {
+                          let val = e.target.value;
+
+                          if (hasArabic(val)) return;
+
+                          val = val.replace(/\s/g, "");
+
+                          if (!val.startsWith("+966")) {
+                            val = "+966" + val.replace(/^\+?966?/, "");
+                          }
+
+                          const afterPrefix = val.slice(4);
+
+                          if (afterPrefix && !/^[0-9]*$/.test(afterPrefix)) return;
+
+                          if (afterPrefix.length > 9) return;
+
+                          setPhone(val);
+                          setMsg("");
+                          setMsgType("");
+                          setPhoneError("");
+                        }}
+                        onPaste={(e) => {
+                          e.preventDefault();
+                          let paste = e.clipboardData.getData("text").trim();
+                          if (hasArabic(paste)) return;
+
+                          paste = paste.replace(/\s/g, "");
+
+                          let local = paste;
+
+                          if (local.startsWith("+966")) {
+                            local = local.slice(4);
+                          } else if (local.startsWith("966")) {
+                            local = local.slice(3);
+                          } else if (local.startsWith("05")) {
+                            local = local.slice(1);
+                          }
+
+                          local = local.replace(/\D/g, "");
+
+                          if (!local.startsWith("5")) {
+                            local = "5" + local.replace(/^5*/, "");
+                          }
+
+                          local = local.slice(0, 9);
+
+                          const finalVal = "+966" + local;
+                          setPhone(finalVal);
+                          setMsg("");
+                          setMsgType("");
+                          setPhoneError("");
+                        }}
+                        placeholder="+966 5xxxxxxxx"
+                        inputMode="tel"
+                        dir="ltr"
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
+                        style={{ outlineColor: C.primary }}
+                        onFocus={() => {
+                          if (!phone || phone === "") {
+                            setPhone("+966");
+                          }
+                        }}
+                        onBlur={() => {
+                          if (phone === "+966") {
+                            setPhone("");
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          const allowedControl = [
+                            "Backspace",
+                            "Delete",
+                            "ArrowLeft",
+                            "ArrowRight",
+                            "Tab",
+                            "Home",
+                            "End",
+                          ];
+
+                          if (e.key === " ") {
+                            e.preventDefault();
+                            return;
+                          }
+
+                          if (allowedControl.includes(e.key)) {
+                            if (
+                              (e.key === "Backspace" || e.key === "Delete") &&
+                              phone.length <= 4
+                            ) {
+                              e.preventDefault();
+                              return;
+                            }
+                            return;
+                          }
+
+                          if (!/^[0-9]$/.test(e.key)) {
+                            e.preventDefault();
+                            return;
+                          }
+
+                          if (phone === "+966" && e.key !== "5") {
+                            e.preventDefault();
+                            return;
+                          }
+
+                          const afterPrefix = phone.slice(4);
+
+                          if (afterPrefix.length >= 9) {
+                            e.preventDefault();
+                            return;
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={savePhone}
+                        disabled={!canSavePhone}
+                        className="px-3 py-2 rounded-lg disabled:opacity-50"
+                        style={{ background: C.primary, color: "#fff" }}
+                      >
+                        {saving ? "Saving..." : "Save"}
+                      </button>
+                    </div>
+
+                    <div className="mt-1 text-xs">
+                      {(!phone || phone === "+966") && (
+                        <span className="text-gray-500">
+                          Enter phone: +966 5xxxxxxxx (9 digits after +966)
+                        </span>
+                      )}
+
+                      {hasTypedPhone && !phoneInfo.ok && (
+                        <span className="text-rose-600">
+                          {phoneInfo.reason ||
+                            "The phone number you entered isn’t valid yet."}
+                        </span>
+                      )}
+
+                      {hasTypedPhone && phoneInfo.ok && !phoneError && (
+                        <span className="text-emerald-700">
+                          ✓ Valid phone number
+                        </span>
+                      )}
+                    </div>
+
+                    {phoneError && (
+                      <div className="mt-1 text-xs text-rose-600">
+                        {phoneError}
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {msgType === "success" && !!msg && (
                   <div className="text-green-700 font-medium mt-2">{msg}</div>
-                )}
-                {msgType === "error" && !!msg && (
-                  <div className="text-rose-700 mt-2">{msg}</div>
                 )}
               </div>
 
@@ -652,10 +958,16 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                 <label className="block text-sm text-gray-700 mb-1">Email</label>
                 {hasEmail ? (
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-gray-800">{pharmacy.email}</span>
+                    <span className="font-medium text-gray-800">
+                      {pharmacy.email}
+                    </span>
                     <span
                       className="text-[12px] px-2 py-0.5 rounded-full border"
-                      style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}
+                      style={{
+                        background: "#F1F8F5",
+                        color: "#166534",
+                        borderColor: "#BBE5C8",
+                      }}
                     >
                       Verified
                     </span>
@@ -683,7 +995,14 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                     {!!emailMsg && (
                       <div
                         className="mt-2 text-sm"
-                        style={{ color: emailMsg.startsWith("Too many") || emailMsg.startsWith("This email") || emailMsg.startsWith("Please enter") ? "#991B1B" : "#166534" }}
+                        style={{
+                          color:
+                            emailMsg.startsWith("Too many") ||
+                            emailMsg.startsWith("This email") ||
+                            emailMsg.startsWith("Please enter")
+                              ? "#991B1B"
+                              : "#166534",
+                        }}
                       >
                         {emailMsg}
                       </div>
@@ -700,25 +1019,6 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                 onSaved={onSaved}
               />
             )}
-          </div>
-
-          {/* أزرار تحت زي ما هي */}
-          <div className="mt-4 flex items-center justify-end gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg border">
-              Cancel
-            </button>
-            <button
-              onClick={() => {
-                // نخلي زر Save العام بس يقفل المودال لو ما في شيء يتحفظ
-                if (!editingPhone) onClose();
-                else save();
-              }}
-              disabled={editingPhone && !canSave}
-              className="px-4 py-2 rounded-lg text-white disabled:opacity-50"
-              style={{ background: C.primary }}
-            >
-              {saving ? "Saving..." : "Save"}
-            </button>
           </div>
         </div>
       </div>
@@ -759,11 +1059,27 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
 
     let label = "Weak";
     let color = "#ef4444";
-    if (score >= 4) { label = "Medium"; color = "#f59e0b"; }
-    if (score >= 5) { label = "Strong"; color = "#10b981"; }
+    if (score >= 4) {
+      label = "Medium";
+      color = "#f59e0b";
+    }
+    if (score >= 5) {
+      label = "Strong";
+      color = "#10b981";
+    }
 
     const width = Math.min(100, Math.round((score / 6) * 100));
-    return { score, label, color, width, hasLower, hasUpper, hasDigit, hasSymbol, len8 };
+    return {
+      score,
+      label,
+      color,
+      width,
+      hasLower,
+      hasUpper,
+      hasDigit,
+      hasSymbol,
+      len8,
+    };
   }
 
   const st = passwordStrength(newPass);
@@ -771,19 +1087,28 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
 
   const handleResetPassword = async () => {
     try {
-      setMsg(""); setMsgType("");
+      setMsg("");
+      setMsgType("");
 
       if (!oldPass || !newPass || !confirmPass) {
-        setMsg("Please fill all fields"); setMsgType("error"); return;
+        setMsg("Please fill all fields");
+        setMsgType("error");
+        return;
       }
       if (!passOk) {
-        setMsg("Please meet all password requirements"); setMsgType("error"); return;
+        setMsg("Please meet all password requirements");
+        setMsgType("error");
+        return;
       }
       if (newPass !== confirmPass) {
-        setMsg("New passwords do not match"); setMsgType("error"); return;
+        setMsg("New passwords do not match");
+        setMsgType("error");
+        return;
       }
       if (oldPass === newPass) {
-        setMsg("New password must be different from old password"); setMsgType("error"); return;
+        setMsg("New password must be different from old password");
+        setMsgType("error");
+        return;
       }
 
       setLoading(true);
@@ -791,13 +1116,19 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
       const ref = doc(db, "pharmacies", pharmacyDocId);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
-        setMsg("Pharmacy record not found"); setMsgType("error"); setLoading(false); return;
+        setMsg("Pharmacy record not found");
+        setMsgType("error");
+        setLoading(false);
+        return;
       }
       const data = snap.data();
 
       const v = await verifyCurrentPassword(data, oldPass);
       if (!v.ok) {
-        setMsg("Current password is incorrect"); setMsgType("error"); setLoading(false); return;
+        setMsg("Current password is incorrect");
+        setMsgType("error");
+        setLoading(false);
+        return;
       }
 
       const salt = randomSaltB64(16);
@@ -816,13 +1147,14 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
         "tempPassword.expiresAtMs": 0,
         "tempPassword.value": deleteField(),
 
-        // cleanup legacy field if exists
         password: deleteField(),
       });
 
       setMsg("Password updated successfully! ✓");
       setMsgType("success");
-      setOldPass(""); setNewPass(""); setConfirmPass("");
+      setOldPass("");
+      setNewPass("");
+      setConfirmPass("");
 
       onSaved?.({ requirePasswordChange: false, passwordUpdatedAt: new Date() });
     } catch (e) {
@@ -894,18 +1226,35 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
             <>
               <div className="mt-3">
                 <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
-                  <div className="h-2 rounded-full transition-all" style={{ width: `${st.width}%`, background: st.color }} />
+                  <div
+                    className="h-2 rounded-full transition-all"
+                    style={{ width: `${st.width}%`, background: st.color }}
+                  />
                 </div>
                 <div className="mt-2 text-sm">
-                  Strength: <span style={{ color: st.color, fontWeight: 700 }}>{st.label}</span>
-                  <span className="text-gray-600"> &nbsp;(min 8 chars, include a–z, A–Z, 0–9)</span>
+                  Strength:{" "}
+                  <span style={{ color: st.color, fontWeight: 700 }}>
+                    {st.label}
+                  </span>
+                  <span className="text-gray-600">
+                    {" "}
+                    &nbsp;(min 8 chars, include a–z, A–Z, 0–9)
+                  </span>
                 </div>
               </div>
               <div className="text-xs mt-1">
-                <div className={`${st.hasUpper ? "text-green-700" : "text-gray-700"}`}>• Uppercase (A–Z)</div>
-                <div className={`${st.hasLower ? "text-green-700" : "text-gray-700"}`}>• Lowercase (a–z)</div>
-                <div className={`${st.hasDigit ? "text-green-700" : "text-gray-700"}`}>• Digit (0–9)</div>
-                <div className={`${st.len8 ? "text-green-700" : "text-gray-700"}`}>• Length ≥ 8</div>
+                <div className={`${st.hasUpper ? "text-green-700" : "text-gray-700"}`}>
+                  • Uppercase (A–Z)
+                </div>
+                <div className={`${st.hasLower ? "text-green-700" : "text-gray-700"}`}>
+                  • Lowercase (a–z)
+                </div>
+                <div className={`${st.hasDigit ? "text-green-700" : "text-gray-700"}`}>
+                  • Digit (0–9)
+                </div>
+                <div className={`${st.len8 ? "text-green-700" : "text-gray-700"}`}>
+                  • Length ≥ 8
+                </div>
               </div>
             </>
           )}
@@ -957,7 +1306,14 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
 
         <button
           onClick={handleResetPassword}
-          disabled={loading || !oldPass || !newPass || !confirmPass || newPass !== confirmPass || !passOk}
+          disabled={
+            loading ||
+            !oldPass ||
+            !newPass ||
+            !confirmPass ||
+            newPass !== confirmPass ||
+            !passOk
+          }
           className="w-full py-2.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-[1.02]"
           style={{ background: C.primary }}
         >
