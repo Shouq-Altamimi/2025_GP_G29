@@ -77,6 +77,28 @@ function randomSaltB64(len = 16) {
 
 const isHex64 = (s) => typeof s === "string" && /^[a-f0-9]{64}$/i.test(s);
 
+function hasArabic(str) {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
+    String(str || "")
+  );
+}
+
+function toEnglishDigits(s) {
+  if (!s) return "";
+  let out = "";
+  for (const ch of String(s)) {
+    const code = ch.charCodeAt(0);
+    if (code >= 0x0660 && code <= 0x0669) out += String(code - 0x0660);
+    else if (code >= 0x06f0 && code <= 0x06f9) out += String(code - 0x06f0);
+    else out += ch;
+  }
+  return out;
+}
+
+function isDigitsLike(s) {
+  return /^\+?\d+$/.test(s || "");
+}
+
 async function verifyCurrentPassword(docData, inputPwd) {
   const cur = String(inputPwd ?? "").trim();
 
@@ -133,49 +155,41 @@ function normalizeDoctor(raw) {
 }
 
 function validateAndNormalizePhone(raw) {
-  const original = String(raw || "").trim();
+  const original = String(raw || "");
 
-  if (original === "") {
-    return { ok: false, reason: "Enter phone number." };
+  if (hasArabic(original)) {
+    return { ok: false, reason: "Arabic characters not allowed." };
   }
 
   if (/\s/.test(original)) {
-    return { ok: false, reason: "No spaces allowed." };
+    return { ok: false, reason: "Phone number must not contain spaces." };
   }
 
-  if (/[٠-٩۰-۹]/.test(original)) {
-    return { ok: false, reason: "English digits only (0–9)." };
+  const cleaned = toEnglishDigits(original).trim();
+  if (!isDigitsLike(cleaned)) {
+    return {
+      ok: false,
+      reason: "Phone should contain digits only (and optional leading +).",
+    };
   }
 
-  if (!/^[0-9]+$/.test(original)) {
-    return { ok: false, reason: "Digits 0–9 only (no + or symbols)." };
-  }
-
-  if (original.startsWith("05")) {
-    if (!/^05\d{8}$/.test(original)) {
-      return {
-        ok: false,
-        reason: "The phone number you entered isn’t valid. It must be 10 digits starting with 05.",
-      };
-    }
-    const last8 = original.slice(2);
+  if (/^05\d{8}$/.test(cleaned)) {
+    const last8 = cleaned.slice(2);
     return { ok: true, normalized: `+9665${last8}` };
   }
 
-  if (original.startsWith("9665")) {
-    if (!/^9665\d{8}$/.test(original)) {
-      return {
-        ok: false,
-        reason: "The phone number you entered isn’t valid. It must be 12 digits starting with 9665.",
-      };
-    }
-    const last8 = original.slice(4);
+  if (/^\+9665\d{8}$/.test(cleaned)) {
+    return { ok: true, normalized: cleaned };
+  }
+
+  if (/^9665\d{8}$/.test(cleaned)) {
+    const last8 = cleaned.slice(4);
     return { ok: true, normalized: `+9665${last8}` };
   }
 
   return {
     ok: false,
-    reason: "The phone number you entered isn’t valid. It must start with 05 or 9665.",
+    reason: "Phone must start with 05 or +9665 (9 digits after 5).",
   };
 }
 
@@ -397,7 +411,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   const [phoneError, setPhoneError] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
-  const [msgType, setMsgType] = useState(""); // success | error | ""
+  const [msgType, setMsgType] = useState(""); 
 
   const [editingPhone, setEditingPhone] = useState(false);
   const phoneRef = useRef(null);
@@ -444,7 +458,15 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
     return doc0.id !== selfId;
   }
 
-  const canSave = editingPhone && !saving && !!phone;
+  const canSave =
+  editingPhone &&
+  !saving &&
+  !!phone &&
+  phone !== "+966" &&
+  phone.length === 13 &&   
+  !phoneError &&
+  phone !== initialPhone;
+
 
   useEffect(() => {
     function onKey(e) {
@@ -617,7 +639,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
 
               {/* Phone block */}
               <div className="mb-4">
-               <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1">
                   <span className="text-gray-700 font-medium">Phone</span>
                   {!editingPhone && (
                     <button
@@ -636,7 +658,6 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                   )}
                 </div>
 
-
                 {!editingPhone ? (
                   <div className="font-medium text-gray-900">
                     {initialPhone || "—"}
@@ -648,26 +669,116 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                         ref={phoneRef}
                         value={phone}
                         onChange={(e) => {
-                          const onlyDigits = e.target.value.replace(/[^0-9]/g, "");
-                          setPhone(onlyDigits);
+                          let val = e.target.value;
+
+                          if (hasArabic(val)) return;
+
+                          val = val.replace(/\s/g, "");
+
+                          if (!val.startsWith("+966")) {
+                            val = "+966" + val.replace(/^\+?966?/, "");
+                          }
+
+                          const afterPrefix = val.slice(4);
+
+                          if (afterPrefix && !/^[0-9]*$/.test(afterPrefix)) return;
+
+                          if (afterPrefix.length > 9) return;
+
+                          setPhone(val);
                           setMsg("");
                           setMsgType("");
                           setPhoneError("");
                         }}
-                        placeholder="05xxxxxxxx (10 digits) or 9665xxxxxxxx (12 digits)"
+                        onPaste={(e) => {
+                          e.preventDefault();
+                          let paste = e.clipboardData.getData("text").trim();
+                          if (hasArabic(paste)) return;
+
+                          paste = paste.replace(/\s/g, "");
+
+                          let local = paste;
+
+                          if (local.startsWith("+966")) {
+                            local = local.slice(4);
+                          } else if (local.startsWith("966")) {
+                            local = local.slice(3);
+                          } else if (local.startsWith("05")) {
+                            local = local.slice(1); // نخليها 5xxxxxxxx
+                          }
+
+                          local = local.replace(/\D/g, "");
+
+                          if (!local.startsWith("5")) {
+                            local = "5" + local.replace(/^5*/, "");
+                          }
+
+                          local = local.slice(0, 9);
+
+                          const finalVal = "+966" + local;
+                          setPhone(finalVal);
+                          setMsg("");
+                          setMsgType("");
+                          setPhoneError("");
+                        }}
+                        placeholder="+966 5xxxxxxxx"
                         inputMode="tel"
-                        pattern="[0-9]*"
-                        maxLength={phone.startsWith("05") ? 10 : 12}
                         dir="ltr"
                         className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
                         style={{ outlineColor: C.primary }}
+                        onFocus={(e) => {
+                          if (!phone || phone === "") {
+                            setPhone("+966");
+                          }
+                        }}
+                        onBlur={(e) => {
+                          if (phone === "+966") {
+                            setPhone("");
+                          }
+                        }}
                         onKeyDown={(e) => {
-                          if (
-                            e.key === " " ||
-                            e.key === "+" ||
-                            /[٠-٩۰-۹]/.test(e.key)
-                          )
+                          const allowedControl = [
+                            "Backspace",
+                            "Delete",
+                            "ArrowLeft",
+                            "ArrowRight",
+                            "Tab",
+                            "Home",
+                            "End",
+                          ];
+
+                          if (e.key === " ") {
                             e.preventDefault();
+                            return;
+                          }
+
+                          if (allowedControl.includes(e.key)) {
+                            if (
+                              (e.key === "Backspace" || e.key === "Delete") &&
+                              phone.length <= 4
+                            ) {
+                              e.preventDefault();
+                              return;
+                            }
+                            return;
+                          }
+
+                          if (!/^[0-9]$/.test(e.key)) {
+                            e.preventDefault();
+                            return;
+                          }
+
+                          if (phone === "+966" && e.key !== "5") {
+                            e.preventDefault();
+                            return;
+                          }
+
+                          const afterPrefix = phone.slice(4);
+
+                          if (afterPrefix.length >= 9) {
+                            e.preventDefault();
+                            return;
+                          }
                         }}
                       />
                       <button
