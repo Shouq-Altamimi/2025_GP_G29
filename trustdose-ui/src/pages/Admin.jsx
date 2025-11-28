@@ -690,7 +690,7 @@ export default function Admin() {
                     <tr>
                       <th className="text-left px-4 py-3">Name</th>
                       {fPatients.flags.hasNationalId && (
-                        <th className="text-left px-4 py-3">National ID / Hash</th>
+                        <th className="text-left px-4 py-3">National ID</th>
                       )}
                       {fPatients.flags.hasEmail && (
                         <th className="text-left px-4 py-3">Email</th>
@@ -999,7 +999,7 @@ export default function Admin() {
                   <thead className="bg-gray-50 text-gray-600">
                     <tr>
                       <th className="text-left px-4 py-3">Access ID</th>
-                      <th className="text-left px-4 py-3">Company / Name</th>
+                      <th className="text-left px-4 py-3">Company Name</th>
                       {fLogs.flags.hasContact && (
                         <th className="text-left px-4 py-3">Contact</th>
                       )}
