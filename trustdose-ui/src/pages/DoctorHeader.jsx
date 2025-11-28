@@ -226,10 +226,9 @@ async function isEmailTakenAnyRole(email, currentDocId) {
   for (const col of collectionsList) {
     const q = query(collection(db, col), where("email", "==", trimmed));
     const snap = await getDocs(q);
-    if (!snap.empty) {
-      const conflict = snap.docs.find((d) => d.id !== current);
-      if (conflict) return true;
-    }
+    if (snap.empty) continue;
+    const conflict = snap.docs.find((d) => d.id !== current);
+    if (conflict) return true;
   }
   return false;
 }
@@ -426,7 +425,7 @@ function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
     ? "bg-white text-[#5B3A70]"
     : variant === "ghost"
     ? "text-white/90 hover:bg-white/10"
-    : "bg-white/25 text-white hover:bg-white/35";
+    : "bg-white/25 text-white hover:bg:white/35";
   return (
     <button onClick={onClick} className={`${base} ${styles}`}>
       {children}
@@ -452,10 +451,13 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   const [phoneError, setPhoneError] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
-  const [msgType, setMsgType] = useState(""); 
+  const [msgType, setMsgType] = useState("");
 
   const [editingPhone, setEditingPhone] = useState(false);
   const phoneRef = useRef(null);
+
+  const phoneInfo = validateAndNormalizePhone(phone || "");
+  const hasTypedPhone = !!phone && phone !== "+966";
 
   useEffect(() => {
     if (editingPhone) {
@@ -470,25 +472,10 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   }, [doctor?.phone]);
 
   async function isDoctorPhoneTaken(phoneNormalized, selfDoctorDocId) {
-    const [docSnap, patSnap, pharmSnap, logSnap] = await Promise.all([
-      getDocs(
-        query(collection(db, "doctors"), where("phone", "==", phoneNormalized), fsLimit(5))
-      ),
-      getDocs(
-        query(collection(db, "patients"), where("phone", "==", phoneNormalized), fsLimit(5))
-      ),
-      getDocs(
-        query(collection(db, "pharmacies"), where("phone", "==", phoneNormalized), fsLimit(5))
-      ),
-      getDocs(
-        query(collection(db, "logistics"), where("phone", "==", phoneNormalized), fsLimit(5))
-      ),
-    ]);
-
-    const usedByOtherDoctor = docSnap.docs.some((d) => d.id !== selfDoctorDocId);
-    const usedByOthers = !patSnap.empty || !pharmSnap.empty || !logSnap.empty;
-
-    return usedByOtherDoctor || usedByOthers;
+    const snap = await getDocs(
+      query(collection(db, "doctors"), where("phone", "==", phoneNormalized), fsLimit(5))
+    );
+    return snap.docs.some((d) => d.id !== selfDoctorDocId);
   }
 
   async function isDoctorEmailTaken(emailLower, selfId) {
@@ -500,15 +487,12 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   }
 
   const canSave =
-  editingPhone &&
-  !saving &&
-  !!phone &&
-  phone !== "+966" &&
-  phone.length === 13 &&   
-  !phoneError &&
-  phone !== initialPhone;
-
-
+    editingPhone &&
+    !saving &&
+    hasTypedPhone &&
+    phone.length === 13 && 
+    phoneInfo.ok &&
+    !phoneError;
 
   useEffect(() => {
     function onKey(e) {
@@ -526,14 +510,21 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
         info.reason ||
           "The phone number you entered isn’t valid. Please check and try again."
       );
+      setPhone("+966");
       return;
     }
+
     if (!doctorDocId) {
       setPhoneError("We couldn’t find your doctor record. Please try again.");
+      setPhone("+966");
       return;
     }
+
     if (info.normalized === initialPhone) {
-      setPhoneError("The phone number you entered is already saved on your profile.");
+      setPhoneError(
+        "The phone number you entered is already saved on your profile."
+      );
+      setPhone("+966");
       return;
     }
 
@@ -547,6 +538,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
         setPhoneError(
           "The phone number you entered is already registered in our system."
         );
+        setPhone("+966");
         setSaving(false);
         return;
       }
@@ -572,6 +564,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       setPhoneError(
         "Something went wrong while saving your phone number. Please try again."
       );
+      setPhone("+966");
     } finally {
       setSaving(false);
     }
@@ -753,7 +746,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                           } else if (local.startsWith("966")) {
                             local = local.slice(3);
                           } else if (local.startsWith("05")) {
-                            local = local.slice(1); // نخليها 5xxxxxxxx
+                            local = local.slice(1);
                           }
 
                           local = local.replace(/\D/g, "");
@@ -775,12 +768,12 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                         dir="ltr"
                         className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
                         style={{ outlineColor: C.primary }}
-                        onFocus={(e) => {
+                        onFocus={() => {
                           if (!phone || phone === "") {
                             setPhone("+966");
                           }
                         }}
-                        onBlur={(e) => {
+                        onBlur={() => {
                           if (phone === "+966") {
                             setPhone("");
                           }
@@ -839,6 +832,28 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
                         {saving ? "Saving..." : "Save"}
                       </button>
                     </div>
+
+                    <div className="mt-1 text-xs">
+                      {(!phone || phone === "+966") && (
+                        <span className="text-gray-500">
+                          Enter phone: +966 5xxxxxxxx (9 digits after +966)
+                        </span>
+                      )}
+
+                      {hasTypedPhone && !phoneInfo.ok && (
+                        <span className="text-rose-600">
+                          {phoneInfo.reason ||
+                            "The phone number you entered isn’t valid yet."}
+                        </span>
+                      )}
+
+                      {hasTypedPhone && phoneInfo.ok && !phoneError && (
+                        <span className="text-emerald-700">
+                          ✓ Valid phone number
+                        </span>
+                      )}
+                    </div>
+
                     {phoneError && (
                       <div className="mt-1 text-xs text-rose-600">
                         {phoneError}

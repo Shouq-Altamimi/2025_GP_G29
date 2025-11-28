@@ -1,7 +1,7 @@
 // src/pages/LogisticsHeader.jsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
@@ -35,7 +35,6 @@ import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
-
 function pickStr(obj, keys) {
   for (const k of keys) {
     const v = obj?.[k];
@@ -61,9 +60,7 @@ async function pbkdf2Hex(password, saltB64, iter = 100000) {
     false,
     ["deriveBits"]
   );
-  const salt = Uint8Array.from(atob(String(saltB64)), (c) =>
-    c.charCodeAt(0)
-  );
+  const salt = Uint8Array.from(atob(String(saltB64)), (c) => c.charCodeAt(0));
   const bits = await crypto.subtle.deriveBits(
     {
       name: "PBKDF2",
@@ -87,6 +84,67 @@ function randomSaltB64(len = 16) {
 
 const isHex64 = (s) => typeof s === "string" && /^[a-f0-9]{64}$/i.test(s);
 
+function hasArabic(str) {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
+    String(str || "")
+  );
+}
+
+function toEnglishDigits(s) {
+  if (!s) return "";
+  let out = "";
+  for (const ch of String(s)) {
+    const code = ch.charCodeAt(0);
+    if (code >= 0x0660 && code <= 0x0669) out += String(code - 0x0660);
+    else if (code >= 0x06f0 && code <= 0x06f9) out += String(code - 0x06f0);
+    else out += ch;
+  }
+  return out;
+}
+
+function isDigitsLike(s) {
+  return /^\+?\d+$/.test(s || "");
+}
+
+function validateAndNormalizePhone(raw) {
+  const original = String(raw || "");
+
+  if (hasArabic(original)) {
+    return { ok: false, reason: "Arabic characters not allowed." };
+  }
+
+  if (/\s/.test(original)) {
+    return { ok: false, reason: "Phone number must not contain spaces." };
+  }
+
+  const cleaned = toEnglishDigits(original).trim();
+  if (!isDigitsLike(cleaned)) {
+    return {
+      ok: false,
+      reason: "Phone should contain digits only (and optional leading +).",
+    };
+  }
+
+  if (/^05\d{8}$/.test(cleaned)) {
+    const last8 = cleaned.slice(2);
+    return { ok: true, normalized: `+9665${last8}` };
+  }
+
+  if (/^\+9665\d{8}$/.test(cleaned)) {
+    return { ok: true, normalized: cleaned };
+  }
+
+  if (/^9665\d{8}$/.test(cleaned)) {
+    const last8 = cleaned.slice(4);
+    return { ok: true, normalized: `+9665${last8}` };
+  }
+
+  return {
+    ok: false,
+    reason: "Phone must start with 05 or +9665 (9 digits after 5).",
+  };
+}
+
 async function verifyCurrentPassword(docData, inputPwd) {
   const cur = String(inputPwd ?? "").trim();
 
@@ -103,11 +161,7 @@ async function verifyCurrentPassword(docData, inputPwd) {
     docData?.passwordIter &&
     docData?.passwordHash
   ) {
-    const h = await pbkdf2Hex(
-      cur,
-      docData.passwordSalt,
-      docData.passwordIter
-    );
+    const h = await pbkdf2Hex(cur, docData.passwordSalt, docData.passwordIter);
     if (h === String(docData.passwordHash)) {
       return { ok: true, mode: "PBKDF2" };
     }
@@ -140,6 +194,7 @@ function normalizeLogistics(raw) {
     companyName: pickStr(raw, ["companyName", "name"]),
     logisticsId: pickStr(raw, ["logisticsId", "LogisticsID", "accessId"]),
     vehicleId: pickStr(raw, ["vehicleId", "VehicleID"]),
+    phone: pickStr(raw, ["phone", "mobile"]),
     email: pickStr(raw, ["email"]),
     requirePasswordChange: raw?.requirePasswordChange ?? false,
     passwordUpdatedAt: raw?.passwordUpdatedAt ?? null,
@@ -166,9 +221,15 @@ function AlertBanner({ children }) {
   );
 }
 
-/* ============ Email / Phone uniqueness helpers ============ */
+/* ============ Email helpers ============ */
 
-const ALL_USER_COLLECTIONS = ["doctors", "patients", "pharmacies", "logistics", "admin"];
+const ALL_USER_COLLECTIONS = [
+  "doctors",
+  "patients",
+  "pharmacies",
+  "logistics",
+  "admin",
+];
 
 async function isEmailTakenGlobally(email, selfCollection, selfDocId) {
   const raw = String(email || "").trim();
@@ -180,30 +241,6 @@ async function isEmailTakenGlobally(email, selfCollection, selfDocId) {
       const qy = query(
         collection(db, col),
         where("email", "==", value),
-        fsLimit(1)
-      );
-      const snap = await getDocs(qy);
-      if (!snap.empty) {
-        const d = snap.docs[0];
-        if (!(col === selfCollection && d.id === selfDocId)) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
-}
-
-async function isPhoneTakenGlobally(phone, selfCollection, selfDocId) {
-  const p = String(phone || "").trim();
-  if (!p) return false;
-
-  const phoneFields = ["phone", "phoneNumber", "mobile", "Mobile", "Phone"];
-  for (const col of ALL_USER_COLLECTIONS) {
-    for (const field of phoneFields) {
-      const qy = query(
-        collection(db, col),
-        where(field, "==", p),
         fsLimit(1)
       );
       const snap = await getDocs(qy);
@@ -420,6 +457,102 @@ function Row({ label, value }) {
    ========================= */
 
 function AccountModal({ user, docId, onClose, onSaved }) {
+  const [phone, setPhone] = useState(user?.phone || "");
+  const [initialPhone, setInitialPhone] = useState(user?.phone || "");
+  const [phoneError, setPhoneError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [msgType, setMsgType] = useState("");
+
+  const [editingPhone, setEditingPhone] = useState(false);
+  const phoneRef = useRef(null);
+
+  const phoneInfo = validateAndNormalizePhone(phone || "");
+  const hasTypedPhone = !!phone && phone !== "+966";
+  const hasPhone = !!initialPhone;
+
+  useEffect(() => {
+    if (editingPhone) {
+      setTimeout(() => phoneRef.current?.focus(), 0);
+    }
+  }, [editingPhone]);
+
+  useEffect(() => {
+    setPhone(user?.phone || "");
+    setInitialPhone(user?.phone || "");
+    setPhoneError("");
+  }, [user?.phone]);
+
+  const canSavePhone =
+    editingPhone &&
+    !saving &&
+    hasTypedPhone &&
+    phone.length === 13 && 
+    phoneInfo.ok &&
+    !phoneError;
+
+  async function savePhone() {
+    const info = validateAndNormalizePhone(phone);
+
+    if (!info.ok) {
+      setPhoneError(
+        info.reason ||
+          "The phone number you entered isn’t valid. Please check and try again."
+      );
+      setPhone("+966");
+      return;
+    }
+
+    if (!docId) {
+      setPhoneError(
+        "We couldn’t find your logistics record. Please try again."
+      );
+      setPhone("+966");
+      return;
+    }
+
+    if (info.normalized === initialPhone) {
+      setPhoneError(
+        "The phone number you entered is already saved on your profile."
+      );
+      setPhone("+966");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setMsg("");
+      setMsgType("");
+
+      const payload = {
+        phone: info.normalized,
+        updatedAt: serverTimestamp(),
+        phoneLocal: deleteField(),
+      };
+
+      await updateDoc(doc(db, "logistics", docId), payload);
+      setInitialPhone(payload.phone);
+      onSaved?.({ phone: payload.phone });
+      setPhoneError("");
+      setMsgType("success");
+      setMsg("Saved ✓");
+      setEditingPhone(false);
+      setTimeout(() => {
+        setMsg("");
+        setMsgType("");
+      }, 1500);
+    } catch (e) {
+      console.error(e);
+      setPhoneError(
+        "Something went wrong while saving your phone number. Please try again."
+      );
+      setPhone("+966");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // EMAIL STATE
   const [emailInput, setEmailInput] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
@@ -500,77 +633,272 @@ function AccountModal({ user, docId, onClose, onSaved }) {
                 className="text-base font-semibold mb-2"
                 style={{ color: C.ink }}
               >
-                Logistics Info
+                  Logistics Provider Info
               </div>
               <div className="space-y-2">
                 <Row label="Company" value={user?.companyName || "—"} />
-                <Row label="Logistics ID" value={user?.logisticsId || "—"} />
+                <Row label="Logistics Provider ID" value={user?.logisticsId || "—"} />
                 <Row label="Vehicle ID" value={user?.vehicleId || "—"} />
               </div>
             </div>
 
-            {/* Email */}
+            {/* Contact Info: Phone + Email */}
             <div className="rounded-xl border bg-white p-4">
               <div
                 className="text-base font-semibold mb-2"
                 style={{ color: C.ink }}
               >
-                Email
+                Contact Info
               </div>
 
-              {hasEmail ? (
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-gray-800">
-                    {user.email}
-                  </span>
-                  <span
-                    className="text-[12px] px-2 py-0.5 rounded-full border"
-                    style={{
-                      background: "#F1F8F5",
-                      color: "#166534",
-                      borderColor: "#BBE5C8",
-                    }}
-                  >
-                    Verified
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <p className="text-gray-600 mb-2"></p>
-                  <div className="flex gap-2">
-                    <input
-                      className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
-                      style={{ outlineColor: C.primary }}
-                      placeholder="name@example.com"
-                      value={emailInput}
-                      onChange={(e) => setEmailInput(e.target.value)}
-                      inputMode="email"
-                    />
+              {/* Phone */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-gray-700 font-medium">Phone</span>
+                  {!editingPhone && (
                     <button
-                      onClick={sendVerifyLink}
-                      disabled={emailLoading}
-                      className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
+                      onClick={() => {
+                        setEditingPhone(true);
+                        setPhone("");
+                        setMsg("");
+                        setMsgType("");
+                        setPhoneError("");
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-white"
                       style={{ background: C.primary }}
                     >
-                      {emailLoading ? "Sending..." : "Send Verify"}
+                      {hasPhone ? "Update" : "Add"}
                     </button>
+                  )}
+                </div>
+
+                {!editingPhone ? (
+                  <div className="font-medium text-gray-900">
+                    {initialPhone || "—"}
                   </div>
-                  {!!emailMsg && (
-                    <div
-                      className="mt-2 text-sm"
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={phoneRef}
+                        value={phone}
+                        onChange={(e) => {
+                          let val = e.target.value;
+
+                          if (hasArabic(val)) return;
+
+                          val = val.replace(/\s/g, "");
+
+                          if (!val.startsWith("+966")) {
+                            val = "+966" + val.replace(/^\+?966?/, "");
+                          }
+
+                          const afterPrefix = val.slice(4);
+
+                          if (afterPrefix && !/^[0-9]*$/.test(afterPrefix))
+                            return;
+
+                          if (afterPrefix.length > 9) return;
+
+                          setPhone(val);
+                          setMsg("");
+                          setMsgType("");
+                          setPhoneError("");
+                        }}
+                        onPaste={(e) => {
+                          e.preventDefault();
+                          let paste = e.clipboardData.getData("text").trim();
+                          if (hasArabic(paste)) return;
+
+                          paste = paste.replace(/\s/g, "");
+
+                          let local = paste;
+
+                          if (local.startsWith("+966")) {
+                            local = local.slice(4);
+                          } else if (local.startsWith("966")) {
+                            local = local.slice(3);
+                          } else if (local.startsWith("05")) {
+                            local = local.slice(1);
+                          }
+
+                          local = local.replace(/\D/g, "");
+
+                          if (!local.startsWith("5")) {
+                            local = "5" + local.replace(/^5*/, "");
+                          }
+
+                          local = local.slice(0, 9);
+
+                          const finalVal = "+966" + local;
+                          setPhone(finalVal);
+                          setMsg("");
+                          setMsgType("");
+                          setPhoneError("");
+                        }}
+                        placeholder="+966 5xxxxxxxx"
+                        inputMode="tel"
+                        dir="ltr"
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
+                        style={{ outlineColor: C.primary }}
+                        onFocus={() => {
+                          if (!phone || phone === "") {
+                            setPhone("+966");
+                          }
+                        }}
+                        onBlur={() => {
+                          if (phone === "+966") {
+                            setPhone("");
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          const allowedControl = [
+                            "Backspace",
+                            "Delete",
+                            "ArrowLeft",
+                            "ArrowRight",
+                            "Tab",
+                            "Home",
+                            "End",
+                          ];
+
+                          if (e.key === " ") {
+                            e.preventDefault();
+                            return;
+                          }
+
+                          if (allowedControl.includes(e.key)) {
+                            if (
+                              (e.key === "Backspace" || e.key === "Delete") &&
+                              phone.length <= 4
+                            ) {
+                              e.preventDefault();
+                              return;
+                            }
+                            return;
+                          }
+
+                          if (!/^[0-9]$/.test(e.key)) {
+                            e.preventDefault();
+                            return;
+                          }
+
+                          if (phone === "+966" && e.key !== "5") {
+                            e.preventDefault();
+                            return;
+                          }
+
+                          const afterPrefix = phone.slice(4);
+
+                          if (afterPrefix.length >= 9) {
+                            e.preventDefault();
+                            return;
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={savePhone}
+                        disabled={!canSavePhone}
+                        className="px-3 py-2 rounded-lg disabled:opacity-50"
+                        style={{ background: C.primary, color: "#fff" }}
+                      >
+                        {saving ? "Saving..." : "Save"}
+                      </button>
+                    </div>
+
+                    <div className="mt-1 text-xs">
+                      {(!phone || phone === "+966") && (
+                        <span className="text-gray-500">
+                          Enter phone: +966 5xxxxxxxx (9 digits after +966)
+                        </span>
+                      )}
+
+                      {hasTypedPhone && !phoneInfo.ok && (
+                        <span className="text-rose-600">
+                          {phoneInfo.reason ||
+                            "The phone number you entered isn’t valid yet."}
+                        </span>
+                      )}
+
+                      {hasTypedPhone && phoneInfo.ok && !phoneError && (
+                        <span className="text-emerald-700">
+                          ✓ Valid phone number
+                        </span>
+                      )}
+                    </div>
+
+                    {phoneError && (
+                      <div className="mt-1 text-xs text-rose-600">
+                        {phoneError}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {msgType === "success" && !!msg && (
+                  <div className="text-green-700 font-medium mt-2">
+                    {msg}
+                  </div>
+                )}
+              </div>
+
+              {/* Email */}
+              <div>
+                <div className="mb-1 text-gray-700 font-medium">Email</div>
+
+                {hasEmail ? (
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-800">
+                      {user.email}
+                    </span>
+                    <span
+                      className="text-[12px] px-2 py-0.5 rounded-full border"
                       style={{
-                        color:
-                          emailMsg.startsWith("Firebase") ||
-                          emailMsg.includes("already used")
-                            ? "#991B1B"
-                            : "#166534",
+                        background: "#F1F8F5",
+                        color: "#166534",
+                        borderColor: "#BBE5C8",
                       }}
                     >
-                      {emailMsg}
+                      Verified
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
+                        style={{ outlineColor: C.primary }}
+                        placeholder="name@example.com"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        inputMode="email"
+                      />
+                      <button
+                        onClick={sendVerifyLink}
+                        disabled={emailLoading}
+                        className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
+                        style={{ background: C.primary }}
+                      >
+                        {emailLoading ? "Sending..." : "Send Verify"}
+                      </button>
                     </div>
-                  )}
-                </>
-              )}
+                    {!!emailMsg && (
+                      <div
+                        className="mt-2 text-sm"
+                        style={{
+                          color:
+                            emailMsg.startsWith("Firebase") ||
+                            emailMsg.includes("already used")
+                              ? "#991B1B"
+                              : "#166534",
+                        }}
+                      >
+                        {emailMsg}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Password (only if email exists) */}
@@ -818,9 +1146,7 @@ function PasswordResetSection({ user, docId, onSaved }) {
                 </div>
                 <div className="mt-2 text-sm">
                   Strength:{" "}
-                  <span
-                    style={{ color: st.color, fontWeight: 700 }}
-                  >
+                  <span style={{ color: st.color, fontWeight: 700 }}>
                     {st.label}
                   </span>
                   <span className="text-gray-600">
