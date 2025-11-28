@@ -111,10 +111,12 @@ export default function AuthEmailHandler() {
         console.log("💾 Updating Firestore...");
 
      
-        await updateDoc(doc(db, safeCol, documentId), {
-          email,
-          emailVerifiedAt: serverTimestamp(),
-        });
+       await updateDoc(doc(db, safeCol, documentId), {
+  email,
+  emailVerifiedAt: serverTimestamp(),
+  updatedAt: serverTimestamp(), 
+});
+
         console.log("✅ Email saved successfully");
 
        

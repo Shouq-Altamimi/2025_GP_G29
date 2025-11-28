@@ -1,6 +1,6 @@
 // src/pages/PShell.jsx
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
@@ -334,80 +334,212 @@ function Row({ label, value }) {
   );
 }
 
+// PHONE HELPERS (same as doctor)
+function hasArabic(str) {
+  return /[\u0600-\u06FF]/.test(String(str || ""));
+}
+
+function toEnglishDigits(s) {
+  if (!s) return "";
+  return s.replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
+}
+
+function isDigitsLike(s) {
+  return /^\+?\d+$/.test(s || "");
+}
+
+function validateAndNormalizePhone(raw) {
+  const original = String(raw || "");
+
+  if (hasArabic(original)) return { ok: false, reason: "Arabic characters not allowed." };
+  if (/\s/.test(original)) return { ok: false, reason: "Phone must not contain spaces." };
+
+  const cleaned = toEnglishDigits(original).trim();
+  if (!isDigitsLike(cleaned)) {
+    return { ok: false, reason: "Phone should contain digits only." };
+  }
+
+  if (/^05\d{8}$/.test(cleaned)) return { ok: true, normalized: "+966" + cleaned.slice(1) };
+  if (/^\+9665\d{8}$/.test(cleaned)) return { ok: true, normalized: cleaned };
+  if (/^9665\d{8}$/.test(cleaned)) return { ok: true, normalized: "+966" + cleaned.slice(3) };
+
+  return { ok: false, reason: "Phone must start with 05 or +9665 (9 digits after 5)." };
+}
+
+async function isPatientPhoneTaken(phoneNormalized, selfId) {
+  const snap = await getDocs(
+    query(collection(db, "patients"), where("phone", "==", phoneNormalized), fsLimit(5))
+  );
+  return snap.docs.some((d) => d.id !== selfId);
+}
+
+
 /* =========================
    My Profile modal
    ========================= */
 function PatientProfileModal({ patient, patientDocId, onClose }) {
+  const P = {
+  fullName: patient?.fullName || "—",
+  nationalId: patient?.nationalId || "—",
+  phone: patient?.phone || "—",
+  email: patient?.email || "",
+  emailVerifiedAt: patient?.emailVerifiedAt || null,
+  gender: patient?.gender || "—",
+  location: patient?.location || "—",
+};
+  const phoneRef = useRef(null);
+  const [msg, setMsg] = useState("");
+  const [msgType, setMsgType] = useState("");
+
+
+  const [editingPhone, setEditingPhone] = useState(false);
+const [phone, setPhone] = useState(P.phone || "");
+const [initialPhone, setInitialPhone] = useState(P.phone || "");
+const [phoneError, setPhoneError] = useState("");
+const [savingPhone, setSavingPhone] = useState(false);
+
+const phoneInfo = validateAndNormalizePhone(phone || "");
+const hasPhone = !!initialPhone;
+const hasTypedPhone = phone && phone !== "+966";
+
+
+const canSavePhone =
+  editingPhone &&
+  !savingPhone &&
+  phone.length === 13 &&
+  phoneInfo.ok &&
+  !phoneError;
+
   const [emailInput, setEmailInput] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
 
-  const P = {
-    fullName: patient?.fullName || "—",
-    nationalId: patient?.nationalId || "—",
-    phone: patient?.phone || "—",
-    email: patient?.email || "",
-    emailVerifiedAt: patient?.emailVerifiedAt || null,
-    gender: patient?.gender || "—",
-    location: patient?.location || "—",
-  };
-
+ 
   const hasEmail = !!P.email;
 
-  // ===== Email uniqueness check (patients collection) =====
-  async function isPatientEmailTaken(emailLower, selfId) {
-    const q1 = query(
-      collection(db, "patients"),
-      where("email", "==", emailLower),
-      fsLimit(1)
+ const COMMON_EMAIL_DOMAINS = [
+  "gmail.com",
+  "outlook.com",
+  "hotmail.com",
+  "yahoo.com",
+  "icloud.com",
+  "live.com",
+  "student.ksu.edu.sa",
+  "ksu.edu.sa",
+];
+
+function validateTrustDoseEmail(raw) {
+  const email = String(raw || "").trim().toLowerCase();
+  if (!email) return { ok: false, reason: "Please enter a valid email." };
+
+  const match = email.match(/^[^\s@]+@([^\s@]+\.[^\s@]+)$/);
+  if (!match) return { ok: false, reason: "Please enter a valid email." };
+
+  const domain = match[1].toLowerCase();
+  if (!COMMON_EMAIL_DOMAINS.includes(domain)) {
+    return {
+      ok: false,
+      reason: "Please enter a valid email (e.g. name@gmail.com or name@outlook.com).",
+    };
+  }
+
+  return { ok: true, email };
+}
+
+async function isEmailTakenAnyRole(email, currentDocId) {
+  const groups = ["doctors", "patients", "pharmacies", "logistics"];
+  for (const g of groups) {
+    const snap = await getDocs(
+      query(collection(db, g), where("email", "==", email))
     );
-    const snap = await getDocs(q1);
-    if (snap.empty) return false;
-    const doc0 = snap.docs[0];
-    // allow if it's the same patient re-sending to the same email
-    return doc0.id !== selfId;
+    const found = snap.docs.find((d) => d.id !== currentDocId);
+    if (found) return true;
+  }
+  return false;
+}
+
+
+async function sendVerifyLink() {
+  try {
+    setEmailMsg("");
+
+    const v = validateTrustDoseEmail(emailInput);
+    if (!v.ok) return setEmailMsg(v.reason);
+
+    const email = v.email;
+
+    const taken = await isEmailTakenAnyRole(email, patientDocId);
+    if (taken) return setEmailMsg("This email is already used by another account. Please use a different email.");
+
+    const auth = await ensureAuthReady();
+
+    const BASE = window.location.origin;
+    const params = new URLSearchParams({
+      col: "patients",
+      doc: patientDocId,
+      e: email,
+      redirect: "/patient",
+      type: "emailVerify",   
+    });
+
+    const settings = {
+      url: `${BASE}/auth-email?${params.toString()}`,
+      handleCodeInApp: true,
+    };
+
+    setEmailLoading(true);
+    await sendSignInLinkToEmail(auth, email, settings);
+
+    localStorage.setItem(
+      "td_email_pending",
+      JSON.stringify({ email, ts: Date.now() })
+    );
+
+    setEmailMsg("Verification email sent.");
+  } catch (e) {
+    setEmailMsg("Failed to send email.");
+  } finally {
+    setEmailLoading(false);
+  }
+}
+
+    
+
+  async function savePhone() {
+  setSavingPhone(true);
+
+  const info = validateAndNormalizePhone(phone);
+
+  if (!info.ok) {
+    setPhoneError(info.reason);
+    setSavingPhone(false);
+    return;
   }
 
-  async function sendVerifyLink() {
-    try {
-      setEmailMsg("");
-      const raw = String(emailInput || "").trim().toLowerCase();
-      const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
-      if (!ok) {
-        setEmailMsg("Please enter a valid email.");
-        return;
-      }
-
-      // prevent duplicates in patients
-      const taken = await isPatientEmailTaken(raw, String(patientDocId || ""));
-      if (taken) {
-        setEmailMsg("This email is already used by another patient. Please use a different email.");
-        return;
-      }
-
-      const auth = await ensureAuthReady();
-
-      const BASE = window.location.origin;
-      const params = new URLSearchParams({
-        col: "patients",
-        doc: String(patientDocId || ""),
-        e: raw,
-        redirect: "/patient",
-      });
-      const settings = {
-        url: `${BASE}/auth-email?${params.toString()}`,
-        handleCodeInApp: true,
-      };
-      setEmailLoading(true);
-      await sendSignInLinkToEmail(auth, raw, settings);
-      localStorage.setItem("td_email_pending", JSON.stringify({ email: raw, ts: Date.now() }));
-      setEmailMsg("A verification link has been sent to your email. Open it, then return to the app.");
-    } catch (e) {
-      setEmailMsg(`Firebase: ${e?.code || e?.message || "Unable to send verification link."}`);
-    } finally {
-      setEmailLoading(false);
-    }
+  if (info.normalized === initialPhone) {
+    setPhoneError("This phone is already saved.");
+    setSavingPhone(false);
+    return;
   }
+
+  const taken = await isPatientPhoneTaken(info.normalized, patientDocId);
+  if (taken) {
+    setPhoneError("This phone number is already used.");
+    setSavingPhone(false);
+    return;
+  }
+
+  await updateDoc(doc(db, "patients", patientDocId), {
+    phone: info.normalized,
+    updatedAt: new Date(),
+  });
+
+  setInitialPhone(info.normalized);
+  setEditingPhone(false);
+  setSavingPhone(false);
+}
+
+
 
   return (
     <>
@@ -437,71 +569,281 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
   <div className="space-y-2 text-sm">
     <Row label="Full Name" value={P.fullName} />
     <Row label="National ID" value={P.nationalId} />
-    <Row label="Phone" value={P.phone} />
+{/* ===== PHONE BLOCK (DOCTOR VERSION COPIED EXACTLY) ===== */}
+<div className="mt-3">
+  <div className="flex items-center justify-between mb-1">
+    <span className="text-gray-700 font-medium">Phone</span>
+
+    {!editingPhone && (
+      <button
+        onClick={() => {
+          setEditingPhone(true);
+          setPhone("");
+          setMsg("");
+          setMsgType("");
+          setPhoneError("");
+        }}
+        className="px-3 py-1.5 rounded-lg text-white"
+        style={{ background: C.primary }}
+      >
+        {hasPhone ? "Update" : "Add"}
+      </button>
+    )}
+  </div>
+
+  {!editingPhone ? (
+    <div className="font-medium text-gray-900">{initialPhone || "—"}</div>
+  ) : (
+    <>
+      <div className="flex items-center gap-2">
+        <input
+          ref={phoneRef}
+          value={phone}
+          onChange={(e) => {
+            let val = e.target.value;
+
+            if (hasArabic(val)) return;
+            val = val.replace(/\s/g, "");
+
+            if (!val.startsWith("+966")) {
+              val = "+966" + val.replace(/^\+?966?/, "");
+            }
+
+            const afterPrefix = val.slice(4);
+
+            if (afterPrefix && !/^[0-9]*$/.test(afterPrefix)) return;
+
+            if (afterPrefix.length > 9) return;
+
+            setPhone(val);
+            setMsg("");
+            setMsgType("");
+            setPhoneError("");
+          }}
+          onPaste={(e) => {
+            e.preventDefault();
+            let paste = e.clipboardData.getData("text").trim();
+            if (hasArabic(paste)) return;
+
+            paste = paste.replace(/\s/g, "");
+
+            let local = paste;
+
+            if (local.startsWith("+966")) {
+              local = local.slice(4);
+            } else if (local.startsWith("966")) {
+              local = local.slice(3);
+            } else if (local.startsWith("05")) {
+              local = local.slice(1);
+            }
+
+            local = local.replace(/\D/g, "");
+
+            if (!local.startsWith("5")) {
+              local = "5" + local.replace(/^5*/, "");
+            }
+
+            local = local.slice(0, 9);
+
+            const finalVal = "+966" + local;
+            setPhone(finalVal);
+            setMsg("");
+            setMsgType("");
+            setPhoneError("");
+          }}
+          placeholder="+966 5xxxxxxxx"
+          inputMode="tel"
+          dir="ltr"
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
+          style={{ outlineColor: C.primary }}
+          onFocus={() => {
+            if (!phone || phone === "") {
+              setPhone("+966");
+            }
+          }}
+          onBlur={() => {
+            if (phone === "+966") {
+              setPhone("");
+            }
+          }}
+          onKeyDown={(e) => {
+            const allowedControl = [
+              "Backspace",
+              "Delete",
+              "ArrowLeft",
+              "ArrowRight",
+              "Tab",
+              "Home",
+              "End",
+            ];
+
+            if (e.key === " ") {
+              e.preventDefault();
+              return;
+            }
+
+            if (allowedControl.includes(e.key)) {
+              if (
+                (e.key === "Backspace" || e.key === "Delete") &&
+                phone.length <= 4
+              ) {
+                e.preventDefault();
+                return;
+              }
+              return;
+            }
+
+            if (!/^[0-9]$/.test(e.key)) {
+              e.preventDefault();
+              return;
+            }
+
+            if (phone === "+966" && e.key !== "5") {
+              e.preventDefault();
+              return;
+            }
+
+            const afterPrefix = phone.slice(4);
+
+            if (afterPrefix.length >= 9) {
+              e.preventDefault();
+              return;
+            }
+          }}
+        />
+
+        <button
+          onClick={savePhone}
+          disabled={!canSavePhone}
+          className="px-3 py-2 rounded-lg disabled:opacity-50"
+          style={{ background: C.primary, color: "#fff" }}
+        >
+          {savingPhone ? "Saving..." : "Save"}
+        </button>
+      </div>
+
+      <div className="mt-1 text-xs">
+        {(!phone || phone === "+966") ? (
+          <span className="text-gray-500">
+            Enter phone: +966 5xxxxxxxx (9 digits after +966)
+          </span>
+        ) : !phoneInfo.ok ? (
+          <span className="text-rose-600">{phoneInfo.reason}</span>
+        ) : (
+          <span className="text-emerald-700">✓ Valid phone number</span>
+        )}
+      </div>
+
+      {phoneError && (
+        <div className="mt-1 text-xs text-rose-600">{phoneError}</div>
+      )}
+    </>
+  )}
+</div>
+
+
+
+
     <Row label="Gender" value={P.gender} />
     <Row label="Location" value={P.location} />
   </div>
 </div>
 
 
-          <div className="rounded-xl border bg-white p-4 mb-4">
-            <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
+       <div className="rounded-xl border bg-white p-4 mb-4">
+  <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
     Email
   </div>
 
-            {hasEmail ? (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="font-medium text-gray-800">{P.email}</span>
-                {P.emailVerifiedAt ? (
-                  <span
-                    className="text-[12px] px-2 py-0.5 rounded-full border"
-                    style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}
-                  >
-                    Verified
-                  </span>
-                ) : (
-                  <span
-                    className="text-[12px] px-2 py-0.5 rounded-full border"
-                    style={{ background: "#FEF2F2", color: "#991B1B", borderColor: "#FECACA" }}
-                  >
-                    Not verified
-                  </span>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="flex gap-2">
-                  <input
-                    className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
-                    style={{ outlineColor: C.primary }}
-                    placeholder="name@example.com"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    inputMode="email"
-                  />
-                  <button
-                    onClick={sendVerifyLink}
-                    disabled={emailLoading}
-                    className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
-                    style={{ background: C.primary }}
-                  >
-                    {emailLoading ? "Sending..." : "Send Verify"}
-                  </button>
-                </div>
+  {hasEmail ? (
+    <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center gap-2">
+        <span className="font-medium text-gray-800">{P.email}</span>
 
-                {!!emailMsg && (
-                  <div
-                    className="mt-2 text-sm"
-                    style={{
-                      color: emailMsg.includes("Firebase") || emailMsg.includes("already used") ? "#991B1B" : "#166534",
-                    }}
-                  >
-                    {emailMsg}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+        {P.emailVerifiedAt ? (
+          <span
+            className="text-[12px] px-2 py-0.5 rounded-full border"
+            style={{
+              background: "#F1F8F5",
+              color: "#166534",
+              borderColor: "#BBE5C8",
+            }}
+          >
+            Verified
+          </span>
+        ) : (
+          <span
+            className="text-[12px] px-2 py-0.5 rounded-full border"
+            style={{
+              background: "#FEF2F2",
+              color: "#991B1B",
+              borderColor: "#FECACA",
+            }}
+          >
+            Not verified
+          </span>
+        )}
+      </div>
+
+      {!P.emailVerifiedAt && (
+        <button
+          onClick={() =>
+            setEmailMsg("Your email is not verified. Please check your inbox.")
+          }
+          className="text-sm text-blue-600 hover:underline"
+        >
+          Check Email
+        </button>
+      )}
+    </div>
+  ) : (
+    <>
+      <div className="flex gap-2">
+        <input
+          className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
+          style={{ outlineColor: C.primary }}
+          placeholder="name@example.com"
+          value={emailInput}
+          onChange={(e) => setEmailInput(e.target.value)}
+          inputMode="email"
+        />
+
+        <button
+          onClick={sendVerifyLink}
+          disabled={emailLoading || !emailInput}
+          className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
+          style={{ background: C.primary }}
+        >
+          {emailLoading ? "Sending..." : "Send Verify"}
+        </button>
+      </div>
+
+      {!!emailMsg && (
+        <div
+          className="mt-2 text-sm"
+          style={{
+            color:
+              emailMsg.includes("valid") ||
+              emailMsg.includes("enter") ||
+              emailMsg.includes("used") ||
+              emailMsg.includes("Failed")
+                ? "#991B1B" // أحمر
+                : "#166534", // أخضر
+          }}
+        >
+          {emailMsg}
+        </div>
+      )}
+    </>
+  )}
+</div>
+
+
+
+          
+              
+
+                
 
           {hasEmail && (
             <PatientPasswordSection patientDocId={patientDocId} onSaved={() => {}} color={C.primary} />    
