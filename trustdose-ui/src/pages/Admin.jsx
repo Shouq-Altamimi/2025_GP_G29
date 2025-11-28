@@ -325,7 +325,7 @@ const normalize = {
   logistics: (id, d) => ({
     id,
     accessId: d.accessId || d.logisticsId || d.LogisticsID || "—",
-    name: d.name || d.company || d.partnerName || "—",
+    name: d.name || d.companyName || d.company || d.partnerName || "—",
     contact: d.contact || d.email || "",
     sla: d.sla || d.SLA || "",
     wallet: d.walletAddress || d.address || "",
