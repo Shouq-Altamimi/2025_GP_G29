@@ -231,6 +231,35 @@ const ALL_USER_COLLECTIONS = [
   "admin",
 ];
 
+const COMMON_EMAIL_DOMAINS = [
+  "gmail.com",
+  "outlook.com",
+  "hotmail.com",
+  "yahoo.com",
+  "icloud.com",
+  "live.com",
+  "student.ksu.edu.sa",
+  "ksu.edu.sa",
+];
+
+function validateTrustDoseEmail(raw) {
+  const email = String(raw || "").trim().toLowerCase();
+  if (!email) return { ok: false, reason: "Please enter a valid email." };
+
+  const match = email.match(/^[^\s@]+@([^\s@]+\.[^\s@]+)$/);
+  if (!match) return { ok: false, reason: "Please enter a valid email." };
+
+  const domain = match[1].toLowerCase();
+  if (!COMMON_EMAIL_DOMAINS.includes(domain)) {
+    return {
+      ok: false,
+      reason: "Please enter a valid email (e.g. name@gmail.com or name@outlook.com).",
+    };
+  }
+
+  return { ok: true, email };
+}
+
 async function isEmailTakenGlobally(email, selfCollection, selfDocId) {
   const raw = String(email || "").trim();
   if (!raw) return false;
@@ -487,7 +516,7 @@ function AccountModal({ user, docId, onClose, onSaved }) {
     editingPhone &&
     !saving &&
     hasTypedPhone &&
-    phone.length === 13 && 
+    phone.length === 13 &&
     phoneInfo.ok &&
     !phoneError;
 
@@ -500,55 +529,48 @@ function AccountModal({ user, docId, onClose, onSaved }) {
           "The phone number you entered isn’t valid. Please check and try again."
       );
       setPhone("+966");
-      return;
-    }
-
-    if (!docId) {
+    } else if (!docId) {
       setPhoneError(
         "We couldn’t find your logistics record. Please try again."
       );
       setPhone("+966");
-      return;
-    }
-
-    if (info.normalized === initialPhone) {
+    } else if (info.normalized === initialPhone) {
       setPhoneError(
         "The phone number you entered is already saved on your profile."
       );
       setPhone("+966");
-      return;
-    }
-
-    try {
-      setSaving(true);
-      setMsg("");
-      setMsgType("");
-
-      const payload = {
-        phone: info.normalized,
-        updatedAt: serverTimestamp(),
-        phoneLocal: deleteField(),
-      };
-
-      await updateDoc(doc(db, "logistics", docId), payload);
-      setInitialPhone(payload.phone);
-      onSaved?.({ phone: payload.phone });
-      setPhoneError("");
-      setMsgType("success");
-      setMsg("Saved ✓");
-      setEditingPhone(false);
-      setTimeout(() => {
+    } else {
+      try {
+        setSaving(true);
         setMsg("");
         setMsgType("");
-      }, 1500);
-    } catch (e) {
-      console.error(e);
-      setPhoneError(
-        "Something went wrong while saving your phone number. Please try again."
-      );
-      setPhone("+966");
-    } finally {
-      setSaving(false);
+
+        const payload = {
+          phone: info.normalized,
+          updatedAt: serverTimestamp(),
+          phoneLocal: deleteField(),
+        };
+
+        await updateDoc(doc(db, "logistics", docId), payload);
+        setInitialPhone(payload.phone);
+        onSaved?.({ phone: payload.phone });
+        setPhoneError("");
+        setMsgType("success");
+        setMsg("Saved ✓");
+        setEditingPhone(false);
+        setTimeout(() => {
+          setMsg("");
+          setMsgType("");
+        }, 1500);
+      } catch (e) {
+        console.error(e);
+        setPhoneError(
+          "Something went wrong while saving your phone number. Please try again."
+        );
+        setPhone("+966");
+      } finally {
+        setSaving(false);
+      }
     }
   }
 
@@ -561,24 +583,30 @@ function AccountModal({ user, docId, onClose, onSaved }) {
   async function sendVerifyLink() {
     try {
       setEmailMsg("");
-      const raw = String(emailInput || "").trim().toLowerCase();
-      const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
-      if (!ok) {
-        setEmailMsg("Please enter a valid email.");
+
+      // 1) pattern + domain check
+      const v = validateTrustDoseEmail(emailInput);
+      if (!v.ok) {
+        setEmailMsg(v.reason || "Please enter a valid email.");
         return;
       }
+      const email = v.email;
 
-      const taken = await isEmailTakenGlobally(raw, "logistics", docId);
+      // 2) global uniqueness (كل الأدوار)
+      const taken = await isEmailTakenGlobally(email, "logistics", docId);
       if (taken) {
-        setEmailMsg("This email is already used in another account.");
+        setEmailMsg(
+          "This email is already used in another account. Please use a different email."
+        );
         return;
       }
 
+      // 3) send Firebase verification link
       const BASE = window.location.origin;
       const params = new URLSearchParams({
         col: "logistics",
         doc: String(docId || ""),
-        e: raw,
+        e: email,
         redirect: "/logistics",
       });
 
@@ -587,21 +615,28 @@ function AccountModal({ user, docId, onClose, onSaved }) {
         handleCodeInApp: true,
       };
       setEmailLoading(true);
-      await sendSignInLinkToEmail(getAuth(), raw, settings);
-      await updateDoc(doc(db, "logistics", docId), { email: raw });
+      await sendSignInLinkToEmail(getAuth(), email, settings);
 
+      // نحفظ الإيميل مؤقت في localStorage فقط
       localStorage.setItem(
         "td_email_pending",
-        JSON.stringify({ email: raw, ts: Date.now() })
+        JSON.stringify({ email, ts: Date.now() })
       );
-      setEmailMsg("Verification link sent! Check your email.");
-      onSaved?.({ email: raw });
-    } catch (e) {
       setEmailMsg(
-        `Firebase: ${
-          e?.code || e?.message || "Unable to send verification link."
-        }`
+        "A verification link has been sent to your email. Open it, then return to the app."
       );
+    } catch (e) {
+      if (e?.code === "auth/too-many-requests" || e?.code === "auth/quota-exceeded") {
+        setEmailMsg("Too many verification emails were requested. Please try again later.");
+      } else if (e?.code === "auth/invalid-email") {
+        setEmailMsg("Please enter a valid email.");
+      } else {
+        setEmailMsg(
+          `Firebase: ${
+            e?.code || e?.message || "Unable to send verification link."
+          }`
+        );
+      }
     } finally {
       setEmailLoading(false);
     }
@@ -633,7 +668,7 @@ function AccountModal({ user, docId, onClose, onSaved }) {
                 className="text-base font-semibold mb-2"
                 style={{ color: C.ink }}
               >
-                  Logistics Provider Info
+                Logistics Provider Info
               </div>
               <div className="space-y-2">
                 <Row label="Company" value={user?.companyName || "—"} />
@@ -887,8 +922,10 @@ function AccountModal({ user, docId, onClose, onSaved }) {
                         className="mt-2 text-sm"
                         style={{
                           color:
-                            emailMsg.startsWith("Firebase") ||
-                            emailMsg.includes("already used")
+                            emailMsg.startsWith("Too many") ||
+                            emailMsg.includes("already used") ||
+                            emailMsg.startsWith("Please enter") ||
+                            emailMsg.startsWith("Firebase")
                               ? "#991B1B"
                               : "#166534",
                         }}
