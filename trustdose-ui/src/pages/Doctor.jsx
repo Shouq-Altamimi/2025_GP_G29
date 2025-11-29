@@ -500,7 +500,7 @@ export default function Doctor() {
                 inputMode="numeric"
                 pattern="[0-9]*"
                 maxLength={10}
-                onChange={(e) => handleQChange(e.target.value)} // ✅ نفس فكرة الصيدلية
+                onChange={(e) => handleQChange(e.target.value)} 
                 onKeyDown={(e) => e.key === "Enter" && runSearch()}
               />
 
