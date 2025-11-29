@@ -316,7 +316,7 @@ export default function DoctorHeader() {
       {/* Alerts */}
       {showEmailAlert && (
         <AlertBanner>
-          ⚠️ Verify your email now — your temporary doctor password expires in 24h.{" "}
+          ⚠️ Verify your email now — your temporary doctor password will expire in 24 hours.{" "}
           <button
             onClick={() => setShowAccount(true)}
             style={{ fontWeight: 700, color: C.primary }}
