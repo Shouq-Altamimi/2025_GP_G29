@@ -766,7 +766,7 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
                     <button
                       onClick={savePhone}
                       disabled={!canSavePhone}
-                      className="px-3 py-1.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+  className="px-3 py-2 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ background: C.primary, color: "#fff" }}
                     >
                       {savingPhone ? "Saving..." : "Save"}
@@ -853,7 +853,7 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
                     <button
                       onClick={sendVerifyLink}
                       disabled={emailLoading}
-                      className="px-2 py-0.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+  className="px-3 py-2 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ background: C.primary }}
                     >
                       {emailLoading ? "Sending..." : "Send Verify"}
