@@ -615,7 +615,7 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
             </div>
           </div>
 
-          <div className="rounded-xl border bg-white p-4 mb-4">
+<div className="rounded-xl border bg-white p-4">
             <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
               Contact Info
             </div>
@@ -1070,7 +1070,6 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           </div>
         </div>
 
-        {/* New */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             New Password <span className="text-rose-600">*</span>
@@ -1124,7 +1123,6 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           )}
         </div>
 
-        {/* Confirm */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             Confirm New Password <span className="text-rose-600">*</span>
@@ -1156,7 +1154,6 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           )}
         </div>
 
-        {/* Status */}
         {msg && (
           <div
             className={`p-3 rounded-lg text-sm ${
@@ -1169,7 +1166,6 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           </div>
         )}
 
-        {/* Submit */}
         <button
           onClick={doUpdate}
           disabled={

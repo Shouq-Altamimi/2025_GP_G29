@@ -690,7 +690,7 @@ export default function PatientPage() {
                                 Logistics Provider Details
                               </div>
 
-                              <Row label="Logistics Provider" value={logistics} />
+<Row label="Logistics Provider" value={logisticsName || logistics || "—"} />
                               <Row label="Logistics Phone" value={logisticsPhone || "—"} />
                             </div>
                           )}
