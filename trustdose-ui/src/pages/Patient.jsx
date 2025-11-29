@@ -12,14 +12,12 @@ import {
   limit as fsLimit,
 } from "firebase/firestore";
 
-
 const DOCTOR_MAP = {
   "0x4F5b09D9940a1fF83463De89BD25C216fBd86E5C": {
     name: "Khalid Altamimi",
     facility: "Dr. Sulaiman Al Habib Hospital",
   },
 };
-
 
 const isNid = (v) => /^\d{10,12}$/.test(String(v || "").trim());
 
@@ -41,7 +39,9 @@ async function sha256HexPrefixed(input) {
   const enc = new TextEncoder();
   const bytes = enc.encode(String(input ?? ""));
   const hash = await crypto.subtle.digest("SHA-256", bytes);
-  const hex = [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const hex = [...new Uint8Array(hash)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
   return "0x" + hex;
 }
 
@@ -72,7 +72,6 @@ async function fetchPatientByFlexibleId(nid) {
   } catch {}
   return null;
 }
-
 
 async function fetchPrescriptionsSmart(foundDocId, nid) {
   const out = new Map();
@@ -115,7 +114,6 @@ async function fetchPrescriptionsSmart(foundDocId, nid) {
   return { items, blocked: false, error: lastError };
 }
 
-
 async function hydrateNames(items) {
   const out = [];
 
@@ -132,7 +130,6 @@ async function hydrateNames(items) {
   }
 
   for (const p of items) {
-
     const doctorName =
       p.doctorName ||
       p.doctorFullName ||
@@ -149,7 +146,13 @@ async function hydrateNames(items) {
 
         if (!snap.empty) {
           const d = snap.docs[0].data();
-facilityName = "Dr. Sulaiman Al Habib Hospital";
+          facilityName =
+            d.facility ||
+            d.healthFacility ||
+            d.facilityName ||
+            d.healthcareFacility ||
+            d.hospitalName ||
+            "Dr. Sulaiman Al Habib Hospital";
         }
       }
     } catch (e) {
@@ -159,16 +162,13 @@ facilityName = "Dr. Sulaiman Al Habib Hospital";
     out.push({
       ...p,
       _doctorName: doctorName,
-      _facilityName: facilityName,       
-      _pharmacyName: globalPharmacyName,  
+      _facilityName: facilityName,
+      _pharmacyName: globalPharmacyName,
     });
   }
 
   return out;
 }
-
-
-
 
 const TD = {
   brand: {
@@ -236,7 +236,14 @@ function Row({ label, value }) {
         gap: 12,
       }}
     >
-      <div style={{ color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+      <div
+        style={{
+          color: "#6b7280",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
         {label}
       </div>
       <div style={{ fontWeight: 600, wordBreak: "break-word" }}>{value ?? "-"}</div>
@@ -247,21 +254,25 @@ function Row({ label, value }) {
 function WelcomeHeader({ name }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-      <img src="/Images/TrustDose-pill.png" alt="TrustDose pill" style={{ width: 64, height: "auto", objectFit: "contain" }} />
+      <img
+        src="/Images/TrustDose-pill.png"
+        alt="TrustDose pill"
+        style={{ width: 64, height: "auto", objectFit: "contain" }}
+      />
       <div>
-        <div style={{ fontSize: 24, fontWeight: 800, color: TD.brand.ink }}>Welcome, {name || "there"}</div>
+        <div style={{ fontSize: 24, fontWeight: 800, color: TD.brand.ink }}>
+          Welcome, {name || "there"}
+        </div>
         <div style={{ color: TD.brand.sub, marginTop: 2 }}>Wishing you good health.</div>
       </div>
     </div>
   );
 }
 
-
 export default function PatientPage() {
   const [nid, setNid] = useState(null);
   const [logisticsName, setLogisticsName] = useState("—");
   const [logisticsPhone, setLogisticsPhone] = useState("—");
-
 
   useEffect(() => {
     (async () => {
@@ -285,11 +296,9 @@ export default function PatientPage() {
             console.log("⚠️ logistics doc found but no name-like field", first);
           }
           if (first.phone) {
-  setLogisticsPhone(String(first.phone));
-  console.log("📞 logisticsPhone =", first.phone);
-}
-
-          
+            setLogisticsPhone(String(first.phone));
+            console.log("📞 logisticsPhone =", first.phone);
+          }
         } else {
           console.log("⚠️ no logistics docs found");
         }
@@ -306,7 +315,6 @@ export default function PatientPage() {
   const [openIds, setOpenIds] = useState({});
   const [showEmailAlert, setShowEmailAlert] = useState(false);
 
-  
   const [page, setPage] = useState(1);
   const PER_PAGE = 3;
 
@@ -330,14 +338,13 @@ export default function PatientPage() {
         if (!found) throw new Error("Patient not found. Please log in again.");
         const pres = await fetchPrescriptionsSmart(found.id, nid);
         pres.items = await hydrateNames(pres.items);
-        pres.items = pres.items.map(p => ({ ...p, _logisticsName: logisticsName }));
+        pres.items = pres.items.map((p) => ({ ...p, _logisticsName: logisticsName }));
 
         setPatient(found.data);
-
         setShowEmailAlert(!found.data.email);
 
         setRx(pres);
-        setPage(1); 
+        setPage(1);
       } catch (e) {
         setErr(e?.message || String(e));
       } finally {
@@ -351,7 +358,6 @@ export default function PatientPage() {
 
   const openProfile = () => window.dispatchEvent(new Event("openPatientProfile"));
 
-  
   const total = rx.items.length;
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
   const safePage = Math.min(Math.max(1, page), totalPages);
@@ -359,7 +365,6 @@ export default function PatientPage() {
   const endIdx = Math.min(startIdx + PER_PAGE, total);
   const pageItems = rx.items.slice(startIdx, endIdx);
 
-  
   const PaginationBar = () => (
     <div
       style={{
@@ -413,18 +418,16 @@ export default function PatientPage() {
       </div>
     </div>
   );
-function getCurrentStep(p) {
-  if (p.deliveryConfirmed) return 5;
-  if (p.dispensed) return 4;
-  if (p.logisticsAccepted) return 3;
-  if (p.acceptDelivery) return 2;
-  return 1;
-}
 
-
+  function getCurrentStep(p) {
+    if (p.deliveryConfirmed) return 5;
+    if (p.dispensed) return 4;
+    if (p.logisticsAccepted) return 3;
+    if (p.acceptDelivery) return 2;
+    return 1;
+  }
 
   return (
-   
     <div
       style={{
         minHeight: "100vh",
@@ -433,62 +436,49 @@ function getCurrentStep(p) {
         flexDirection: "column",
       }}
     >
-      
+
       {showEmailAlert && (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            background: "transparent",
-            marginTop: 0,
-            paddingTop: 0,
-          }}
-        >
+        <div style={{ margin: "0 24px 16px 24px" }}>
           <div
             style={{
               background: "#fff5cc",
               color: "#8a6d3b",
-              border: "1px solid #ffe8a1",
-              borderRadius: 12,
-              padding: "12px 24px",
-              marginTop: 12,
-              maxWidth: 1000,
-              width: "90%",
+              padding: "12px",
+              borderRadius: "10px",
               textAlign: "center",
+              border: "1px solid #ffe8a1",
               fontWeight: 500,
             }}
           >
-⚠️ Please verify your email so you can change your password later. Open My Profile
-{" "}
+            ⚠️ Please verify your email so you can change your password later.&nbsp;
             <button
               type="button"
               onClick={openProfile}
               style={{
-                fontWeight: 800,
+                fontWeight: 700,
                 color: TD.brand.primary,
                 background: "transparent",
                 border: "none",
                 cursor: "pointer",
-                textDecoration: "underline",
               }}
               aria-label="Open My Profile"
             >
-              My Profile
-            </button>{" "}
+              Open My Profile
+            </button>
           </div>
         </div>
       )}
 
       <div
         style={{
-            maxWidth: 1120,
-            margin: "0 auto",
-            padding: "28px 24px",
-            width: "100%",
-            display: "flex",
-            flexDirection: "column",
-            flex: 1, 
-          }}
+          maxWidth: 1120,
+          margin: "0 auto",
+          padding: "28px 24px",
+          width: "100%",
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+        }}
       >
         {loading && <div>Loading...</div>}
         {!loading && err && <div style={{ color: "red" }}>{err}</div>}
@@ -513,10 +503,13 @@ function getCurrentStep(p) {
                 const createdDate = fmtDate(p.createdAt);
                 const createdFull = fmtDateTime(p.createdAt);
                 const dispensedAt =
-  p.dispensedAt?.toDate ? p.dispensedAt :
-  p.dispensedOn?.toDate ? p.dispensedOn :
-  p.fulfilledAt?.toDate ? p.fulfilledAt :
-  null;
+                  p.dispensedAt?.toDate
+                    ? p.dispensedAt
+                    : p.dispensedOn?.toDate
+                    ? p.dispensedOn
+                    : p.fulfilledAt?.toDate
+                    ? p.fulfilledAt
+                    : null;
 
                 const isOpen = !!openIds[p.id];
 
@@ -525,7 +518,8 @@ function getCurrentStep(p) {
                 const pharmacy = p._pharmacyName || "—";
                 const logistics = p._logisticsName || "—";
 
-                const medTitle = p.medicineLabel || p.micineName || p.medicineName || "Prescription";
+                const medTitle =
+                  p.medicineLabel || p.micineName || p.medicineName || "Prescription";
                 const rxNumber =
                   p.prescriptionID ||
                   p.prescriptionId ||
@@ -535,8 +529,16 @@ function getCurrentStep(p) {
 
                 const statusStyles =
                   status === "Dispensed"
-                    ? { bg: TD.brand.successBg, text: TD.brand.successText, border: TD.brand.successBorder }
-                    : { bg: TD.brand.dangerBg, text: TD.brand.dangerText, border: TD.brand.dangerBorder };
+                    ? {
+                        bg: TD.brand.successBg,
+                        text: TD.brand.successText,
+                        border: TD.brand.successBorder,
+                      }
+                    : {
+                        bg: TD.brand.dangerBg,
+                        text: TD.brand.dangerText,
+                        border: TD.brand.dangerBorder,
+                      };
 
                 return (
                   <div
@@ -559,7 +561,11 @@ function getCurrentStep(p) {
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <img src="/Images/TrustDose_logo.png" alt="TrustDose Logo" style={{ height: 28 }} />
+                        <img
+                          src="/Images/TrustDose_logo.png"
+                          alt="TrustDose Logo"
+                          style={{ height: 28 }}
+                        />
                         <div style={{ fontWeight: 700, color: "#000" }}>Medical Prescription</div>
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: "#000" }}>
@@ -618,25 +624,24 @@ function getCurrentStep(p) {
                         <div style={{ fontWeight: 700, color: "#374151" }}>Prescription Details</div>
 
                         <Row label="Patient Name" value={fullName} />
-                        <Row label="National ID" value={maskNid(p.patientNationalID || p.nationalID || p.nid)} />
+                        <Row
+                          label="National ID"
+                          value={maskNid(p.patientNationalID || p.nationalID || p.nid)}
+                        />
                         <Row label="Healthcare Facility" value={facility} />
                         <Row label="Doctor Name" value={doctor} />
                         <Row label="Pharmacy Name" value={pharmacy} />
-                        {p.sensitivity === "Sensitive" && (
-  <>
-   
-  </>
-)}
 
-
-
-                        <Row label="Dispensed At" value={dispensedAt ? fmtDateTime(dispensedAt) : "—"} />
+                        <Row
+                          label="Dispensed At"
+                          value={dispensedAt ? fmtDateTime(dispensedAt) : "—"}
+                        />
                         <Row label="Date & Time Consultation" value={createdFull} />
-                        
 
                         <div style={{ borderTop: "1px dashed #e5e7eb", paddingTop: 10 }}>
                           <div style={{ fontWeight: 600, color: "#374151", marginBottom: 6 }}>
-                            Medicine Name: <span style={{ fontWeight: 700 }}>{medTitle}</span>
+                            Medicine Name:{" "}
+                            <span style={{ fontWeight: 700 }}>{medTitle}</span>
                           </div>
                           <Row label="Dosage" value={p.dosage || p.dose || "—"} />
                           <Row label="Frequency" value={p.frequency || p.timesPerDay || "—"} />
@@ -653,178 +658,162 @@ function getCurrentStep(p) {
                                   fontWeight: 700,
                                   border: "1px solid",
                                   borderColor:
-                                    p.sensitivity === "Sensitive" ? TD.brand.dangerBorder : TD.brand.successBorder,
+                                    p.sensitivity === "Sensitive"
+                                      ? TD.brand.dangerBorder
+                                      : TD.brand.successBorder,
                                   background:
-                                    p.sensitivity === "Sensitive" ? TD.brand.dangerBg : TD.brand.successBg,
+                                    p.sensitivity === "Sensitive"
+                                      ? TD.brand.dangerBg
+                                      : TD.brand.successBg,
                                   color:
-                                    p.sensitivity === "Sensitive" ? TD.brand.dangerText : TD.brand.successText,
+                                    p.sensitivity === "Sensitive"
+                                      ? TD.brand.dangerText
+                                      : TD.brand.successText,
                                 }}
                               >
-                               {p.sensitivity === "Sensitive" ? (
-  <>
-    Sensitive — (Delivery)
-  </>
-) : (
-  "Non-Sensitive — (Pickup)"
-)}
-
-                               </div>
+                                {p.sensitivity === "Sensitive"
+                                  ? "Sensitive — (Delivery)"
+                                  : "Non-Sensitive — (Pickup)"}
+                              </div>
                             </div>
                           )}
-                          
-{p.sensitivity === "Sensitive" && (
-  <div
-    style={{
-      marginTop: 14,
-      paddingTop: 14,
-      borderTop: "1px solid #e5e7eb",
-    }}
-  >
-    <div
-      style={{
-        fontWeight: 700,
-        color: "#374151",
-        marginBottom: 10,
-        fontSize: 16,
-      }}
-    >
-      Logistics Provider Details
-    </div>
 
-    <Row
-      label="Logistics Provider"
-      value={
-        logisticsName !== "—"
-          ? logisticsName
-          : p.logisticsName || "—"
-      }
-    />
+                          {p.sensitivity === "Sensitive" && (
+                            <div
+                              style={{
+                                marginTop: 14,
+                                paddingTop: 14,
+                                borderTop: "1px solid #e5e7eb",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontWeight: 700,
+                                  color: "#374151",
+                                  marginBottom: 10,
+                                  fontSize: 16,
+                                }}
+                              >
+                                Logistics Provider Details
+                              </div>
 
-    <Row
-      label="Logistics Phone"
-      value={logisticsPhone || "—"}
-    />
-  </div>
-)}
+                              <Row label="Logistics Provider" value={logistics} />
+                              <Row label="Logistics Phone" value={logisticsPhone || "—"} />
+                            </div>
+                          )}
 
- {p.sensitivity === "Sensitive" && (() => {
+                          {p.sensitivity === "Sensitive" &&
+                            (() => {
+                              const step = getCurrentStep(p);
 
-  const step = getCurrentStep(p);
+                              const green = "#52B9C4";
+                              const purple = "#B08CC1";
+                              const gray = "#e5e7eb";
 
-  const green = "#52B9C4";
-  const purple = "#B08CC1";
-  const gray = "#e5e7eb";
+                              const colorFor = (s) => {
+                                if (step >= s) return green;
+                                if (step + 1 === s) return purple;
+                                return gray;
+                              };
 
-  const colorFor = (s) => {
-    if (step >= s) return green;
-    if (step + 1 === s) return purple;
-    return gray;
-  };
+                              const circleStyle = (s) => ({
+                                width: 40,
+                                height: 40,
+                                borderRadius: "50%",
+                                background: colorFor(s),
+                                border: `4px solid ${colorFor(s)}`,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                transition: "0.3s",
+                                margin: "0 auto",
+                              });
 
-  const circleStyle = (s) => ({
-    width: 40,
-    height: 40,
-    borderRadius: "50%",
-    background: colorFor(s),
-    border: `4px solid ${colorFor(s)}`,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    transition: "0.3s",
-    margin: "0 auto",
-  });
+                              const dotStyle = (s) => ({
+                                width: 12,
+                                height: 12,
+                                borderRadius: "50%",
+                                background: step >= s || step + 1 === s ? "white" : "#a3a3a3",
+                              });
 
-  const dotStyle = (s) => ({
-    width: 12,
-    height: 12,
-    borderRadius: "50%",
-    background: step >= s || step + 1 === s ? "white" : "#a3a3a3",
-  });
+                              const lineStyle = (s) => ({
+                                height: 4,
+                                flex: 1,
+                                background: colorFor(s),
+                                transition: "0.3s",
+                                margin: "0 10px",
+                              });
 
-  const lineStyle = (s) => ({
-    height: 4,
-    flex: 1,
-    background: colorFor(s),
-    transition: "0.3s",
-    margin: "0 10px",
-  });
+                              const labelStyle = {
+                                marginTop: 8,
+                                fontSize: 12,
+                                textAlign: "center",
+                              };
 
-  const labelStyle = {
-    marginTop: 8,
-    fontSize: 12,
-    textAlign: "center",
-  };
+                              const step4Label = "Your medicine is safely on the way";
 
-  const step3Label = "Accepted by Logistics";
-  const step4Label = "Your medicine is safely on the way";
+                              return (
+                                <div style={{ marginTop: 28 }}>
+                                  <div
+                                    style={{
+                                      fontWeight: 700,
+                                      fontSize: 16,
+                                      marginBottom: 18,
+                                      color: TD.brand.ink,
+                                    }}
+                                  >
+                                    Delivery Status
+                                  </div>
 
-  return (
-    <div style={{ marginTop: 28 }}>
-      <div
-        style={{
-          fontWeight: 700,
-          fontSize: 16,
-          marginBottom: 18,
-          color: TD.brand.ink,
-        }}
-      >
-        Delivery Status
-      </div>
+                                  <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
+                                    <div style={{ width: "120px" }}>
+                                      <div style={circleStyle(1)}>
+                                        <div style={dotStyle(1)}></div>
+                                      </div>
+                                      <div style={labelStyle}>Order Placed</div>
+                                    </div>
 
-      <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
-        
-        <div style={{ width: "120px" }}>
-          <div style={circleStyle(1)}>
-            <div style={dotStyle(1)}></div>
-          </div>
-          <div style={labelStyle}>Order Placed</div>
-        </div>
+                                    <div style={lineStyle(2)}></div>
 
-        <div style={lineStyle(2)}></div>
+                                    <div style={{ width: "120px" }}>
+                                      <div style={circleStyle(2)}>
+                                        <div style={dotStyle(2)}></div>
+                                      </div>
+                                      <div style={labelStyle}>Accepted by Pharmacy</div>
+                                    </div>
 
-        <div style={{ width: "120px" }}>
-          <div style={circleStyle(2)}>
-            <div style={dotStyle(2)}></div>
-          </div>
-          <div style={labelStyle}>Accepted by Pharmacy</div>
-        </div>
+                                    <div style={lineStyle(3)}></div>
 
-        <div style={lineStyle(3)}></div>
+                                    <div style={{ width: "120px" }}>
+                                      <div style={circleStyle(3)}>
+                                        <div style={dotStyle(3)}></div>
+                                      </div>
+                                      <div style={labelStyle}>
+                                        Accepted by <br /> Logistics Provider
+                                      </div>
+                                    </div>
 
-        <div style={{ width: "120px" }}>
-          <div style={circleStyle(3)}>
-            <div style={dotStyle(3)}></div>
-          </div>
-          <div style={labelStyle}>Accepted by   <br /> Logistics Provider</div>
-        </div>
+                                    <div style={lineStyle(4)}></div>
 
-        <div style={lineStyle(4)}></div>
+                                    <div style={{ width: "120px" }}>
+                                      <div style={circleStyle(4)}>
+                                        <div style={dotStyle(4)}></div>
+                                      </div>
+                                      <div style={labelStyle}>{step4Label}</div>
+                                    </div>
 
-        <div style={{ width: "120px" }}>
-          <div style={circleStyle(4)}>
-            <div style={dotStyle(4)}></div>
-          </div>
-          <div style={labelStyle}>{step4Label}</div>
-        </div>
+                                    <div style={lineStyle(5)}></div>
 
-        <div style={lineStyle(5)}></div>
-
-        <div style={{ width: "120px" }}>
-          <div style={circleStyle(5)}>
-            <div style={dotStyle(5)}></div>
-          </div>
-          <div style={labelStyle}>Delivered safely to you</div>
-        </div>
-
-      </div>
-    </div>
-  );
-})()}
-
-
-
-
-
+                                    <div style={{ width: "120px" }}>
+                                      <div style={circleStyle(5)}>
+                                        <div style={dotStyle(5)}></div>
+                                      </div>
+                                      <div style={labelStyle}>Delivered safely to you</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
 
                           {p.notes && <Row label="Notes" value={p.notes} />}
                         </div>
