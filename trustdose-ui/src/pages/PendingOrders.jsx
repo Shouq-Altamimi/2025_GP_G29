@@ -18,7 +18,7 @@ import { ethers } from "ethers";
 import LOGISTICS_RECEIVE from "../contracts/LogisticsReceive.json";
 import { Loader2, FileText, CheckCircle2 } from "lucide-react";
 
-const LOGISTICS_RECEIVE_ADDRESS = "0x34DE5e8cFd2aDd4181288085F6c934F152784F6d";
+const LOGISTICS_RECEIVE_ADDRESS = "0x6f8a099b834e3819461Ca213FD318d379B67F367";
 
 const C = {
   primary: "#B08CC1",
