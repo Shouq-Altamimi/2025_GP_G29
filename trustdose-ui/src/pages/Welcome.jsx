@@ -250,7 +250,7 @@ export default function Welcome() {
                   "To revolutionize medication safety by creating a secure, transparent, 
                     and intelligent digital ecosystem
                    that ensures every prescription is trusted and safely delivered, 
-                    supporting Saudi Arabia’s Vision 2030 
+                    supporting Saudi Arabia's Vision 2030 
                     in advancing innovative,technology-driven healthcare 
                     transforming patient protection and confidence, dose by dose"
                   </p>
@@ -312,6 +312,13 @@ export default function Welcome() {
           </div>
         </section>
       </main>
+
+      {/* Footer */}
+      <footer className="py-6 bg-white border-t">
+        <div className="mx-auto max-w-6xl px-6 text-center text-sm text-gray-500">
+          © {new Date().getFullYear()} TrustDose — All Rights Reserved.
+        </div>
+      </footer>
     </div>
   );
 }
