@@ -1,22 +1,16 @@
 // src/components/Header.jsx
 import React from "react";
 
-/**
- * Header رسمي وخفيف
- * - يدعم إخفاء زر المنيو عبر prop: hideMenu
- * - يدعم تمرير عنصر/أزرار باليمين عبر prop: rightNode (اختياري)
- * - اللوجو افتراضي ثابت المقاس كما تحبين
- */
 export default function Header({
   onMenuClick,
   logoSrc = "/Images/TrustDose_logo.png",
   hideMenu = false,
-  logoHeight = 32,   // للمرونة مستقبلاً إن احتجتي
+  logoHeight = 32,   
   iconWidth = 20,
   barThickness = 2.5,
   barGap = 4.5,
   color = "var(--td-primary-ink, #7b5297)",
-  rightNode = null, // ✅ جديد: عنصر يمين الهيدر (أيقونة/زر…)
+  rightNode = null, 
 }) {
   return (
     <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b">
@@ -45,7 +39,6 @@ export default function Header({
           </button>
         )}
 
-        {/* اللوجو بجانب الأيقونة */}
         <img
           src={logoSrc}
           alt="TrustDose"
@@ -58,7 +51,6 @@ export default function Header({
           draggable="false"
         />
 
-        {/* ✅ يمين الهيدر: أي عنصر يتم تمريره عبر rightNode */}
         <div className="ml-auto flex items-center gap-2">
           {rightNode}
         </div>

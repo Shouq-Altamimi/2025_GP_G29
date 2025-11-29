@@ -1,25 +1,12 @@
-// truffle-config.js
-/* 
-networks: {
-  development: {
-    host: "127.0.0.1", // نفس Ganache
-    port: 7545,        // نفس RPC في Ganache GUI
-    network_id: "5777" // مهم! رقم الشبكة في Ganache (الافتراضي 5777)
-    // gas: 6721975,    // (اختياري) تقدر تفتحه إذا احتجت
-    // gasPrice: 20000000000
-  },
-},
-*/
 
-// truffle-config.js
 module.exports = {
- contracts_directory: "./contracts",  // <<< هذا يضمن أنه يستخدم المجلد الصحيح
+ contracts_directory: "./contracts", 
   contracts_build_directory: "./build/contracts",
   networks: {
     development: {
       host: "127.0.0.1",
       port: 7545,
-      network_id: "*"   // 5777/1337 كلاهما يمشي
+      network_id: "*"   
     }
   },
   compilers: {
