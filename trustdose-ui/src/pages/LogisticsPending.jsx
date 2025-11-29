@@ -186,7 +186,7 @@ export default function Logistics() {
             onchainId: x.onchainId ? BigInt(String(x.onchainId)) : null,
             patientName: x.patientName || "-",
             patientId: String(x.nationalID ?? "-"),
-            patientPhone, // ← هنا نستخدم رقم جوال المريض
+            patientPhone, 
             medicineLabel: x.medicineLabel || x.medicineName || "-",
             createdAtTS: x.createdAt?.toDate?.(),
             createdAt: formatFsTimestamp(x.createdAt),
