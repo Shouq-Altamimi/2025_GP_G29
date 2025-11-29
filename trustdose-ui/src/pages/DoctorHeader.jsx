@@ -185,7 +185,7 @@ function validateAndNormalizePhone(raw) {
 
   return {
     ok: false,
-    reason: "Phone must start with 05 or +9665 (9 digits after 5).",
+    reason: "",
   };
 }
 

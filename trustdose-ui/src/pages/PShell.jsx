@@ -15,6 +15,7 @@ import {
   limit as fsLimit,
   updateDoc,
   deleteField,
+  serverTimestamp,
 } from "firebase/firestore";
 import {
   getAuth,
@@ -36,7 +37,9 @@ import {
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
-
+/* =========================
+   Auth helper
+   ========================= */
 async function ensureAuthReady() {
   const auth = getAuth();
   if (!auth.currentUser) {
@@ -48,7 +51,9 @@ async function ensureAuthReady() {
   return auth;
 }
 
-
+/* =========================
+   Crypto helpers
+   ========================= */
 const enc = new TextEncoder();
 function bytesToHex(arr) {
   return [...new Uint8Array(arr)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -95,6 +100,7 @@ function parseItersFromAlgo(algo) {
 async function verifyPatientPassword(inputPw, docData) {
   const algo = String(docData?.passwordAlgo || "").toUpperCase();
 
+  // PBKDF2
   if (algo.startsWith("PBKDF2") && docData?.passwordHash && docData?.passwordSalt) {
     const iters = Number(docData?.passwordIter) || parseItersFromAlgo(algo) || 100_000;
     const saltBytes = base64ToBytes(docData.passwordSalt);
@@ -102,11 +108,13 @@ async function verifyPatientPassword(inputPw, docData) {
     return derived === docData.passwordHash;
   }
 
+  // SHA-256 hex
   if (docData?.password && /^[a-f0-9]{64}$/i.test(docData.password)) {
     const hex = await sha256Hex(inputPw);
     return hex.toLowerCase() === String(docData.password).toLowerCase();
   }
 
+  // Legacy plain
   if (typeof docData?.password === "string") return inputPw === docData.password;
 
   return false;
@@ -125,7 +133,70 @@ async function buildPBKDF2Update(newPassword, iterations = 100_000) {
   };
 }
 
+/* =========================
+   Phone helpers (نفس الدكتور)
+   ========================= */
+function hasArabic(str) {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
+    String(str || "")
+  );
+}
+function toEnglishDigits(s) {
+  if (!s) return "";
+  let out = "";
+  for (const ch of String(s)) {
+    const code = ch.charCodeAt(0);
+    if (code >= 0x0660 && code <= 0x0669) out += String(code - 0x0660);
+    else if (code >= 0x06f0 && code <= 0x06f9) out += String(code - 0x06f0);
+    else out += ch;
+  }
+  return out;
+}
+function isDigitsLike(s) {
+  return /^\+?\d+$/.test(s || "");
+}
+function validateAndNormalizePhone(raw) {
+  const original = String(raw || "");
 
+  if (hasArabic(original)) {
+    return { ok: false, reason: "Arabic characters not allowed." };
+  }
+
+  if (/\s/.test(original)) {
+    return { ok: false, reason: "Phone number must not contain spaces." };
+  }
+
+  const cleaned = toEnglishDigits(original).trim();
+  if (!isDigitsLike(cleaned)) {
+    return {
+      ok: false,
+      reason: "Phone should contain digits only (and optional leading +).",
+    };
+  }
+
+  if (/^05\d{8}$/.test(cleaned)) {
+    const last8 = cleaned.slice(2);
+    return { ok: true, normalized: `+9665${last8}` };
+  }
+
+  if (/^\+9665\d{8}$/.test(cleaned)) {
+    return { ok: true, normalized: cleaned };
+  }
+
+  if (/^9665\d{8}$/.test(cleaned)) {
+    const last8 = cleaned.slice(4);
+    return { ok: true, normalized: `+9665${last8}` };
+  }
+
+  return {
+    ok: false,
+    reason: "Phone must start with 5 followed by 8 digits (e.g., +9665xxxxxxxx)",
+  };
+}
+
+/* =========================
+   Data helpers
+   ========================= */
 function pickStr(obj, keys) {
   for (const k of keys) {
     const v = obj?.[k];
@@ -168,7 +239,9 @@ function resolvePatientId() {
   return null;
 }
 
-
+/* =========================
+   PShell (Patient)
+   ========================= */
 export default function PShell() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -208,7 +281,9 @@ export default function PShell() {
 
       try {
         const col = collection(db, "patients");
-        const r2 = await getDocs(query(col, where("nationalID", "==", String(pid)), fsLimit(1)));
+        const r2 = await getDocs(
+          query(col, where("nationalID", "==", String(pid)), fsLimit(1))
+        );
         if (!r2.empty) {
           const d = r2.docs[0];
           setPatient(normalizePatient(d.data()));
@@ -219,6 +294,7 @@ export default function PShell() {
     })();
   }, []);
 
+  // open My Profile from Patient.jsx alert button
   useEffect(() => {
     const openProfile = () => setShowProfile(true);
     window.addEventListener("openPatientProfile", openProfile);
@@ -241,12 +317,14 @@ export default function PShell() {
         }}
       />
 
+      {/* child routes */}
       <div className="flex-1">
         <Outlet />
       </div>
 
       <Footer />
 
+      {/* Sidebar */}
       {isPatientPage && patientDocId && (
         <>
           <div
@@ -295,18 +373,22 @@ export default function PShell() {
         </>
       )}
 
+      {/* My Profile modal */}
       {showProfile && (
         <PatientProfileModal
           patient={patient}
           patientDocId={patientDocId}
           onClose={() => setShowProfile(false)}
+          onSaved={(p) => setPatient((prev) => ({ ...prev, ...p }))}
         />
       )}
     </div>
   );
 }
 
-
+/* =========================
+   Shared UI
+   ========================= */
 function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
   const base =
     "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
@@ -332,41 +414,10 @@ function Row({ label, value }) {
   );
 }
 
-function hasArabic(str) {
-  return /[\u0600-\u06FF]/.test(String(str || ""));
-}
-
-function validateAndNormalizePhone(raw) {
-  const original = String(raw || "").trim();
-
-  if (/\s/.test(original)) return { ok: false, reason: "Phone must not contain spaces." };
-  if (/[٠-٩۰-۹]/.test(original)) return { ok: false, reason: "English digits only (0–9)." };
-  if (!/^\+?[0-9]+$/.test(original)) {
-    return { ok: false, reason: "Phone should contain digits only." };
-  }
-
-  if (/^05\d{8}$/.test(original)) {
-    return { ok: true, normalized: `+9665${original.slice(2)}` };
-  }
-  if (/^\+9665\d{8}$/.test(original)) {
-    return { ok: true, normalized: original };
-  }
-
-  return {
-    ok: false,
-    reason: "Phone must start with 05 or +9665 (9 digits after 5).",
-  };
-}
-
-async function isPatientPhoneTaken(phoneNormalized, selfId) {
-  const snap = await getDocs(
-    query(collection(db, "patients"), where("phone", "==", phoneNormalized), fsLimit(5))
-  );
-  return snap.docs.some((d) => d.id !== selfId);
-}
-
-
-function PatientProfileModal({ patient, patientDocId, onClose }) {
+/* =========================
+   My Profile modal
+   ========================= */
+function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
   const P = {
     fullName: patient?.fullName || "—",
     nationalId: patient?.nationalId || "—",
@@ -377,153 +428,79 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
     location: patient?.location || "—",
   };
 
-  const phoneRef = useRef(null);
-  const [msg, setMsg] = useState("");
-  const [msgType, setMsgType] = useState("");
+  const hasEmail = !!P.email;
+  const hasPhone = !!P.phone;
 
+  /* ===== Phone editing (contact) ===== */
   const [editingPhone, setEditingPhone] = useState(false);
   const [phone, setPhone] = useState(P.phone || "");
   const [initialPhone, setInitialPhone] = useState(P.phone || "");
   const [phoneError, setPhoneError] = useState("");
   const [savingPhone, setSavingPhone] = useState(false);
+  const [phoneMsg, setPhoneMsg] = useState("");
+  const [phoneMsgType, setPhoneMsgType] = useState("");
+  const phoneRef = useRef(null);
 
   const phoneInfo = validateAndNormalizePhone(phone || "");
-  const hasPhone = !!initialPhone;
+  const hasTypedPhone = !!phone && phone !== "+966";
+
+  useEffect(() => {
+    setPhone(P.phone || "");
+    setInitialPhone(P.phone || "");
+    setPhoneError("");
+    setPhoneMsg("");
+    setPhoneMsgType("");
+  }, [P.phone]);
+
+  useEffect(() => {
+    if (editingPhone) {
+      setTimeout(() => phoneRef.current?.focus(), 0);
+    }
+  }, [editingPhone]);
+
+  async function isPatientPhoneTaken(normalized, selfId) {
+    const snap = await getDocs(
+      query(collection(db, "patients"), where("contact", "==", normalized), fsLimit(5))
+    );
+    return snap.docs.some((d) => d.id !== selfId);
+  }
 
   const canSavePhone =
     editingPhone &&
     !savingPhone &&
+    hasTypedPhone &&
     phone.length === 13 &&
     phoneInfo.ok &&
-    !phoneError &&
-    phone !== initialPhone;
-
-  const [emailInput, setEmailInput] = useState("");
-  const [emailMsg, setEmailMsg] = useState("");
-  const [emailLoading, setEmailLoading] = useState(false);
-
-  const hasEmail = !!P.email;
-
-  const COMMON_EMAIL_DOMAINS = [
-    "gmail.com",
-    "outlook.com",
-    "hotmail.com",
-    "yahoo.com",
-    "icloud.com",
-    "live.com",
-    "student.ksu.edu.sa",
-    "ksu.edu.sa",
-  ];
-
-  function validateTrustDoseEmail(raw) {
-    const email = String(raw || "").trim().toLowerCase();
-    if (!email) return { ok: false, reason: "Please enter a valid email." };
-
-    const match = email.match(/^[^\s@]+@([^\s@]+\.[^\s@]+)$/);
-    if (!match) return { ok: false, reason: "Please enter a valid email." };
-
-    const domain = match[1].toLowerCase();
-    if (!COMMON_EMAIL_DOMAINS.includes(domain)) {
-      return {
-        ok: false,
-        reason: "Please enter a valid email (e.g. name@gmail.com or name@outlook.com).",
-      };
-    }
-
-    return { ok: true, email };
-  }
-
-  async function isEmailTakenAnyRole(email, currentDocId) {
-    const groups = ["doctors", "patients", "pharmacies", "logistics"];
-    for (const g of groups) {
-      const snap = await getDocs(
-        query(collection(db, g), where("email", "==", email))
-      );
-      const found = snap.docs.find((d) => d.id !== currentDocId);
-      if (found) return true;
-    }
-    return false;
-  }
-
-  async function sendVerifyLink() {
-    try {
-      setEmailMsg("");
-
-      const v = validateTrustDoseEmail(emailInput);
-      if (!v.ok) return setEmailMsg(v.reason);
-
-      const email = v.email;
-      const taken = await isEmailTakenAnyRole(email, patientDocId);
-      if (taken)
-        return setEmailMsg(
-          "This email is already used by another account. Please use a different email."
-        );
-
-      const auth = await ensureAuthReady();
-
-      const BASE = window.location.origin;
-      const params = new URLSearchParams({
-        col: "patients",
-        doc: patientDocId,
-        e: email,
-        redirect: "/patient",
-        type: "emailVerify",
-      });
-
-      const settings = {
-        url: `${BASE}/auth-email?${params.toString()}`,
-        handleCodeInApp: true,
-      };
-
-      setEmailLoading(true);
-      await sendSignInLinkToEmail(auth, email, settings);
-
-      localStorage.setItem(
-        "td_email_pending",
-        JSON.stringify({ email, ts: Date.now() })
-      );
-
-      setEmailMsg("Verification email sent.");
-    } catch (e) {
-      setEmailMsg("Failed to send email.");
-    } finally {
-      setEmailLoading(false);
-    }
-  }
+    !phoneError;
 
   async function savePhone() {
-    if (!editingPhone || savingPhone) return;
+    const info = validateAndNormalizePhone(phone);
 
-    setSavingPhone(true);
-    setPhoneError("");
-    setMsg("");
-    setMsgType("");
+    if (!info.ok) {
+      setPhoneError(
+        info.reason ||
+          "The phone number you entered isn’t valid. Please check and try again."
+      );
+      setPhone("+966");
+      return;
+    }
+
+    if (!patientDocId) {
+      setPhoneError("We couldn’t find your patient record. Please try again.");
+      setPhone("+966");
+      return;
+    }
+
+    if (info.normalized === initialPhone) {
+      setPhoneError("The phone number you entered is already saved on your profile.");
+      setPhone("+966");
+      return;
+    }
 
     try {
-      const info = validateAndNormalizePhone(phone);
-
-      if (!info.ok) {
-        setPhoneError(
-          info.reason ||
-            "The phone number you entered isn’t valid. Please check and try again."
-        );
-        setPhone("+966");
-        return;
-      }
-
-      if (!patientDocId) {
-        setPhoneError("We couldn’t find your patient record. Please try again.");
-        setPhone("+966");
-        return;
-      }
-
-      if (info.normalized === initialPhone) {
-        setPhoneError(
-          "The phone number you entered is already saved on your profile."
-        );
-        setPhone("+966");
-        return;
-      }
+      setSavingPhone(true);
+      setPhoneMsg("");
+      setPhoneMsgType("");
 
       const taken = await isPatientPhoneTaken(info.normalized, patientDocId);
       if (taken) {
@@ -531,29 +508,103 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
           "The phone number you entered is already registered in our system."
         );
         setPhone("+966");
+        setSavingPhone(false);
         return;
       }
 
-      await updateDoc(doc(db, "patients", patientDocId), {
-  phone: info.normalized,
-  updatedAt: new Date(),
-});
+      const payload = {
+        contact: info.normalized,
+        updatedAt: serverTimestamp(),
+      };
 
+      await updateDoc(doc(db, "patients", patientDocId), payload);
 
-      setInitialPhone(info.normalized);
+      setInitialPhone(payload.contact);
+      setPhone(payload.contact);
+      setPhoneError("");
+      setPhoneMsgType("success");
+      setPhoneMsg("Saved ✓");
       setEditingPhone(false);
+      onSaved?.({ phone: payload.contact });
 
-      setMsgType("success");
-      setMsg("Phone number saved successfully. ✓");
-
-      setPhone("");
+      setTimeout(() => {
+        setPhoneMsg("");
+        setPhoneMsgType("");
+      }, 1500);
     } catch (e) {
       setPhoneError(
-        "We couldn’t save your phone number. Please try again."
+        "Something went wrong while saving your phone number. Please try again."
       );
       setPhone("+966");
     } finally {
       setSavingPhone(false);
+    }
+  }
+
+  /* ===== Email state ===== */
+  const [emailInput, setEmailInput] = useState("");
+  const [emailMsg, setEmailMsg] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
+
+  // ===== Email uniqueness check (patients collection) =====
+  async function isPatientEmailTaken(emailLower, selfId) {
+    const q1 = query(
+      collection(db, "patients"),
+      where("email", "==", emailLower),
+      fsLimit(1)
+    );
+    const snap = await getDocs(q1);
+    if (snap.empty) return false;
+    const doc0 = snap.docs[0];
+    return doc0.id !== selfId;
+  }
+
+  async function sendVerifyLink() {
+    try {
+      setEmailMsg("");
+      const raw = String(emailInput || "").trim().toLowerCase();
+      const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
+      if (!ok) {
+        setEmailMsg("Please enter a valid email.");
+        return;
+      }
+
+      const taken = await isPatientEmailTaken(raw, String(patientDocId || ""));
+      if (taken) {
+        setEmailMsg(
+          "This email is already used by another patient. Please use a different email."
+        );
+        return;
+      }
+
+      const auth = await ensureAuthReady();
+
+      const BASE = window.location.origin;
+      const params = new URLSearchParams({
+        col: "patients",
+        doc: String(patientDocId || ""),
+        e: raw,
+        redirect: "/patient",
+      });
+      const settings = {
+        url: `${BASE}/auth-email?${params.toString()}`,
+        handleCodeInApp: true,
+      };
+      setEmailLoading(true);
+      await sendSignInLinkToEmail(auth, raw, settings);
+      localStorage.setItem(
+        "td_email_pending",
+        JSON.stringify({ email: raw, ts: Date.now() })
+      );
+      setEmailMsg(
+        "A verification link has been sent to your email. Open it, then return to the app."
+      );
+    } catch (e) {
+      setEmailMsg(
+        `Firebase: ${e?.code || e?.message || "Unable to send verification link."}`
+      );
+    } finally {
+      setEmailLoading(false);
     }
   }
 
@@ -575,6 +626,7 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
             </button>
           </div>
 
+          {/* Patient info */}
           <div className="rounded-xl border bg-white p-4 mb-4">
             <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
               Patient Info
@@ -582,204 +634,214 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
             <div className="space-y-2 text-sm">
               <Row label="Full Name" value={P.fullName} />
               <Row label="National ID" value={P.nationalId} />
-
-              <div className="mt-3">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-gray-700 font-medium">Phone</span>
-
-                  {!editingPhone && (
-                    <button
-                      onClick={() => {
-                        setEditingPhone(true);
-                        setPhone("");
-                        setMsg("");
-                        setMsgType("");
-                        setPhoneError("");
-                        setTimeout(() => phoneRef.current?.focus(), 0);
-                      }}
-                      className="px-3 py-1.5 rounded-lg text-white"
-                      style={{ background: C.primary }}
-                    >
-                      {hasPhone ? "Update" : "Add"}
-                    </button>
-                  )}
-                </div>
-
-                {!editingPhone ? (
-                  <div className="font-medium text-gray-900">
-                    {initialPhone || "—"}
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <input
-                        ref={phoneRef}
-                        value={phone}
-                        onChange={(e) => {
-                          let val = e.target.value;
-
-                          if (hasArabic(val)) return;
-                          val = val.replace(/\s/g, "");
-
-                          if (!val.startsWith("+966")) {
-                            val = "+966" + val.replace(/^\+?966?/, "");
-                          }
-
-                          const afterPrefix = val.slice(4);
-
-                          if (afterPrefix && !/^[0-9]*$/.test(afterPrefix)) return;
-
-                          if (afterPrefix.length > 9) return;
-
-                          setPhone(val);
-                          setMsg("");
-                          setMsgType("");
-                          setPhoneError("");
-                        }}
-                        onPaste={(e) => {
-                          e.preventDefault();
-                          let paste = e.clipboardData.getData("text").trim();
-                          if (hasArabic(paste)) return;
-
-                          paste = paste.replace(/\s/g, "");
-
-                          let local = paste;
-
-                          if (local.startsWith("+966")) {
-                            local = local.slice(4);
-                          } else if (local.startsWith("966")) {
-                            local = local.slice(3);
-                          } else if (local.startsWith("05")) {
-                            local = local.slice(1);
-                          }
-
-                          local = local.replace(/\D/g, "");
-
-                          if (!local.startsWith("5")) {
-                            local = "5" + local.replace(/^5*/, "");
-                          }
-
-                          local = local.slice(0, 9);
-
-                          const finalVal = "+966" + local;
-                          setPhone(finalVal);
-                          setMsg("");
-                          setMsgType("");
-                          setPhoneError("");
-                        }}
-                        placeholder="+966 5xxxxxxxx"
-                        inputMode="tel"
-                        dir="ltr"
-                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
-                        style={{ outlineColor: C.primary }}
-                        onFocus={() => {
-                          if (!phone || phone === "") {
-                            setPhone("+966");
-                          }
-                        }}
-                        onBlur={() => {
-                          if (phone === "+966") {
-                            setPhone("");
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          const allowedControl = [
-                            "Backspace",
-                            "Delete",
-                            "ArrowLeft",
-                            "ArrowRight",
-                            "Tab",
-                            "Home",
-                            "End",
-                          ];
-
-                          if (e.key === " ") {
-                            e.preventDefault();
-                            return;
-                          }
-
-                          if (allowedControl.includes(e.key)) {
-                            if (
-                              (e.key === "Backspace" || e.key === "Delete") &&
-                              phone.length <= 4
-                            ) {
-                              e.preventDefault();
-                              return;
-                            }
-                            return;
-                          }
-
-                          if (!/^[0-9]$/.test(e.key)) {
-                            e.preventDefault();
-                            return;
-                          }
-
-                          if (phone === "+966" && e.key !== "5") {
-                            e.preventDefault();
-                            return;
-                          }
-
-                          const afterPrefix = phone.slice(4);
-
-                          if (afterPrefix.length >= 9) {
-                            e.preventDefault();
-                            return;
-                          }
-                        }}
-                      />
-
-                      <button
-                        onClick={savePhone}
-                        disabled={!canSavePhone}
-                        className="px-3 py-2 rounded-lg disabled:opacity-50"
-                        style={{ background: C.primary, color: "#fff" }}
-                      >
-                        {savingPhone ? "Saving..." : "Save"}
-                      </button>
-                    </div>
-
-                    <div className="mt-1 text-xs">
-                      {!phone || phone === "+966" ? (
-                        <span className="text-gray-500">
-                          Enter phone: +966 5xxxxxxxx (9 digits after +966)
-                        </span>
-                      ) : !phoneInfo.ok ? (
-                        <span className="text-rose-600">{phoneInfo.reason}</span>
-                      ) : (
-                        <span className="text-emerald-700">✓ Valid phone number</span>
-                      )}
-                    </div>
-
-                    {phoneError && (
-                      <div className="mt-1 text-xs text-rose-600">
-                        {phoneError}
-                      </div>
-                    )}
-
-                    {msgType === "success" && msg && (
-                      <div className="mt-1 text-xs text-emerald-700">
-                        {msg}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
               <Row label="Gender" value={P.gender} />
               <Row label="Location" value={P.location} />
             </div>
           </div>
 
+          {/* Contact Info */}
           <div className="rounded-xl border bg-white p-4 mb-4">
             <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
-              Email
+              Contact Info
             </div>
 
-            {hasEmail ? (
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-gray-800">{P.email}</span>
+            {/* Phone block */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-gray-700 font-medium">Phone</span>
+                {!editingPhone && (
+                  <button
+                    onClick={() => {
+                      setEditingPhone(true);
+                      setPhone("");
+                      setPhoneError("");
+                      setPhoneMsg("");
+                      setPhoneMsgType("");
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-white"
+                    style={{ background: C.primary }}
+                  >
+                    {hasPhone ? "Update" : "Add"}
+                  </button>
+                )}
+              </div>
 
+              {!editingPhone ? (
+                <div className="font-medium text-gray-900">
+                  {initialPhone || "—"}
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={phoneRef}
+                      value={phone}
+                      onChange={(e) => {
+                        let val = e.target.value;
+
+                        if (hasArabic(val)) return;
+
+                        val = val.replace(/\s/g, "");
+
+                        if (!val.startsWith("+966")) {
+                          val = "+966" + val.replace(/^\+?966?/, "");
+                        }
+
+                        const afterPrefix = val.slice(4);
+
+                        if (afterPrefix && !/^[0-9]*$/.test(afterPrefix)) return;
+
+                        if (afterPrefix.length > 9) return;
+
+                        setPhone(val);
+                        setPhoneError("");
+                        setPhoneMsg("");
+                        setPhoneMsgType("");
+                      }}
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        let paste = e.clipboardData.getData("text").trim();
+                        if (hasArabic(paste)) return;
+
+                        paste = paste.replace(/\s/g, "");
+
+                        let local = paste;
+
+                        if (local.startsWith("+966")) {
+                          local = local.slice(4);
+                        } else if (local.startsWith("966")) {
+                          local = local.slice(3);
+                        } else if (local.startsWith("05")) {
+                          local = local.slice(1);
+                        }
+
+                        local = local.replace(/\D/g, "");
+
+                        if (!local.startsWith("5")) {
+                          local = "5" + local.replace(/^5*/, "");
+                        }
+
+                        local = local.slice(0, 9);
+
+                        const finalVal = "+966" + local;
+                        setPhone(finalVal);
+                        setPhoneError("");
+                        setPhoneMsg("");
+                        setPhoneMsgType("");
+                      }}
+                      placeholder="+966 5xxxxxxxx"
+                      inputMode="tel"
+                      dir="ltr"
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
+                      style={{ outlineColor: C.primary }}
+                      onFocus={() => {
+                        if (!phone || phone === "") {
+                          setPhone("+966");
+                        }
+                      }}
+                      onBlur={() => {
+                        if (phone === "+966") {
+                          setPhone("");
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        const allowedControl = [
+                          "Backspace",
+                          "Delete",
+                          "ArrowLeft",
+                          "ArrowRight",
+                          "Tab",
+                          "Home",
+                          "End",
+                        ];
+
+                        if (e.key === " ") {
+                          e.preventDefault();
+                          return;
+                        }
+
+                        if (allowedControl.includes(e.key)) {
+                          if (
+                            (e.key === "Backspace" || e.key === "Delete") &&
+                            phone.length <= 4
+                          ) {
+                            e.preventDefault();
+                            return;
+                          }
+                          return;
+                        }
+
+                        if (!/^[0-9]$/.test(e.key)) {
+                          e.preventDefault();
+                          return;
+                        }
+
+                        if (phone === "+966" && e.key !== "5") {
+                          e.preventDefault();
+                          return;
+                        }
+
+                        const afterPrefix = phone.slice(4);
+
+                        if (afterPrefix.length >= 9) {
+                          e.preventDefault();
+                          return;
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={savePhone}
+                      disabled={!canSavePhone}
+                      className="px-3 py-2 rounded-lg disabled:opacity-50"
+                      style={{ background: C.primary, color: "#fff" }}
+                    >
+                      {savingPhone ? "Saving..." : "Save"}
+                    </button>
+                  </div>
+
+                  <div className="mt-1 text-xs">
+                    {(!phone || phone === "+966") && (
+                      <span className="text-gray-500">
+                        Enter phone: +966 5xxxxxxxx (9 digits after +966)
+                      </span>
+                    )}
+
+                    {hasTypedPhone && !phoneInfo.ok && (
+                      <span className="text-rose-600">
+                        {phoneInfo.reason ||
+                          "The phone number you entered isn’t valid yet."}
+                      </span>
+                    )}
+
+                    {hasTypedPhone && phoneInfo.ok && !phoneError && (
+                      <span className="text-emerald-700">
+                        ✓ Valid phone number
+                      </span>
+                    )}
+                  </div>
+
+                  {phoneError && (
+                    <div className="mt-1 text-xs text-rose-600">
+                      {phoneError}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {phoneMsgType === "success" && !!phoneMsg && (
+                <div className="text-green-700 font-medium mt-2">{phoneMsg}</div>
+              )}
+            </div>
+
+            {/* Email block */}
+            <div>
+              <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
+                Email
+              </div>
+
+              {hasEmail ? (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium text-gray-800">{P.email}</span>
                   {P.emailVerifiedAt ? (
                     <span
                       className="text-[12px] px-2 py-0.5 rounded-full border"
@@ -804,58 +866,44 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
                     </span>
                   )}
                 </div>
-
-                {!P.emailVerifiedAt && (
-                  <button
-                    onClick={() =>
-                      setEmailMsg("Your email is not verified. Please check your inbox.")
-                    }
-                    className="text-sm text-blue-600 hover:underline"
-                  >
-                    Check Email
-                  </button>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="flex gap-2">
-                  <input
-                    className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
-                    style={{ outlineColor: C.primary }}
-                    placeholder="name@example.com"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    inputMode="email"
-                  />
-
-                  <button
-                    onClick={sendVerifyLink}
-                    disabled={emailLoading || !emailInput}
-                    className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
-                    style={{ background: C.primary }}
-                  >
-                    {emailLoading ? "Sending..." : "Send Verify"}
-                  </button>
-                </div>
-
-                {!!emailMsg && (
-                  <div
-                    className="mt-2 text-sm"
-                    style={{
-                      color:
-                        emailMsg.includes("valid") ||
-                        emailMsg.includes("enter") ||
-                        emailMsg.includes("used") ||
-                        emailMsg.includes("Failed")
-                          ? "#991B1B"
-                          : "#166534",
-                    }}
-                  >
-                    {emailMsg}
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
+                      style={{ outlineColor: C.primary }}
+                      placeholder="name@example.com"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      inputMode="email"
+                    />
+                    <button
+                      onClick={sendVerifyLink}
+                      disabled={emailLoading}
+                      className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
+                      style={{ background: C.primary }}
+                    >
+                      {emailLoading ? "Sending..." : "Send Verify"}
+                    </button>
                   </div>
-                )}
-              </>
-            )}
+
+                  {!!emailMsg && (
+                    <div
+                      className="mt-2 text-sm"
+                      style={{
+                        color:
+                          emailMsg.includes("Firebase") ||
+                          emailMsg.includes("already used")
+                            ? "#991B1B"
+                            : "#166534",
+                      }}
+                    >
+                      {emailMsg}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
           {hasEmail && (
@@ -880,7 +928,9 @@ function PatientProfileModal({ patient, patientDocId, onClose }) {
   );
 }
 
-
+/* =========================
+   Password Section (checklist + strength)
+   ========================= */
 function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
@@ -944,7 +994,11 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
   function Req({ ok, label }) {
     return (
       <div className="flex items-center gap-2 text-sm leading-6">
-        {ok ? <CheckCircle size={18} className="text-green-600" /> : <Circle size={18} className="text-gray-400" />}
+        {ok ? (
+          <CheckCircle size={18} className="text-green-600" />
+        ) : (
+          <Circle size={18} className="text-gray-400" />
+        )}
         <span className={ok ? "text-green-700" : "text-gray-700"}>{label}</span>
       </div>
     );
@@ -998,9 +1052,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
       }
 
       const baseIter =
-        Number(data?.passwordIter) ||
-        parseItersFromAlgo(data?.passwordAlgo) ||
-        100_000;
+        Number(data?.passwordIter) || parseItersFromAlgo(data?.passwordAlgo) || 100_000;
 
       const payload = await buildPBKDF2Update(newPass, baseIter);
       if (data?.password) payload.password = deleteField();
@@ -1029,6 +1081,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
       </div>
 
       <div className="space-y-3">
+        {/* Current */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             Current Password <span className="text-rose-600">*</span>
@@ -1053,6 +1106,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           </div>
         </div>
 
+        {/* New */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             New Password <span className="text-rose-600">*</span>
@@ -1095,9 +1149,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
                 </div>
                 <div className="mt-2 text-sm">
                   Strength:{" "}
-                  <span style={{ color: st.color, fontWeight: 700 }}>
-                    {st.label}
-                  </span>
+                  <span style={{ color: st.color, fontWeight: 700 }}>{st.label}</span>
                   <span className="text-gray-600">
                     {" "}
                     &nbsp; (min 8 chars, include a–z, A–Z, 0–9)
@@ -1108,6 +1160,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           )}
         </div>
 
+        {/* Confirm */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             Confirm New Password <span className="text-rose-600">*</span>
@@ -1139,6 +1192,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           )}
         </div>
 
+        {/* Status */}
         {msg && (
           <div
             className={`p-3 rounded-lg text-sm ${
@@ -1151,6 +1205,7 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
           </div>
         )}
 
+        {/* Submit */}
         <button
           onClick={doUpdate}
           disabled={
