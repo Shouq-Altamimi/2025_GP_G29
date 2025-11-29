@@ -185,7 +185,7 @@ function validateAndNormalizePhone(raw) {
 
   return {
     ok: false,
-    reason: "",
+    reason: "Phone must start with 5 followed by 8 digits (e.g., +9665xxxxxxxx)",
   };
 }
 
