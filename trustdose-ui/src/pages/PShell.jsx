@@ -37,9 +37,7 @@ import {
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
-/* =========================
-   Auth helper
-   ========================= */
+
 async function ensureAuthReady() {
   const auth = getAuth();
   if (!auth.currentUser) {
@@ -51,9 +49,7 @@ async function ensureAuthReady() {
   return auth;
 }
 
-/* =========================
-   Crypto helpers
-   ========================= */
+
 const enc = new TextEncoder();
 function bytesToHex(arr) {
   return [...new Uint8Array(arr)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -100,7 +96,6 @@ function parseItersFromAlgo(algo) {
 async function verifyPatientPassword(inputPw, docData) {
   const algo = String(docData?.passwordAlgo || "").toUpperCase();
 
-  // PBKDF2
   if (algo.startsWith("PBKDF2") && docData?.passwordHash && docData?.passwordSalt) {
     const iters = Number(docData?.passwordIter) || parseItersFromAlgo(algo) || 100_000;
     const saltBytes = base64ToBytes(docData.passwordSalt);
@@ -108,13 +103,12 @@ async function verifyPatientPassword(inputPw, docData) {
     return derived === docData.passwordHash;
   }
 
-  // SHA-256 hex
   if (docData?.password && /^[a-f0-9]{64}$/i.test(docData.password)) {
     const hex = await sha256Hex(inputPw);
     return hex.toLowerCase() === String(docData.password).toLowerCase();
   }
 
-  // Legacy plain
+  
   if (typeof docData?.password === "string") return inputPw === docData.password;
 
   return false;
@@ -133,9 +127,7 @@ async function buildPBKDF2Update(newPassword, iterations = 100_000) {
   };
 }
 
-/* =========================
-   Phone helpers (نفس الدكتور)
-   ========================= */
+
 function hasArabic(str) {
   return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
     String(str || "")
@@ -194,9 +186,7 @@ function validateAndNormalizePhone(raw) {
   };
 }
 
-/* =========================
-   Data helpers
-   ========================= */
+
 function pickStr(obj, keys) {
   for (const k of keys) {
     const v = obj?.[k];
@@ -239,9 +229,7 @@ function resolvePatientId() {
   return null;
 }
 
-/* =========================
-   PShell (Patient)
-   ========================= */
+
 export default function PShell() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -294,7 +282,6 @@ export default function PShell() {
     })();
   }, []);
 
-  // open My Profile from Patient.jsx alert button
   useEffect(() => {
     const openProfile = () => setShowProfile(true);
     window.addEventListener("openPatientProfile", openProfile);
@@ -317,14 +304,12 @@ export default function PShell() {
         }}
       />
 
-      {/* child routes */}
       <div className="flex-1">
         <Outlet />
       </div>
 
       <Footer />
 
-      {/* Sidebar */}
       {isPatientPage && patientDocId && (
         <>
           <div
@@ -373,7 +358,6 @@ export default function PShell() {
         </>
       )}
 
-      {/* My Profile modal */}
       {showProfile && (
         <PatientProfileModal
           patient={patient}
@@ -386,9 +370,7 @@ export default function PShell() {
   );
 }
 
-/* =========================
-   Shared UI
-   ========================= */
+
 function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
   const base =
     "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
@@ -414,9 +396,7 @@ function Row({ label, value }) {
   );
 }
 
-/* =========================
-   My Profile modal
-   ========================= */
+
 function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
   const P = {
     fullName: patient?.fullName || "—",
@@ -431,7 +411,6 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
   const hasEmail = !!P.email;
   const hasPhone = !!P.phone;
 
-  /* ===== Phone editing (contact) ===== */
   const [editingPhone, setEditingPhone] = useState(false);
   const [phone, setPhone] = useState(P.phone || "");
   const [initialPhone, setInitialPhone] = useState(P.phone || "");
@@ -541,12 +520,10 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
     }
   }
 
-  /* ===== Email state ===== */
   const [emailInput, setEmailInput] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
 
-  // ===== Email uniqueness check (patients collection) =====
   async function isPatientEmailTaken(emailLower, selfId) {
     const q1 = query(
       collection(db, "patients"),
@@ -626,7 +603,6 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
             </button>
           </div>
 
-          {/* Patient info */}
           <div className="rounded-xl border bg-white p-4 mb-4">
             <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
               Patient Info
@@ -639,13 +615,11 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
             </div>
           </div>
 
-          {/* Contact Info */}
           <div className="rounded-xl border bg-white p-4 mb-4">
             <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
               Contact Info
             </div>
 
-            {/* Phone block */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-gray-700 font-medium">Phone</span>
@@ -792,7 +766,7 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
                     <button
                       onClick={savePhone}
                       disabled={!canSavePhone}
-                      className="px-3 py-2 rounded-lg disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ background: C.primary, color: "#fff" }}
                     >
                       {savingPhone ? "Saving..." : "Save"}
@@ -833,7 +807,6 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
               )}
             </div>
 
-            {/* Email block */}
             <div>
               <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
                 Email
@@ -880,7 +853,7 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
                     <button
                       onClick={sendVerifyLink}
                       disabled={emailLoading}
-                      className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
+                      className="px-2 py-0.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ background: C.primary }}
                     >
                       {emailLoading ? "Sending..." : "Send Verify"}
@@ -914,23 +887,14 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
             />
           )}
 
-          <div className="mt-4 flex items-center justify-end">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg border hover:bg-gray-100 transition"
-            >
-              Close
-            </button>
-          </div>
+          
         </div>
       </div>
     </>
   );
 }
 
-/* =========================
-   Password Section (checklist + strength)
-   ========================= */
+
 function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);

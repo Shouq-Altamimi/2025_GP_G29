@@ -31,7 +31,7 @@ import {
   XCircle,
   Circle,
 } from "lucide-react";
-import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
+import { getAuth, sendSignInLinkToEmail, signInAnonymously } from "firebase/auth";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
@@ -226,7 +226,7 @@ const ALL_USER_COLLECTIONS = [
   "patients",
   "pharmacies",
   "logistics",
-  "admin",
+  "admins",
 ];
 
 const COMMON_EMAIL_DOMAINS = [
@@ -282,8 +282,24 @@ async function isEmailTakenGlobally(email, selfCollection, selfDocId) {
   return false;
 }
 
+async function ensureAuthReady() {
+  const auth = getAuth();
+  if (!auth.currentUser) {
+    try {
+      await auth.signInAnonymously?.() || await signInAnonymously(auth);
+    } catch (e) {
+      console.error("Auth Init Error:", e);
+    }
+  }
+}
+
+
 
 export default function LogisticsHeader() {
+  useEffect(() => {
+  ensureAuthReady();
+}, []);
+
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -571,63 +587,69 @@ function AccountModal({ user, docId, onClose, onSaved }) {
   const [emailLoading, setEmailLoading] = useState(false);
   const hasEmail = !!user?.email;
 
-  async function sendVerifyLink() {
-    try {
-      setEmailMsg("");
+ async function sendVerifyLink() {
+  try {
+    setEmailMsg("");
 
-      const v = validateTrustDoseEmail(emailInput);
-      if (!v.ok) {
-        setEmailMsg(v.reason || "Please enter a valid email.");
-        return;
-      }
-      const email = v.email;
-
-      const taken = await isEmailTakenGlobally(email, "logistics", docId);
-      if (taken) {
-        setEmailMsg(
-          "This email is already used in another account. Please use a different email."
-        );
-        return;
-      }
-
-      const BASE = window.location.origin;
-      const params = new URLSearchParams({
-        col: "logistics",
-        doc: String(docId || ""),
-        e: email,
-        redirect: "/logistics",
-      });
-
-      const settings = {
-        url: `${BASE}/auth-email?${params.toString()}`,
-        handleCodeInApp: true,
-      };
-      setEmailLoading(true);
-      await sendSignInLinkToEmail(getAuth(), email, settings);
-
-      localStorage.setItem(
-        "td_email_pending",
-        JSON.stringify({ email, ts: Date.now() })
-      );
-      setEmailMsg(
-        "A verification link has been sent to your email. Open it, then return to the app."
-      );
-    } catch (e) {
-      if (e?.code === "auth/too-many-requests" || e?.code === "auth/quota-exceeded") {
-        setEmailMsg("Too many verification emails were requested. Please try again later.");
-      } else if (e?.code === "auth/invalid-email") {
-        setEmailMsg("Please enter a valid email.");
-      } else {
-        setEmailMsg(
-          `Firebase: ${
-            e?.code || e?.message || "Unable to send verification link."
-          }`
-        );
-      }
-    } finally {
-      setEmailLoading(false);
+    const v = validateTrustDoseEmail(emailInput);
+    if (!v.ok) {
+      setEmailMsg(v.reason || "Please enter a valid email.");
+      return;
     }
+    const email = v.email;
+
+    const taken = await isEmailTakenGlobally(email, "logistics", docId);
+    if (taken) {
+      setEmailMsg(
+        "This email is already used in another account. Please use a different email."
+      );
+      return;
+    }
+
+    const BASE = window.location.origin;
+    const params = new URLSearchParams({
+      col: "logistics",
+      doc: String(docId || ""),
+      e: email,
+      redirect: "/logistics",
+    });
+
+    const settings = {
+      url: `${BASE}/auth-email?${params.toString()}`,
+      handleCodeInApp: true,
+    };
+
+    setEmailLoading(true);
+    await sendSignInLinkToEmail(getAuth(), email, settings);
+
+    await updateDoc(doc(db, "logistics", docId), {
+      email: email,
+      updatedAt: serverTimestamp(),
+    });
+
+    localStorage.setItem(
+      "td_email_pending",
+      JSON.stringify({ email, ts: Date.now() })
+    );
+
+    setEmailMsg(
+      "A verification link has been sent to your email. Open it, then return to the app."
+    );
+  } catch (e) {
+    if (e?.code === "auth/too-many-requests" || e?.code === "auth/quota-exceeded") {
+      setEmailMsg("Too many verification emails were requested. Please try again later.");
+    } else if (e?.code === "auth/invalid-email") {
+      setEmailMsg("Please enter a valid email.");
+    } else {
+      setEmailMsg(
+        `Firebase: ${e?.code || e?.message || "Unable to send verification link."}`
+      );
+    }
+  } finally {
+    setEmailLoading(false);
   }
+}
+
 
   return (
     <>

@@ -12,13 +12,6 @@ import {
   limit as fsLimit,
 } from "firebase/firestore";
 
-const DOCTOR_MAP = {
-  "0x4F5b09D9940a1fF83463De89BD25C216fBd86E5C": {
-    name: "Khalid Altamimi",
-    facility: "Dr. Sulaiman Al Habib Hospital",
-  },
-};
-
 const isNid = (v) => /^\d{10,12}$/.test(String(v || "").trim());
 
 function resolveNidFromAnywhere() {
