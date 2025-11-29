@@ -3,7 +3,6 @@
 @tailwind utilities;
 
 :root {
-  /* أساسيات الثيم */
   --td-primary:        #9f76b4;  
   --td-primary-600:    #8a62a3;  
   --td-primary-ink:    #7b5297;  
@@ -24,16 +23,6 @@
   --td-ring-fallback:  rgba(159, 118, 180, 0.35);
 }
 
-/* Dark mide later ..
-@media (prefers-color-scheme: dark) {
-  :root {
-    --td-surface: #121212;
-    --td-bg: #0b0b0d;
-    --td-ink: #f4f4f5;
-    --td-border-soft: #2b2231;
-  }
-}
-*/
 
 
 .bg-background { background: var(--td-bg); }
