@@ -57,7 +57,6 @@ contract DoctorRegistry {
         emit DoctorActiveSet(_doctor, _active);
     }
 
-    /// @notice فحص سريع: هل الـ Access ID مستخدم؟
     function isAccessIdUsed(string calldata _accessId) external view returns (bool) {
         return usedAccessIds[keccak256(bytes(_accessId))];
     }
