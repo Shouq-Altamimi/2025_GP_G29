@@ -442,9 +442,8 @@ function Row({ label, value }) {
   );
 }
 
-/* =========================
-   Account modal
-   ========================= */
+/* Account modal*/
+
 function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   const [phone, setPhone] = useState(doctor?.phone || "");
   const [initialPhone, setInitialPhone] = useState(doctor?.phone || "");
@@ -941,9 +940,8 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
   );
 }
 
-/* =========================
-   Password Reset
-   ========================= */
+/*Password Reset*/
+
 function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);

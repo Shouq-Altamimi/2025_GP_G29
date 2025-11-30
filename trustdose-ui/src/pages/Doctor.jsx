@@ -872,7 +872,7 @@ export default function Doctor() {
   );
 }
 
-/* ============== Components ============== */
+/*Components*/
 
 function InfoCard({ label, value, bold = false, highlight = false }) {
   return (

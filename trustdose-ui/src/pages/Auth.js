@@ -1448,24 +1448,24 @@ else if (!verified && role === "logistics" && user.password) {
     onChange={(e) => {
       let val = e.target.value;
 
-      // نمنع العربي
+  
       if (hasArabic(val)) return;
 
-      // نشيل المسافات
+  
       val = val.replace(/\s/g, "");
 
-      // نثبت البادئة +966
+    
       if (!val.startsWith("+966")) {
         val = "+966" + val.replace(/^\+?966?/, "");
       }
 
-      // الجزء بعد +966
+
       const afterPrefix = val.slice(4);
 
-      // لازم كلها أرقام
+    
       if (afterPrefix && !/^[0-9]*$/.test(afterPrefix)) return;
 
-      // 🔒 قفل: ٩ خانات فقط بعد +966
+  
       if (afterPrefix.length > 9) return;
 
       setPhone(val);
@@ -1479,24 +1479,24 @@ else if (!verified && role === "logistics" && user.password) {
 
       let local = paste;
 
-      // نضبط البداية
+ 
       if (local.startsWith("+966")) {
         local = local.slice(4);
       } else if (local.startsWith("966")) {
         local = local.slice(3);
       } else if (local.startsWith("05")) {
-        local = local.slice(1); // نخليها 5xxxxxxxx
+        local = local.slice(1); 
       }
 
-      // نخليها أرقام بس
+ 
       local = local.replace(/\D/g, "");
 
-      // لازم تبدأ بـ 5
+    
       if (!local.startsWith("5")) {
         local = "5" + local.replace(/^5*/, "");
       }
 
-      // 🔒 نوقف عند ٩ خانات بعد +966
+     
       local = local.slice(0, 9);
 
       const finalVal = "+966" + local;
@@ -1549,7 +1549,7 @@ else if (!verified && role === "logistics" && user.password) {
         return;
       }
 
-      // أزرار التحكم
+     
       if (allowedControl.includes(e.key)) {
         if (
           (e.key === "Backspace" || e.key === "Delete") &&
@@ -1561,13 +1561,13 @@ else if (!verified && role === "logistics" && user.password) {
         return;
       }
 
-      // لازم رقم
+     
       if (!/^[0-9]$/.test(e.key)) {
         e.preventDefault();
         return;
       }
 
-      // أول رقم بعد +966 لازم يكون 5
+   
       if (phone === "+966" && e.key !== "5") {
         e.preventDefault();
         return;
@@ -1575,7 +1575,7 @@ else if (!verified && role === "logistics" && user.password) {
 
       const afterPrefix = phone.slice(4);
 
-      // 🔒 إذا فيه ٩ أرقام بعد +966 نمنع أي رقم زيادة
+    
       if (afterPrefix.length >= 9) {
         e.preventDefault();
         return;

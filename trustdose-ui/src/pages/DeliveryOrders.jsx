@@ -1,5 +1,4 @@
 // src/pages/DeliveryOrders.jsx
-/* global BigInt */
 "use client";
 
 import React from "react";
