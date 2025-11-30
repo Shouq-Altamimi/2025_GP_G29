@@ -4,7 +4,7 @@
 
 TrustDose is a modern healthcare management platform built on **Blockchain** and **IoT technologies**. It is designed to improve **security, transparency, and traceability** in the process of issuing, dispensing, and delivering prescriptions. Traditional prescription systems face challenges such as fraud, errors, loss of prescriptions, and poor monitoring of sensitive medicines during transport. TrustDose addresses these issues by providing a tamper-proof, transparent platform that connects doctors, pharmacies, patients, and logistics providers.  
 
-The platform is especially valuable for sensitive medicines like insulin and vaccines, which require strict temperature control. By combining blockchain immutability with real-time IoT sensor monitoring, TrustDose ensures that patients receive their medicines safely and under optimal conditions.  
+The platform is especially valuable for sensitive medicines like insulin, which require strict temperature control. By combining blockchain immutability with real-time IoT sensor monitoring, TrustDose ensures that patients receive their medicines safely and under optimal conditions.  
 
 ### Key Features  
 - Immutable prescription records stored on the **Ethereum blockchain**.  
