@@ -172,8 +172,8 @@ export default function PasswordReset() {
         await signInWithEmailLink(auth, email, href);
         console.log("✅ Sign in successful");
         
-        await signOut(auth);
-        console.log("🚪 Signed out from temp auth");
+        //await signOut(auth);
+        //console.log("🚪 Signed out from temp auth");
 
      
         setUserCol(col);
