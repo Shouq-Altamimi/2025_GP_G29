@@ -112,7 +112,7 @@ export default function PasswordReset() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
   
-  const [step, setStep] = useState("verifying"); // "verifying" | "reset" | "done" | "error"
+  const [step, setStep] = useState("verifying"); 
   const [status, setStatus] = useState("🔄 Verifying your reset link...");
   const [error, setError] = useState(false);
 
@@ -132,7 +132,7 @@ export default function PasswordReset() {
   const pwInfo = passwordStrength(newPassword);
   const meetsPolicy = pwInfo.len8 && pwInfo.hasLower && pwInfo.hasUpper && pwInfo.hasDigit;
 
-  // التحقق من الرابط
+
  useEffect(() => {
     (async () => {
       try {
@@ -175,7 +175,7 @@ export default function PasswordReset() {
         await signOut(auth);
         console.log("🚪 Signed out from temp auth");
 
-        // حفظ المعلومات
+     
         setUserCol(col);
         setUserDocId(documentId);
         setUserId(id);

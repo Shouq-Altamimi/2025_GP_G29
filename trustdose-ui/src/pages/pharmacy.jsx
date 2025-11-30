@@ -742,7 +742,7 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
           </div>
         )}
 
-      {/* Grid with pagination: 1 col mobile / 2 cols desktop */}
+     
       {results.length > 0 && (
         <>
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4">

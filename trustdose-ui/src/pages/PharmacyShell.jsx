@@ -512,7 +512,6 @@ export default function PharmacyShell() {
   );
 }
 
-/* =============== small components =============== */
 function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
   const base =
     "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
@@ -537,7 +536,7 @@ function Row({ label, value }) {
   );
 }
 
-/* ================= Account Modal ================= */
+
 function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
   // Phone
   const [phone, setPhone] = useState(pharmacy?.phone || "");
@@ -545,7 +544,7 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
   const [phoneError, setPhoneError] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
-  const [msgType, setMsgType] = useState(""); // success | ""
+  const [msgType, setMsgType] = useState(""); 
 
   const [editingPhone, setEditingPhone] = useState(false);
   const phoneRef = useRef(null);
@@ -1011,7 +1010,7 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
   );
 }
 
-/* =============== Password Reset =============== */
+/* Password Reset */
 function PasswordResetSection({ pharmacyDocId, onSaved }) {
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);

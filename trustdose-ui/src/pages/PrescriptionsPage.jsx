@@ -40,7 +40,7 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
   const [qText, setQText] = useState("");
   const [page, setPage] = useState(0);
 
-  /* ===================== Resolve patient hash ===================== */
+  /* Resolve patient hash */
   useEffect(() => {
     (async () => {
       const sp = new URLSearchParams(location.search);
@@ -74,7 +74,7 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
     })();
   }, [location.search]);
 
-  /* ===================== Fetch prescriptions ===================== */
+  /*Fetch prescriptions */
   useEffect(() => {
     if (!natHash) return;
     (async () => {
@@ -123,7 +123,6 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
   useEffect(() => setPage(0), [qText]);
   useEffect(() => setPage((p) => Math.min(p, pageCount - 1)), [pageCount]);
 
-  /* ===================== UI ===================== */
   return (
     <main className="mx-auto w-full max-w-6xl px-3 md:px-5 pt-5 pb-10 min-h-[90vh] flex flex-col">
       {/* Back button in header area */}
