@@ -448,51 +448,85 @@ export default function TrustDoseAuth() {
     try {
       setAdminMsg("");
       setAdminLoading(true);
-
+  
       if (!window.ethereum) {
         setAdminMsg("Please install MetaMask first.");
         return;
       }
-
+  
       const provider = new ethers.BrowserProvider(window.ethereum);
-      const accounts = await provider.send("eth_requestAccounts", []);
-      if (!accounts?.length) {
+  
+      let accounts;
+      try {
+      
+        accounts = await provider.send("eth_requestAccounts", []);
+      } catch (err) {
+        console.warn("MetaMask request error:", err);
+      
+        if (err && (err.code === 4001 || err?.message?.toLowerCase().includes("user rejected"))) {
+          setAdminMsg("❌ Request cancelled by user.");
+          return;
+        }
+      
+        setAdminMsg("An error occurred while connecting to your wallet.");
+        return;
+      }
+  
+      if (!accounts || !accounts.length) {
         setAdminMsg("No wallet has been selected.");
         return;
       }
+  
       const address = String(accounts[0]).toLowerCase();
-
+  
       setAdminMsg("Checking administrator privileges...");
-
+  
       const ref = doc(db, "admins", address);
       const snap = await getDoc(ref);
-
+  
       if (!snap.exists()) {
         setAdminMsg("⚠️This address is not registered as an administrator.");
         return;
       }
-
+  
       try {
         const signer = await provider.getSigner();
         const msg = `TrustDose Admin Login\nAddress: ${address}\nNonce: ${Date.now()}`;
-        await signer.signMessage(msg);
-      } catch {}
-
+     
+        try {
+          await signer.signMessage(msg);
+        } catch (signErr) {
+          console.warn("User rejected signing:", signErr);
+          if (signErr && (signErr.code === 4001 || signErr?.message?.toLowerCase().includes("user rejected"))) {
+            setAdminMsg("❌ request cancelled by Admin.");
+            return;
+          }
+       
+          setAdminMsg("An error occurred during signing.");
+          return;
+        }
+      } catch (e) {
+        console.warn("Failed to get signer or sign:", e);
+        setAdminMsg("An error occurred while preparing wallet signature.");
+        return;
+      }
+  
+  
       localStorage.setItem("userRole", "admin");
       localStorage.setItem("wallet", address);
       localStorage.setItem("userId", address);
-
+  
       setAdminMsg("✅ Logged in as administrator");
-      // ⬇️ التوجيه مباشرة لصفحة الداشبورد
+
       navigate("/admin/dashboard", { replace: true });
     } catch (e) {
       console.error(e);
-      setAdminMsg("An error occurred while connecting to your wallet.");
+      setAdminMsg("An unexpected error occurred while connecting to your wallet.");
     } finally {
       setAdminLoading(false);
     }
   }
-
+  
   async function handleForgotPassword(e) {
     e.preventDefault();
     setForgotMsg("");
