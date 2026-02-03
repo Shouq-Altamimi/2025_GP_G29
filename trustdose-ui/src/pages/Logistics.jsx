@@ -63,6 +63,32 @@ export default function Logistics() {
   const [msg, setMsg] = React.useState("");
   const [page, setPage] = React.useState(0);
   const [pending, setPending] = React.useState({});
+  // --- إضافة حالات الفلترة الجديدة ---
+  const [qText, setQText] = React.useState("");
+  const [fromDT, setFromDT] = React.useState("");
+  const [toDT, setToDT] = React.useState("");
+
+  const setQuickFilter = (hours) => {
+    const now = new Date();
+    const past = new Date(now.getTime() - hours * 60 * 60 * 1000);
+    const formatForInput = (d) => {
+      const pad = (n) => n.toString().padStart(2, '0');
+      const year = d.getFullYear().toString().slice(-4); 
+      return `${year}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    setFromDT(formatForInput(past).replace("T", " "));
+    setToDT(formatForInput(now).replace("T", " "));
+  };
+
+  function parseDTLocal(v) {
+    if (!v || typeof v !== "string") return null;
+    const cleaned = v.trim().replace("T", " ");
+    const [datePart, timePart] = cleaned.split(" ");
+    if (!datePart || !timePart) return null;
+    const [y, m, d] = datePart.split("-").map(Number);
+    const [hh, mm] = timePart.split(":").map(Number);
+    return new Date(y, m - 1, d, hh, mm);
+  }
 
   const [header, setHeader] = React.useState({
     companyName: "",
@@ -197,7 +223,7 @@ export default function Logistics() {
     return () => (mounted = false);
   }, []);
 
-  const visible = rows.filter(
+  /*const visible = rows.filter(
     (r) => r.acceptDelivery && !r.dispensed && !r.logisticsAccepted
   );
 
@@ -206,7 +232,34 @@ export default function Logistics() {
   const start = page * PAGE_SIZE;
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = visible.slice(start, end);
+*/
 
+const filtered = React.useMemo(() => {
+    let base = rows.filter((r) => r.acceptDelivery && !r.dispensed && !r.logisticsAccepted);
+    let from = parseDTLocal(fromDT);
+    let to = parseDTLocal(toDT);
+
+    if (from) base = base.filter((r) => r.createdAtTS && r.createdAtTS >= from);
+    if (to) base = base.filter((r) => r.createdAtTS && r.createdAtTS <= to);
+
+    const v = qText.trim().toLowerCase();
+    if (v) {
+      base = base.filter((r) =>
+        (r.medicineLabel || "").toLowerCase().includes(v) ||
+        (r.patientName || "").toLowerCase().includes(v) ||
+        (r.patientId || "").toLowerCase().includes(v)
+      );
+    }
+    return base;
+  }, [rows, qText, fromDT, toDT]);
+
+  const total = filtered.length;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const start = page * PAGE_SIZE;
+  const end = Math.min(start + PAGE_SIZE, total);
+  const pageItems = filtered.slice(start, end);
+
+  React.useEffect(() => setPage(0), [qText, fromDT, toDT]);
   /* Accept delivery */
   async function handleAccept(r) {
     try {
@@ -293,6 +346,48 @@ export default function Logistics() {
               <p className="text-[15px] font-medium" style={{ color: "#64748b" }}>
                 Delivery Requests Awaiting Your Acceptance
               </p>
+            </div>
+          </div>
+        </div>
+        {/* شريط التاريخ */}
+        <div className="sticky top-0 z-30 mb-6">
+          <div className="bg-white/95 backdrop-blur border rounded-2xl shadow-sm p-4">
+            <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => {
+                  const today = new Date().toISOString().slice(0, 10);
+                  setFromDT(`${today} 00:00`); setToDT(`${today} 23:59`);
+                }} className="px-3 py-1.5 rounded-lg text-xs font-medium border hover:bg-gray-50" style={{ color: C.ink }}>Today</button>
+                <button type="button" onClick={() => setQuickFilter(24)} className="px-3 py-1.5 rounded-lg text-xs font-medium border hover:bg-gray-50" style={{ color: C.ink }}>Last 24h</button>
+                <button type="button" onClick={() => setQuickFilter(48)} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 bg-red-50 text-red-700">Last 48h</button>
+              </div>
+
+              <div className="flex flex-1 flex-wrap gap-3 items-center">
+                        <div className="relative flex-1 min-w-[180px]">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2">🗓️</span>
+
+                <input
+                  type="datetime-local"
+                  max="9999-12-31T23:59"
+                  value={fromDT.replace(" ", "T")}
+                  onChange={(e) => setFromDT(e.target.value.slice(0, 16).replace("T", " "))}
+className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+  style={{ outlineColor: C.primary }}                />
+                 </div>
+                <span className="text-gray-400 text-sm font-bold">to</span>
+                        <div className="relative flex-1 min-w-[180px]">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2">⏱️</span>
+
+                <input
+                  type="datetime-local"
+                  max="9999-12-31T23:59"
+                  value={toDT.replace(" ", "T")}
+                  onChange={(e) => setToDT(e.target.value.slice(0, 16).replace("T", " "))}
+className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+  style={{ outlineColor: C.primary }}                />
+                 </div>
+                <button type="button" onClick={() => { setFromDT(""); setToDT(""); setQText(""); }} className="p-2 hover:bg-gray-100 rounded-full transition-colors">🔄</button>
+              </div>
             </div>
           </div>
         </div>

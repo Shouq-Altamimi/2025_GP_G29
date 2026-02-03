@@ -22,6 +22,55 @@ function shortAddr(a) {
   const s = String(a);
   return s.length > 10 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s;
 }
+///////////////
+ function normalizeDTInput(v) {
+  return String(v).replace(/[^0-9:\- T]/g, "").replace(/\s+/g, " ").slice(0, 16);
+}
+function parseDTLocal(v) {
+ 
+  if (!v || typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s) return null;
+
+  // يقبل: "2026-02-02T12:30" أو "2026-02-02 12:30"
+  const cleaned = s.replace("T", " ");
+  const [datePart, timePart] = cleaned.split(" ");
+  if (!datePart || !timePart) return null;
+
+  const [y, m, d] = datePart.split("-").map(Number);
+  const [hh, mm] = timePart.split(":").map(Number);
+
+  if (![y, m, d, hh, mm].every((n) => Number.isFinite(n))) return null;
+
+  return new Date(y, m - 1, d, hh, mm, 0, 0);
+}
+
+///////////////
+function isValidDT(v) {
+  if (!v || typeof v !== "string") return false;
+  const s = v.trim();
+  // نقبل فقط: "YYYY-MM-DD HH:MM"
+  if (!/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}$/.test(s)) return false;
+
+  const [datePart, timePart] = s.split(" ");
+  const [y, m, d] = datePart.split("-").map(Number);
+  const [hh, mm] = timePart.split(":").map(Number);
+
+  // حدود منطقية
+  if (m < 1 || m > 12) return false;
+  if (hh < 0 || hh > 23) return false;
+  if (mm < 0 || mm > 59) return false;
+
+  // تحقق من عدد أيام الشهر (يشمل leap year)
+  const lastDay = new Date(y, m, 0).getDate(); // آخر يوم بالشهر
+  if (d < 1 || d > lastDay) return false;
+
+  return true;
+}
+
+
+
+/////////
 
 export default function PrescriptionsPage({ role = "doctor", onDispense, dispensingId }) {
   const location = useLocation();
@@ -38,7 +87,41 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [qText, setQText] = useState("");
+  
+  ////
+  const [fromDT, setFromDT] = useState("");
+const [toDT, setToDT] = useState("");
+/////
   const [page, setPage] = useState(0);
+  ///
+ // أضف هذه الدالة داخل المكون فوق سطر الـ return
+/*const setQuickFilter = (hours) => {
+  const now = new Date();
+  const past = new Date(now.getTime() - hours * 60 * 60 * 1000);
+  
+  // تنسيق يحول التاريخ لصيغة يفهمها حقل datetime-local
+  const formatForInput = (d) => {
+    const pad = (n) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  
+  setFromDT(formatForInput(past).replace("T", " ")); // نحدث الحالة (State)
+  setToDT(formatForInput(now).replace("T", " "));
+};*/
+const setQuickFilter = (hours) => {
+  const now = new Date();
+  const past = new Date(now.getTime() - hours * 60 * 60 * 1000);
+  
+  const formatForInput = (d) => {
+    const pad = (n) => n.toString().padStart(2, '0');
+    // d.getFullYear() سيعطيك 4 أرقام، نستخدم slice لضمان عدم الزيادة مستقبلاً
+    const year = d.getFullYear().toString().slice(-4); 
+    return `${year}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  
+  setFromDT(formatForInput(past).replace("T", " "));
+  setToDT(formatForInput(now).replace("T", " "));
+};
 
   /* Resolve patient hash */
   useEffect(() => {
@@ -86,7 +169,11 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
 
         const data = snap.docs.map((d) => {
           const raw = d.data();
-          const createdAtTS = raw?.createdAt?.toDate?.() || null;
+          //const createdAtTS = raw?.createdAt?.toDate?.() || null;
+          const createdAtTS =
+  raw?.createdAt?.toDate?.() ||
+  (raw?.createdAt?.seconds ? new Date(raw.createdAt.seconds * 1000) : null);
+///////////////////////////
           return { id: d.id, ...raw, createdAtTS };
         });
 
@@ -106,13 +193,43 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
     })();
   }, [natHash]);
 
+  /////////////////////////////neww//////////
+  const filtered = useMemo(() => {
+  let rows = list;
+let from = parseDTLocal(fromDT);
+let to = parseDTLocal(toDT);
+
+
+// لو المستخدم عكسهم
+if (from && to && from > to) {
+  const tmp = from;
+  from = to;
+  to = tmp;
+}
+
+if (from) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS >= from);
+if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
+
+
+  // فلترة باسم الدواء (اللي كانت موجودة)
+  const v = qText.trim().toLowerCase();
+  if (v) {
+    rows = rows.filter((r) =>
+      (r.medicineLabel || r.medicineName || "").toLowerCase().includes(v)
+    );
+  }
+
+  return rows;
+}, [list, qText, fromDT, toDT]);
+
+/*
   const filtered = useMemo(() => {
     const v = qText.trim().toLowerCase();
     if (!v) return list;
     return list.filter((r) =>
       (r.medicineLabel || r.medicineName || "").toLowerCase().includes(v)
     );
-  }, [list, qText]);
+  }, [list, qText]);*/
 
   const total = filtered.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -120,7 +237,9 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = filtered.slice(start, end);
 
-  useEffect(() => setPage(0), [qText]);
+  //useEffect(() => setPage(0), [qText]);
+  useEffect(() => setPage(0), [qText, fromDT, toDT]);
+//
   useEffect(() => setPage((p) => Math.min(p, pageCount - 1)), [pageCount]);
 
   return (
@@ -165,6 +284,96 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
           }}
         />
       </div>
+
+      {/* Dynamic Top Filter Bar */}
+<div className="sticky top-0 z-30 mb-6">
+  <div className="bg-white/95 backdrop-blur border rounded-2xl shadow-sm p-4">
+    <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+      
+      {/* Quick Presets - الأزرار السريعة المهمة للنظام الطبي */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => {
+            const today = new Date().toISOString().slice(0, 10);
+            setFromDT(`${today} 00:00`);
+            setToDT(`${today} 23:59`);
+          }}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-gray-50"
+          style={{ color: C.ink }}
+        >
+          Today
+        </button>
+        <button
+          onClick={() => setQuickFilter(24)}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-gray-50"
+          style={{ color: C.ink }}
+        >
+          Last 24h
+        </button>
+        <button
+          onClick={() => setQuickFilter(48)}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 bg-red-50 text-red-700 hover:bg-orange-100"
+        >
+          Last 48h (Urgent)
+        </button>
+      </div>
+
+      <div className="h-8 w-[1px] bg-gray-200 hidden lg:block"></div>
+
+      {/* Date Inputs */}
+      <div className="flex flex-1 flex-wrap gap-3 items-center">
+        <div className="relative flex-1 min-w-[180px]">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2">🗓️</span>
+          {/* حقل From */}
+<input
+  type="datetime-local"
+  max="9999-12-31T23:59" // تحديد سقف للسنة بـ 4 أرقام
+  value={fromDT.replace(" ", "T")}
+  onChange={(e) => {
+    // نأخذ أول 16 حرفاً فقط لضمان عدم تمدد النص
+    const val = e.target.value.slice(0, 16); 
+    setFromDT(val.replace("T", " "));
+  }}
+  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+  style={{ outlineColor: C.primary }}
+/>
+        </div>
+
+        <span className="text-gray-400 text-sm">to</span>
+
+        <div className="relative flex-1 min-w-[180px]">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2">⏱️</span>
+         {/* حقل To */}
+<input
+  type="datetime-local"
+  max="9999-12-31T23:59"
+  value={toDT.replace(" ", "T")}
+  onChange={(e) => {
+    const val = e.target.value.slice(0, 16);
+    setToDT(val.replace("T", " "));
+  }}
+  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+  style={{ outlineColor: C.primary }}
+/>
+        </div>
+
+        {/* Reset */}
+        <button
+          type="button"
+          onClick={() => {
+            setFromDT("");
+            setToDT("");
+            setQText("");
+          }}
+          className="p-2 rounded-xl hover:bg-gray-100 transition-colors"
+          title="Reset Filters"
+        >
+          🔄
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
       {/* List */}
       <div className="flex-1">
