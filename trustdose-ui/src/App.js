@@ -33,6 +33,8 @@ import Admin from "./pages/Admin";
 import LogisticsHeader from "./pages/LogisticsHeader.jsx";
 import Logistics from "./pages/Logistics.jsx";
 import LogisticsPending from "./pages/LogisticsPending.jsx";
+import LogisticsNotifications from "./pages/LogisticsNotifications.jsx";
+
 
 
 import Welcome from "./pages/Welcome";
@@ -134,11 +136,13 @@ export default function App() {
           <Route index element={<Logistics />} />
 
           <Route path="pending" element={<LogisticsPending />} />
-        </Route>
+          <Route path="notifications" element={<LogisticsNotifications />} />
 
+        </Route>
 
         <Route path="*" element={<div style={{ padding: 24 }}>Page not found</div>} />
       </Routes>
+
     </BrowserRouter>
   );
 }
