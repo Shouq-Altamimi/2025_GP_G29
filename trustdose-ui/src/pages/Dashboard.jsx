@@ -95,34 +95,34 @@ export default function Dashboard() {
 
   // ✅ Query: prescriptions for this doctor within period
   useEffect(() => {
-    if (!userId) return;
+  if (!userId) return;
 
-    setLoading(true);
+  setLoading(true);
 
-    // createdAt لازم يكون Timestamp (عندكم موجود)
-    const startTs = Timestamp.fromDate(rangeStartDate);
+  const startTs = Timestamp.fromDate(rangeStartDate);
 
-    const qy = query(
-      collection(db, "prescriptions"),
-      where("doctorId", "==", userId),
-      where("createdAt", ">=", startTs),
-      orderBy("createdAt", "desc")
-    );
+  const qy = query(
+    collection(db, "prescriptions"),
+    where("doctorId", "==", userId),
+    where("updatedAt", ">=", startTs),
+    orderBy("updatedAt", "desc")
+  );
 
-    const unsub = onSnapshot(
-      qy,
-      (snap) => {
-        setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setLoading(false);
-      },
-      () => {
-        setItems([]);
-        setLoading(false);
-      }
-    );
+  const unsub = onSnapshot(
+    qy,
+    (snap) => {
+      setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    },
+    () => {
+      setItems([]);
+      setLoading(false);
+    }
+  );
 
-    return () => unsub();
-  }, [userId, rangeStartDate]);
+  return () => unsub();
+}, [userId, rangeStartDate]);
+
 
   return (
     <div className="min-h-[calc(100vh-140px)] px-6 py-6">
