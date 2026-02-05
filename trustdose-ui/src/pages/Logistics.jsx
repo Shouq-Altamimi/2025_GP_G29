@@ -364,29 +364,36 @@ const filtered = React.useMemo(() => {
 
               <div className="flex flex-1 flex-wrap gap-3 items-center">
                         <div className="relative flex-1 min-w-[180px]">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2">🗓️</span>
-
                 <input
                   type="datetime-local"
                   max="9999-12-31T23:59"
                   value={fromDT.replace(" ", "T")}
                   onChange={(e) => setFromDT(e.target.value.slice(0, 16).replace("T", " "))}
-className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+className="w-full pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
   style={{ outlineColor: C.primary }}                />
                  </div>
                 <span className="text-gray-400 text-sm font-bold">to</span>
                         <div className="relative flex-1 min-w-[180px]">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2">⏱️</span>
-
                 <input
                   type="datetime-local"
                   max="9999-12-31T23:59"
                   value={toDT.replace(" ", "T")}
                   onChange={(e) => setToDT(e.target.value.slice(0, 16).replace("T", " "))}
-className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+className="w-full pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
   style={{ outlineColor: C.primary }}                />
                  </div>
-                <button type="button" onClick={() => { setFromDT(""); setToDT(""); setQText(""); }} className="p-2 hover:bg-gray-100 rounded-full transition-colors">🔄</button>
+<button
+  type="button"
+  onClick={() => { setFromDT(""); setToDT(""); setQText(""); }}
+  className="px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm"
+  style={{
+    backgroundColor: C.primary,
+    color: "#fff",
+  }}
+>
+  Clear Filters
+</button>
+
               </div>
             </div>
           </div>

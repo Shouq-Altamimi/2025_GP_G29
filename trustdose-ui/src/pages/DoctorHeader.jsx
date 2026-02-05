@@ -19,6 +19,7 @@ import {
 } from "firebase/firestore";
 import {
   FilePlus2,
+  BarChart3, 
   User,
   LogOut,
   X,
@@ -257,8 +258,9 @@ export default function DoctorHeader() {
   const location = useLocation();
   const navigate = useNavigate();
   const isDoctorPage =
-    location.pathname.startsWith("/doctor") ||
-    location.pathname.startsWith("/prescriptions");
+  location.pathname.startsWith("/doctor") ||
+  location.pathname.startsWith("/prescriptions") ||
+  location.pathname.startsWith("/dashboard"); 
 
   const [open, setOpen] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
@@ -382,6 +384,16 @@ export default function DoctorHeader() {
                 <FilePlus2 size={18} />
                 <span>Create Prescription</span>
               </DrawerItem>
+<DrawerItem
+  active={location.pathname.startsWith("/dashboard")}
+  onClick={() => {
+    navigate("/dashboard");
+    setOpen(false);
+  }}
+>
+  <BarChart3 size={18} />
+  <span>Dashboard</span>
+</DrawerItem>
 
               <DrawerItem
                 onClick={() => {
