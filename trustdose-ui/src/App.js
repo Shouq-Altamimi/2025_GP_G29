@@ -21,6 +21,8 @@ import Dashboard from "./pages/Dashboard.jsx";
 /* Patient */
 import PShell from "./pages/PShell.jsx";
 import Patient from "./pages/Patient";
+import PatientNotifications from "./pages/PatientNotifications";
+
 
 /* Pharmacy */
 import PharmacyShell from "./pages/PharmacyShell";
@@ -101,6 +103,7 @@ export default function App() {
         >
           <Route index element={<Patient />} />
           <Route path="prescriptions" element={<PrescriptionsPage />} />
+          <Route path="notifications" element={<PatientNotifications />} />
         </Route>
 
         {/* Pharmacy */}

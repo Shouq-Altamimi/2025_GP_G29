@@ -15,6 +15,8 @@ import {
   deleteField,
   serverTimestamp,
   Timestamp,
+    addDoc,
+    limit,
 } from "firebase/firestore";
 
 import { Loader2, Bell, Clock, CheckCircle2, AlertCircle } from "lucide-react";
@@ -368,7 +370,22 @@ React.useEffect(() => {
         if (toReset.length > 0) {
           await Promise.all(
             toReset.map(async ({ docId, baseAt }) => {
+              
               try {
+                // 1) هات بيانات الوصفة (قبل التحديث) عشان نجيب patient + pid
+  const rxSnap = await getDoc(doc(db, "prescriptions", docId));
+  const rxData = rxSnap.exists() ? (rxSnap.data() || {}) : {};
+
+  const nid = String(rxData.nationalID || rxData.nationalId || "");
+  const patientDocId = nid ? `Ph_${nid}` : "";
+
+  const pid = String(
+    rxData.prescriptionID ||
+    rxData.prescriptionId ||
+    rxData.prescriptionNum ||
+    rxData.prescriptionNumber ||
+    docId
+  );
                 await updateDoc(doc(db, "prescriptions", docId), {
                   logisticsAccepted: false,
                   logisticsAcceptedAt: deleteField(),
@@ -384,6 +401,36 @@ React.useEffect(() => {
                   overdue48Reason: "DELIVERY_NOT_COMPLETED_48H",
                   updatedAt: serverTimestamp(),
                 });
+                // 3) ✅ ثانياً: بعد نجاح التحديث… ارسل إشعار للمريض
+  if (patientDocId) {
+    const dupQ = query(
+      collection(db, "notifications"),
+      where("toRole", "==", "patient"),
+      where("toPatientDocId", "==", patientDocId),
+      where("orderId", "==", docId),
+      where("type", "==", "PRESCRIPTION_REDISPENSED_48H"),
+      limit(1)
+    );
+
+    const dupSnap = await getDocs(dupQ);
+
+    if (dupSnap.empty) {
+      await addDoc(collection(db, "notifications"), {
+        toRole: "patient",
+        toPatientDocId: patientDocId,
+
+        type: "PRESCRIPTION_REDISPENSED_48H",
+        title: "Prescription Redispensed",
+        message: `Your prescription ${pid} has been returned for redispensing (delivery was not completed within 48 hours).`,
+
+        orderId: docId,
+        prescriptionID: pid,
+
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+    }
+  }
               } catch (e) {
                 console.error("AUTO RESET (48h) failed for prescription:", docId, e);
               }
