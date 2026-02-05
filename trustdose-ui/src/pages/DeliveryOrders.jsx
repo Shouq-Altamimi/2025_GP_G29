@@ -1,4 +1,4 @@
-// src/pages/DeliveryOrders.jsx
+// src/pages/DeliveryOrders.jsx لا تحذف وعدل على اللي اتفقنا 
 /* global BigInt */
 "use client";
 
@@ -8,7 +8,7 @@ import { db } from "../firebase";
 import {
   collection,
   query,
-  where,
+  where, 
   getDocs,
   orderBy,
   doc,
@@ -255,6 +255,20 @@ export default function DeliveryOrders({ pharmacyId }) {
         acceptDelivery: true,
         acceptDeliveryAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+
+        // ✅ اتفقنا: بعد قبول الصيدلية، الطلب يجهز للوجستيك
+        status: RX_STATUS.PHARM_ACCEPTED,
+
+        // ✅ الـ 48 ساعة تبدأ لاحقًا من logisticsAcceptedAt (في صفحة اللوجستيك)
+        logisticsAccepted: false,
+        logisticsAcceptedAt: null,
+
+        // ✅ ما تم التسليم
+        deliveryConfirmed: false,
+
+        // ✅ فلاغات إشعارات (تستخدمها الـ Cloud Function عشان ما تكرر)
+        deliveryOverdue24Notified: false,
+        deliveryOverdue48Notified: false,
       };
       if (txHash) {
         updatePayload.acceptDeliveryTx = txHash;

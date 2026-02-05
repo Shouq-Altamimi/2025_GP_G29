@@ -20,6 +20,7 @@ import PharmacyShell from "./pages/PharmacyShell";
 import Pharmacy from "./pages/pharmacy.jsx";
 import DeliveryOrders from "./pages/DeliveryOrders.jsx";
 import PendingOrders from "./pages/PendingOrders.jsx";
+import PharmacyNotifications from "./pages/PharmacyNotifications";
 
 
 import AuthEmailHandler from "./pages/AuthEmailHandler";
@@ -122,7 +123,8 @@ export default function App() {
             path="pending"
             element={<PendingOrders pharmacyId="pharma_001" />}
           />
-        </Route>
+          <Route path="notifications" element={<PharmacyNotifications />} />
+</Route>
 
        
         <Route
