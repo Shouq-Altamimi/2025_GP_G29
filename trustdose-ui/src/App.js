@@ -11,6 +11,8 @@ import Shell from "./pages/DoctorHeader.jsx";
 import PShell from "./pages/PShell.jsx";
 import Patient from "./pages/Patient";
 import PrescriptionsPage from "./pages/PrescriptionsPage";
+import PatientNotifications from "./pages/PatientNotifications";
+
 
 import PharmacyShell from "./pages/PharmacyShell";
 import Pharmacy from "./pages/pharmacy.jsx";
@@ -91,6 +93,7 @@ export default function App() {
         >
           <Route index element={<Patient />} />
           <Route path="prescriptions" element={<PrescriptionsPage />} />
+          <Route path="notifications" element={<PatientNotifications />} />
         </Route>
 
         <Route
