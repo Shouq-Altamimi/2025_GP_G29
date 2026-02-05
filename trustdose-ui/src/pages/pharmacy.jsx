@@ -217,6 +217,57 @@ function formatFsCreatedAt(v) {
   return base.replace(",", "") + " UTC+3";
 }
 
+// ===== Date/Time filter helpers (same as Logistics) =====
+function parseDTLocal(v) {
+  if (!v || typeof v !== "string") return null;
+  const cleaned = v.trim().replace("T", " ");
+  const [datePart, timePart] = cleaned.split(" ");
+  if (!datePart || !timePart) return null;
+  const [y, m, d] = datePart.split("-").map(Number);
+  const [hh, mm] = timePart.split(":").map(Number);
+  return new Date(y, m - 1, d, hh, mm);
+}
+
+function formatLocalYYYYMMDD(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function setTodayRange(setFromDT, setToDT) {
+  const d = new Date(); // local time
+  const today = formatLocalYYYYMMDD(d);
+  setFromDT(`${today} 00:00`);
+  setToDT(`${today} 23:59`);
+}
+
+function setQuickFilterRange(hours, setFromDT, setToDT) {
+  const now = new Date();
+  const past = new Date(now.getTime() - hours * 60 * 60 * 1000);
+
+  const pad = (n) => String(n).padStart(2, "0");
+  const formatForInput = (d) =>
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
+      d.getHours()
+    )}:${pad(d.getMinutes())}`;
+
+  setFromDT(formatForInput(past));
+  setToDT(formatForInput(now));
+}
+
+function rowCreatedDate(row) {
+  // Prefer Firestore Date object if available
+  if (row?.createdAtTS instanceof Date && !isNaN(row.createdAtTS)) return row.createdAtTS;
+
+  // If createdAt exists as ISO/string
+  if (row?.createdAt) {
+    const d = new Date(String(row.createdAt));
+    if (d instanceof Date && !isNaN(d)) return d;
+  }
+
+  return null;
+}
+
+
 function PickUpSection({ setRxs, q, setQ, addNotification }) {
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -229,6 +280,10 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
   const [page, setPage] = useState(0);
 
   const [dispensingId, setDispensingId] = useState(null);
+
+  // --- Date/Time filter (same as Logistics) ---
+const [fromDT, setFromDT] = useState("");
+const [toDT, setToDT] = useState("");
 
 
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
@@ -640,13 +695,43 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
     }
   }
 
-  const total = results.length;
+const filteredResults = useMemo(() => {
+  let base = results;
+
+  const from = parseDTLocal(fromDT);
+  const to = parseDTLocal(toDT);
+
+  if (from) base = base.filter((r) => {
+    const d = rowCreatedDate(r);
+    return d && d >= from;
+  });
+
+  if (to) base = base.filter((r) => {
+    const d = rowCreatedDate(r);
+    return d && d <= to;
+  });
+
+  return base;
+}, [results, fromDT, toDT]);
+
+
+  /*const total = results.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const start = page * PAGE_SIZE;
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = results.slice(start, end);
+  */
+  const total = filteredResults.length;
+const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+const start = page * PAGE_SIZE;
+const end = Math.min(start + PAGE_SIZE, total);
+const pageItems = filteredResults.slice(start, end);
 
-  React.useEffect(() => setPage(0), [JSON.stringify(results)]);
+
+  //React.useEffect(() => setPage(0), [JSON.stringify(results)]);
+
+  React.useEffect(() => setPage(0), [JSON.stringify(results), fromDT, toDT]);
+
 
   return (
     <section style={{ display: "grid", gap: 20 }}>
@@ -730,6 +815,84 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
           </div>
         )}
       </section>
+
+      {/* Date/Time Filter Bar (under Search) */}
+<div className="sticky top-0 z-30 mb-6">
+  <div className="bg-white/95 backdrop-blur border rounded-2xl shadow-sm p-4">
+    <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setTodayRange(setFromDT, setToDT)}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium border hover:bg-gray-50"
+          style={{ color: brand.ink }}
+        >
+          Today
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setQuickFilterRange(24, setFromDT, setToDT)}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium border hover:bg-gray-50"
+          style={{ color: brand.ink }}
+        >
+          Last 24h
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setQuickFilterRange(48, setFromDT, setToDT)}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 bg-red-50 text-red-700"
+        >
+          Last 48h
+        </button>
+      </div>
+
+      <div className="flex flex-1 flex-wrap gap-3 items-center">
+        <div className="relative flex-1 min-w-[180px]">
+          <input
+            type="datetime-local"
+            max="9999-12-31T23:59"
+            value={fromDT.replace(" ", "T")}
+            onChange={(e) =>
+              setFromDT(e.target.value.slice(0, 16).replace("T", " "))
+            }
+            className="w-full pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+            style={{ outlineColor: brand.purple }}
+          />
+        </div>
+
+        <span className="text-gray-400 text-sm font-bold">to</span>
+
+        <div className="relative flex-1 min-w-[180px]">
+          <input
+            type="datetime-local"
+            max="9999-12-31T23:59"
+            value={toDT.replace(" ", "T")}
+            onChange={(e) =>
+              setToDT(e.target.value.slice(0, 16).replace("T", " "))
+            }
+            className="w-full pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+            style={{ outlineColor: brand.purple }}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setFromDT("");
+            setToDT("");
+          }}
+          className="px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm"
+          style={{ backgroundColor: brand.purple, color: "#fff" }}
+        >
+          Clear Filters
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
       {searched &&
         !loading &&

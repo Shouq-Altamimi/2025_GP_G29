@@ -46,12 +46,49 @@ function formatFsTimestamp(v) {
   return String(v);
 }
 
+// ===== Date/Time Filter (same as Logistics) =====
+function parseDTLocal(v) {
+  if (!v || typeof v !== "string") return null;
+  const cleaned = v.trim().replace("T", " ");
+  const [datePart, timePart] = cleaned.split(" ");
+  if (!datePart || !timePart) return null;
+  const [y, m, d] = datePart.split("-").map(Number);
+  const [hh, mm] = timePart.split(":").map(Number);
+  return new Date(y, m - 1, d, hh, mm);
+}
+
+function setTodayRange(setFromDT, setToDT) {
+  const d = new Date(); // local time
+  const pad = (n) => String(n).padStart(2, "0");
+  const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  setFromDT(`${today} 00:00`);
+  setToDT(`${today} 23:59`);
+}
+
+function setQuickFilterRange(hours, setFromDT, setToDT) {
+  const now = new Date();
+  const past = new Date(now.getTime() - hours * 60 * 60 * 1000);
+  const pad = (n) => String(n).padStart(2, "0");
+
+  const fmt = (d) =>
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
+      d.getHours()
+    )}:${pad(d.getMinutes())}`;
+
+  setFromDT(fmt(past));
+  setToDT(fmt(now));
+}
+
+
 export default function DeliveryOrders({ pharmacyId }) {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState([]);
   const [msg, setMsg] = React.useState("");
   const [page, setPage] = React.useState(0);
   const [pending, setPending] = React.useState({}); 
+  const [fromDT, setFromDT] = React.useState("");
+const [toDT, setToDT] = React.useState("");
+
 
 
  
@@ -203,11 +240,32 @@ export default function DeliveryOrders({ pharmacyId }) {
     };
   }, [pharmacyId, setPageError]);
 
-  const total = rows.length;
+  /*const total = rows.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const start = page * PAGE_SIZE;
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = rows.slice(start, end);
+  */
+ const filteredRows = React.useMemo(() => {
+  let base = rows;
+
+  const from = parseDTLocal(fromDT);
+  const to = parseDTLocal(toDT);
+
+  if (from) base = base.filter((r) => r.createdAtTS && r.createdAtTS >= from);
+  if (to) base = base.filter((r) => r.createdAtTS && r.createdAtTS <= to);
+
+  return base;
+}, [rows, fromDT, toDT]);
+
+const total = filteredRows.length;
+const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+const start = page * PAGE_SIZE;
+const end = Math.min(start + PAGE_SIZE, total);
+const pageItems = filteredRows.slice(start, end);
+
+// reset page when filters change
+React.useEffect(() => setPage(0), [fromDT, toDT, rows.length]);
 
   function getDeliveryAcceptProvider() {
     if (!window.ethereum) throw new Error("MetaMask is not available");
@@ -361,6 +419,80 @@ export default function DeliveryOrders({ pharmacyId }) {
             </div>
           </div>
         )}
+
+        {/* Date/Time Filter Bar */}
+<div className="sticky top-0 z-30 mb-6">
+  <div className="bg-white/95 backdrop-blur border rounded-2xl shadow-sm p-4">
+    <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setTodayRange(setFromDT, setToDT)}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium border hover:bg-gray-50"
+          style={{ color: C.ink }}
+        >
+          Today
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setQuickFilterRange(24, setFromDT, setToDT)}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium border hover:bg-gray-50"
+          style={{ color: C.ink }}
+        >
+          Last 24h
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setQuickFilterRange(48, setFromDT, setToDT)}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 bg-red-50 text-red-700"
+        >
+          Last 48h
+        </button>
+      </div>
+
+      <div className="flex flex-1 flex-wrap gap-3 items-center">
+        <div className="relative flex-1 min-w-[180px]">
+          <input
+            type="datetime-local"
+            max="9999-12-31T23:59"
+            value={fromDT.replace(" ", "T")}
+            onChange={(e) => setFromDT(e.target.value.slice(0, 16).replace("T", " "))}
+            className="w-full pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+            style={{ outlineColor: C.primary }}
+          />
+        </div>
+
+        <span className="text-gray-400 text-sm font-bold">to</span>
+
+        <div className="relative flex-1 min-w-[180px]">
+          <input
+            type="datetime-local"
+            max="9999-12-31T23:59"
+            value={toDT.replace(" ", "T")}
+            onChange={(e) => setToDT(e.target.value.slice(0, 16).replace("T", " "))}
+            className="w-full pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+            style={{ outlineColor: C.primary }}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setFromDT("");
+            setToDT("");
+          }}
+          className="px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm"
+          style={{ backgroundColor: C.primary, color: "#fff" }}
+        >
+          Clear Filters
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
         {pageItems.length > 0 && (
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
