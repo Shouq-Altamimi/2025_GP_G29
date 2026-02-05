@@ -314,7 +314,7 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
           onClick={() => setQuickFilter(48)}
           className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 bg-red-50 text-red-700 hover:bg-orange-100"
         >
-          Last 48h (Urgent)
+          Last 48h
         </button>
       </div>
 
