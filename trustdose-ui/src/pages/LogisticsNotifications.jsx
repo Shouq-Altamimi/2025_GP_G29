@@ -6,15 +6,12 @@ import {
   collection,
   query,
   where,
-  getDocs,
-  orderBy,
   onSnapshot,
-  doc,
-  updateDoc,
   getDoc,
+  doc,
 } from "firebase/firestore";
 
-import { Loader2, Bell, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, Clock, CheckCircle2 } from "lucide-react";
 
 const C = {
   primary: "#B08CC1",
@@ -40,10 +37,17 @@ function formatFsTimestamp(v) {
   return String(v);
 }
 
-async function resolveLogisticsDocId() {
-  const saved = localStorage.getItem("logisticsDocId");
-  if (saved && String(saved).trim() !== "") return String(saved).trim();
+function toMs(ts) {
+  if (!ts) return null;
+  try {
+    if (typeof ts?.toDate === "function") return ts.toDate().getTime();
+  } catch {}
+  if (typeof ts === "number") return ts;
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? null : d.getTime();
+}
 
+async function resolveLogisticsDocId() {
   const lgId =
     localStorage.getItem("userId") ||
     localStorage.getItem("logisticsId") ||
@@ -52,14 +56,10 @@ async function resolveLogisticsDocId() {
 
   if (!lgId) return null;
 
-  // 1) Try as docId
+  // Try by document ID
   const byId = await getDoc(doc(db, "logistics", String(lgId)));
   if (byId.exists()) return String(lgId);
 
-  // 2) Try by LogisticsID
-  const col = collection(db, "logistics");
-  const qs = await getDocs(query(col, where("LogisticsID", "==", String(lgId))));
-  if (!qs.empty) return qs.docs[0].id;
 
   return null;
 }
@@ -68,34 +68,46 @@ export default function LogisticsNotifications() {
   const [loading, setLoading] = React.useState(true);
   const [logisticsDocId, setLogisticsDocId] = React.useState(null);
   const [header, setHeader] = React.useState({ companyName: "" });
-  const [items, setItems] = React.useState([]);
-  const [errMsg, setErrMsg] = React.useState("");
 
-  // Resolve logistics doc id + header
+
+  const [virtualItems, setVirtualItems] = React.useState([]);
+
+
+  const [virtualReadSet, setVirtualReadSet] = React.useState(() => {
+    try {
+      const raw = localStorage.getItem("lg_virtual_read") || "[]";
+      return new Set(JSON.parse(raw));
+    } catch {
+      return new Set();
+    }
+  });
+
+  const persistVirtualRead = React.useCallback((setObj) => {
+    try {
+      localStorage.setItem("lg_virtual_read", JSON.stringify(Array.from(setObj)));
+    } catch {}
+  }, []);
+
+
   React.useEffect(() => {
     let mounted = true;
 
     (async () => {
       try {
-        setErrMsg("");
         const docId = await resolveLogisticsDocId();
         if (!mounted) return;
 
         setLogisticsDocId(docId);
 
-        if (!docId) {
-          setErrMsg("Logistics record not resolved (docId is missing).");
-          return;
-        }
-
-        const snap = await getDoc(doc(db, "logistics", docId));
-        if (snap.exists()) {
-          const d = snap.data();
-          setHeader({ companyName: d.companyName || d.name || "" });
+        if (docId) {
+          const snap = await getDoc(doc(db, "logistics", docId));
+          if (snap.exists()) {
+            const d = snap.data();
+            setHeader({ companyName: d.companyName || d.name || "" });
+          }
         }
       } catch (e) {
-        console.error("resolve logistics doc id error:", e);
-        setErrMsg(e?.message || "Failed to resolve logistics docId.");
+        console.error(e);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -104,95 +116,78 @@ export default function LogisticsNotifications() {
     return () => (mounted = false);
   }, []);
 
-  // Listen to notifications with fallback if index missing
+ 
   React.useEffect(() => {
-    if (!logisticsDocId) return;
-
-    setLoading(true);
-    setErrMsg("");
-
-    const baseWheres = [
-      where("toRole", "==", "logistics"),
-      where("toLogisticsDocId", "==", logisticsDocId),
-    ];
-
-    // Try with orderBy first
-    let qN = query(collection(db, "notifications"), ...baseWheres, orderBy("createdAt", "desc"));
-
     let unsub = null;
+    let canceled = false;
 
-    function startListen(qRef) {
-      return onSnapshot(
-        qRef,
-        (snap) => {
-          setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-          setLoading(false);
-        },
-        async (err) => {
-          console.error("notifications listen error:", err);
+    const qRef = query(
+      collection(db, "prescriptions"),
+      where("deliveryConfirmed", "==", false)
+    );
 
-          // If index missing or orderBy not allowed, fallback WITHOUT orderBy
-          const msg = String(err?.message || "");
-          const code = String(err?.code || "");
+    unsub = onSnapshot(qRef, (snap) => {
+      if (canceled) return;
 
-          const looksLikeIndex =
-            code === "failed-precondition" ||
-            msg.toLowerCase().includes("index") ||
-            msg.toLowerCase().includes("requires an index");
+      const now = Date.now();
+      const cutoff24 = now - 24 * 60 * 60 * 1000;
 
-          if (looksLikeIndex) {
-            try {
-              const qFallback = query(collection(db, "notifications"), ...baseWheres);
-              // stop previous listener then start fallback
-              unsub?.();
-              unsub = onSnapshot(
-                qFallback,
-                (snap2) => {
-                  // sort locally by createdAt
-                  const arr = snap2.docs
-                    .map((d) => ({ id: d.id, ...d.data() }))
-                    .sort((a, b) => {
-                      const aT = a?.createdAt?.toDate?.()?.getTime?.() || 0;
-                      const bT = b?.createdAt?.toDate?.()?.getTime?.() || 0;
-                      return bT - aT;
-                    });
-                  setItems(arr);
-                  setLoading(false);
-                  setErrMsg(""); // ok now
-                },
-                (err2) => {
-                  console.error("fallback listen error:", err2);
-                  setErrMsg(err2?.message || "Notifications error (fallback).");
-                  setLoading(false);
-                }
-              );
-              setErrMsg("Note: Firestore index missing for ordered query. Using fallback view.");
-            } catch (e2) {
-              setErrMsg(e2?.message || "Failed to fallback notifications query.");
-              setLoading(false);
-            }
-          } else {
-            setErrMsg(err?.message || "Notifications listener failed.");
-            setLoading(false);
-          }
-        }
-      );
-    }
+      const v = [];
 
-    unsub = startListen(qN);
+      snap.forEach((d) => {
+        const rx = d.data() || {};
+        const docId = d.id;
 
-    return () => unsub?.();
-  }, [logisticsDocId]);
+        if (rx.deliveryConfirmed === true) return;
+        if (rx.logisticsAccepted !== true) return;
 
-  const unreadCount = items.filter((n) => !n.read).length;
+        const tsMs = toMs(rx.logisticsAcceptedAt);
+        if (!tsMs) return;
+        if (tsMs > cutoff24) return;
 
-  async function markAsRead(id) {
-    try {
-      await updateDoc(doc(db, "notifications", id), { read: true });
-    } catch (e) {
-      console.error("markAsRead error:", e);
-      setErrMsg(e?.message || "Failed to mark as read.");
-    }
+        const prescriptionId =
+          rx.prescriptionID ||
+          rx.prescriptionId ||
+          rx.prescriptionNum ||
+          rx.prescriptionNumber ||
+          rx.prescriptionID ||
+          docId;
+
+        const vid = `v24_${docId}`;
+        const isReadVirtual = virtualReadSet.has(vid);
+
+        v.push({
+          __virtual: true,
+          id: vid,
+          type: "DELIVERY_OVERDUE_24H",
+          orderId: docId,
+          prescriptionID: prescriptionId,
+          createdAt: rx.logisticsAcceptedAt,
+          read: isReadVirtual ? true : false,
+          title: "Delivery overdue (24h)",
+          message: `Prescription ${prescriptionId} has not been completed within 24 hours.`,
+        });
+      });
+
+      v.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
+      setVirtualItems(v);
+    });
+
+    return () => {
+      canceled = true;
+      try {
+        if (unsub) unsub();
+      } catch {}
+    };
+  }, [virtualReadSet]);
+
+  const unreadCount = virtualItems.filter((n) => !(n.read === true || n.read === "true")).length;
+
+  function markAsRead(n) {
+    const next = new Set(virtualReadSet);
+    next.add(n.id);
+    setVirtualReadSet(next);
+    persistVirtualRead(next);
   }
 
   if (loading) {
@@ -210,30 +205,8 @@ export default function LogisticsNotifications() {
   return (
     <div className="p-6">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
-        {/* DEBUG / ERROR */}
-        {(errMsg || !logisticsDocId) && (
-          <div className="mb-4 p-4 rounded-xl flex items-start gap-2 text-rose-800 bg-rose-50 border border-rose-200">
-            <AlertCircle size={18} className="mt-0.5" />
-            <div className="text-sm">
-              <div className="font-semibold">Notifications Debug</div>
-              <div className="mt-1">
-                <div>
-                  <b>Resolved logisticsDocId:</b>{" "}
-                  <span className="font-mono">{logisticsDocId || "NULL"}</span>
-                </div>
-                {!!errMsg && <div className="mt-1"><b>Error:</b> {errMsg}</div>}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* HEADER */}
+        {/* Header */}
         <div className="mb-6 flex items-center gap-3">
-          <img
-            src="/Images/TrustDose-pill.png"
-            alt="TrustDose Capsule"
-            style={{ width: 64 }}
-          />
 
           <div className="w-full">
             <div className="flex items-start justify-between gap-3">
@@ -255,10 +228,8 @@ export default function LogisticsNotifications() {
                 className="px-3 py-1 rounded-full text-sm font-semibold border"
                 style={{
                   color: unreadCount > 0 ? "#DC2626" : C.ink,
-                  borderColor:
-                    unreadCount > 0 ? "rgba(220,38,38,0.35)" : "rgba(176,140,193,0.35)",
-                  backgroundColor:
-                    unreadCount > 0 ? "rgba(220,38,38,0.08)" : "rgba(176,140,193,0.08)",
+                  borderColor: unreadCount > 0 ? "rgba(220,38,38,0.35)" : "rgba(176,140,193,0.35)",
+                  backgroundColor: unreadCount > 0 ? "rgba(220,38,38,0.08)" : "rgba(176,140,193,0.08)",
                 }}
               >
                 Unread: {unreadCount}
@@ -268,7 +239,7 @@ export default function LogisticsNotifications() {
         </div>
 
         {/* EMPTY */}
-        {items.length === 0 && (
+        {virtualItems.length === 0 && (
           <div className="p-8 border rounded-2xl bg-white shadow-sm text-center">
             <div
               className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
@@ -287,11 +258,11 @@ export default function LogisticsNotifications() {
         )}
 
         {/* LIST */}
-        {items.length > 0 && (
+        {virtualItems.length > 0 && (
           <section className="grid grid-cols-1 gap-4 mt-4">
-            {items.map((n) => {
-              const isOverdue = n.type === "DELIVERY_OVERDUE_24H";
-              const isUnread = !n.read;
+            {virtualItems.map((n) => {
+              const isUnread = !(n.read === true || n.read === "true");
+              const prescriptionId = n.prescriptionID || n.orderId || "—";
 
               return (
                 <div
@@ -304,59 +275,46 @@ export default function LogisticsNotifications() {
                   <div className="flex items-start gap-3">
                     <div
                       className="h-11 w-11 rounded-2xl flex items-center justify-center"
-                      style={{
-                        backgroundColor: isOverdue
-                          ? "rgba(220,38,38,0.10)"
-                          : "rgba(176,140,193,0.15)",
-                      }}
+                      style={{ backgroundColor: "rgba(220,38,38,0.10)" }}
                     >
-                      {isOverdue ? (
-                        <Clock size={20} style={{ color: "#DC2626" }} />
-                      ) : (
-                        <Bell size={20} style={{ color: C.ink }} />
-                      )}
+                      <Clock size={20} style={{ color: "#DC2626" }} />
                     </div>
 
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="text-sm font-bold text-slate-800">
-                          {n.title || "Notification"}
+                          Delivery overdue (24h)
                         </div>
 
-                        {isOverdue && (
+                        <span
+                          className="px-2.5 py-1 rounded-full text-xs font-semibold border"
+                          style={{
+                            color: "#DC2626",
+                            borderColor: "rgba(220,38,38,0.35)",
+                            backgroundColor: "rgba(220,38,38,0.08)",
+                          }}
+                        >
+                          Overdue (24h)
+                        </span>
+
+                        {isUnread && (
                           <span
                             className="px-2.5 py-1 rounded-full text-xs font-semibold border"
                             style={{
-                              color: "#DC2626",
-                              borderColor: "rgba(220,38,38,0.35)",
-                              backgroundColor: "rgba(220,38,38,0.08)",
+                              color: "#166534",
+                              borderColor: "#BBE5C8",
+                              backgroundColor: "#ECFDF3",
                             }}
                           >
-                            Overdue (24h)
+                            New
                           </span>
                         )}
-
-                        {isUnread && (
-                        <span
-                            className="px-2.5 py-1 rounded-full text-xs font-semibold border"
-                            style={{
-                            color: "#166534",              
-                            borderColor: "#BBE5C8",            
-                            backgroundColor: "#ECFDF3",      
-                            }}
-                        >
-                            New
-                        </span>
-                        )}
-
                       </div>
 
-                      <div className="text-sm text-slate-700 mt-1">
-                        {n.message || "-"}
-                      </div>
+                      <div className="text-sm text-slate-700 mt-1">{n.message}</div>
 
                       <div className="mt-3 text-xs text-gray-500">
-                        Order: <b className="text-slate-800">{n.orderId || "—"}</b>
+                        Prescription ID: <b className="text-slate-800">{prescriptionId}</b>
                         <span className="mx-2">•</span>
                         {formatFsTimestamp(n.createdAt)}
                       </div>
@@ -364,7 +322,7 @@ export default function LogisticsNotifications() {
                   </div>
 
                   <button
-                    onClick={() => markAsRead(n.id)}
+                    onClick={() => markAsRead(n)}
                     disabled={!isUnread}
                     className="w-max px-4 py-2 text-sm rounded-xl transition-colors font-medium shadow-sm text-white disabled:opacity-60"
                     style={{
