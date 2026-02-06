@@ -314,7 +314,7 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
           onClick={() => setQuickFilter(48)}
           className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 bg-red-50 text-red-700 hover:bg-orange-100"
         >
-          Last 48h (Urgent)
+          Last 48h
         </button>
       </div>
 
@@ -323,7 +323,6 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
       {/* Date Inputs */}
       <div className="flex flex-1 flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[180px]">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2">🗓️</span>
           {/* حقل From */}
 <input
   type="datetime-local"
@@ -334,7 +333,7 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
     const val = e.target.value.slice(0, 16); 
     setFromDT(val.replace("T", " "));
   }}
-  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+  className="w-full pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
   style={{ outlineColor: C.primary }}
 />
         </div>
@@ -342,7 +341,6 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
         <span className="text-gray-400 text-sm">to</span>
 
         <div className="relative flex-1 min-w-[180px]">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2">⏱️</span>
          {/* حقل To */}
 <input
   type="datetime-local"
@@ -352,24 +350,22 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
     const val = e.target.value.slice(0, 16);
     setToDT(val.replace("T", " "));
   }}
-  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+  className="w-full pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
   style={{ outlineColor: C.primary }}
 />
         </div>
 
-        {/* Reset */}
-        <button
-          type="button"
-          onClick={() => {
-            setFromDT("");
-            setToDT("");
-            setQText("");
-          }}
-          className="p-2 rounded-xl hover:bg-gray-100 transition-colors"
-          title="Reset Filters"
-        >
-          🔄
-        </button>
+      <button
+  type="button"
+  onClick={() => { setFromDT(""); setToDT(""); setQText(""); }}
+  className="px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm"
+  style={{
+    backgroundColor: C.primary,
+    color: "#fff",
+  }}
+>
+  Clear Filters
+</button>
       </div>
     </div>
   </div>

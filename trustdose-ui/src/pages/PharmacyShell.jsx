@@ -33,6 +33,7 @@ import {
   XCircle,
   Circle,
   AlertCircle,
+  Bell, // ✅ Added
 } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
@@ -329,6 +330,9 @@ export default function PharmacyShell() {
   const isDelivActive = location.pathname.startsWith("/pharmacy/delivery");
   const isPendActive = location.pathname.startsWith("/pharmacy/pending");
 
+  // ✅ Added active state for notifications
+  const isNotifActive = location.pathname.startsWith("/pharmacy/notifications");
+
   let subtitleText = "";
   if (isPickActive) {
     subtitleText = "Pick-up orders awaiting patient arrival";
@@ -336,6 +340,8 @@ export default function PharmacyShell() {
     subtitleText = "Delivery requests awaiting your acceptance";
   } else if (isPendActive) {
     subtitleText = "Pending delivery prescriptions awaiting dispensing";
+  } else if (isNotifActive) {
+    subtitleText = "Reminder alerts";
   }
 
   return (
@@ -380,32 +386,33 @@ export default function PharmacyShell() {
         </div>
       )}
 
-      {isPharmacyPage && (
-        <div className="mx-auto w-full max-w-6xl px-4 md:px-6 mt-4">
-          <div className="mb-6 flex items-center gap-3">
-            <img
-              src="/Images/TrustDose-pill.png"
-              alt="TrustDose Capsule"
-              style={{ width: 64, height: "auto" }}
-            />
-            <div>
-              <h1 className="font-extrabold text-[24px]" style={{ color: "#334155" }}>
-                {pharmacy?.pharmacyName || pharmacy?.name
-                  ? `Welcome, ${pharmacy.pharmacyName || pharmacy.name}`
-                  : "Welcome, Pharmacy"}
-              </h1>
+      {isPharmacyPage && !isNotifActive && (
+  <div className="mx-auto w-full max-w-6xl px-4 md:px-6 mt-4">
+    <div className="mb-6 flex items-center gap-3">
+      <img
+        src="/Images/TrustDose-pill.png"
+        alt="TrustDose Capsule"
+        style={{ width: 64, height: "auto" }}
+      />
+      <div>
+        <h1 className="font-extrabold text-[24px]" style={{ color: "#334155" }}>
+          {pharmacy?.pharmacyName || pharmacy?.name
+            ? `Welcome, ${pharmacy.pharmacyName || pharmacy.name}`
+            : "Welcome, Pharmacy"}
+        </h1>
 
-              {subtitleText && (
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <p className="text-[15px] font-medium" style={{ color: "#64748b" }}>
-                    {subtitleText}
-                  </p>
-                </div>
-              )}
-            </div>
+        {subtitleText && (
+          <div className="mt-3 pt-3 border-t border-gray-200">
+            <p className="text-[15px] font-medium" style={{ color: "#64748b" }}>
+              {subtitleText}
+            </p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    </div>
+  </div>
+)}
+
 
       <div className="flex-1">
         <Outlet context={{ setPageError }} />
@@ -476,6 +483,18 @@ export default function PharmacyShell() {
                 <span>Pending Orders</span>
               </DrawerItem>
 
+              {/* ✅ Added Notifications in sidebar */}
+              <DrawerItem
+                active={isNotifActive}
+                onClick={() => {
+                  navigate("/pharmacy/notifications");
+                  setOpen(false);
+                }}
+              >
+                <Bell size={18} />
+                <span>Notifications</span>
+              </DrawerItem>
+
               <DrawerItem
                 onClick={() => {
                   setShowAccount(true);
@@ -536,7 +555,6 @@ function Row({ label, value }) {
   );
 }
 
-
 function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
   // Phone
   const [phone, setPhone] = useState(pharmacy?.phone || "");
@@ -544,7 +562,7 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
   const [phoneError, setPhoneError] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
-  const [msgType, setMsgType] = useState(""); 
+  const [msgType, setMsgType] = useState("");
 
   const [editingPhone, setEditingPhone] = useState(false);
   const phoneRef = useRef(null);

@@ -30,6 +30,7 @@ import {
   CheckCircle,
   XCircle,
   Circle,
+  Bell, 
 } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail, signInAnonymously } from "firebase/auth";
 
@@ -335,6 +336,7 @@ export default function LogisticsHeader() {
 
         setUser(norm);
         setDocId(d.id);
+        localStorage.setItem("logisticsDocId", d.id);
 
         setShowEmailAlert(!norm.email);
       } catch (e) {
@@ -429,7 +431,16 @@ export default function LogisticsHeader() {
                 <Clock size={18} />
                 <span>Pending Orders</span>
               </DrawerItem>
-
+              <DrawerItem
+                active={location.pathname === "/logistics/notifications"}
+                onClick={() => {
+                  navigate("/logistics/notifications");
+                  setOpen(false);
+                }}
+                >
+                <Bell size={18} />
+                <span>Notifications</span>
+              </DrawerItem>
               <DrawerItem
                 onClick={() => {
                   setShowAccount(true);

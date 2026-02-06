@@ -33,6 +33,7 @@ import {
   CheckCircle,
   XCircle,
   Circle,
+   Bell,
 } from "lucide-react";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
@@ -338,7 +339,19 @@ export default function PShell() {
               </button>
             </div>
 
+
             <nav className="px-3">
+             <DrawerItem
+  active={location.pathname === "/patient/notifications"}
+  onClick={() => {
+    navigate("/patient/notifications");
+    setOpen(false);
+  }}
+>
+  <Bell size={18} />
+  <span>Notifications</span>
+</DrawerItem>
+
               <DrawerItem
                 onClick={() => {
                   setShowProfile(true);
@@ -348,7 +361,7 @@ export default function PShell() {
                 <User size={18} />
                 <span>My Profile</span>
               </DrawerItem>
-
+              
               <DrawerItem onClick={signOut} variant="ghost">
                 <LogOut size={18} />
                 <span>Sign out</span>
