@@ -2,7 +2,6 @@
 pragma solidity ^0.8.19;
 
 /// @title TrustDose - Simple Prescription (Doctor only)
-/// @notice 
 contract Prescription {
     uint256 public constant VALIDITY = 48 hours;
 
@@ -48,7 +47,7 @@ contract Prescription {
         }
     }
 
-    // from out
+    // create single prescription
     function createPrescription(
         bytes32 patientHash,
         string memory medicine,
@@ -56,8 +55,6 @@ contract Prescription {
         string memory frequency,
         string memory duration
     ) external returns (uint256) {
-
-        // requirements
         require(isDoctor[msg.sender], "Only doctor");
         require(patientHash != bytes32(0), "Invalid patientHash");
 
@@ -90,6 +87,64 @@ contract Prescription {
         );
 
         return _counter;
+    }
+
+    function createMultiplePrescriptions(
+        bytes32 patientHash,
+        string[] memory medicines,
+        string[] memory dosages,
+        string[] memory frequencies,
+        string[] memory durations
+    ) external returns (uint256[] memory ids) {
+        require(isDoctor[msg.sender], "Only doctor");
+        require(patientHash != bytes32(0), "Invalid patientHash");
+
+        uint256 n = medicines.length;
+        require(n > 0, "Empty prescriptions");
+        require(
+            dosages.length == n &&
+            frequencies.length == n &&
+            durations.length == n,
+            "Length mismatch"
+        );
+
+        ids = new uint256[](n);
+
+        // same timestamps for whole batch (same tx)
+        uint256 created = block.timestamp;
+        uint256 expires = created + VALIDITY;
+
+        for (uint256 i = 0; i < n; i++) {
+            _counter++;
+
+            prescriptions[_counter] = PrescriptionData({
+                id: _counter,
+                patientHash: patientHash,
+                medicine: medicines[i],
+                dosage: dosages[i],
+                frequency: frequencies[i],
+                duration: durations[i],
+                doctor: msg.sender,
+                createdAt: created,
+                expiresAt: expires
+            });
+
+            emit PrescriptionCreated(
+                _counter,
+                msg.sender,
+                patientHash,
+                medicines[i],
+                dosages[i],
+                frequencies[i],
+                durations[i],
+                created,
+                expires
+            );
+
+            ids[i] = _counter;
+        }
+
+        return ids;
     }
 
     function getPrescription(uint256 id)

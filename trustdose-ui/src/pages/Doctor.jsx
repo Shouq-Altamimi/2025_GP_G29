@@ -1,6 +1,7 @@
 // src/pages/Doctor.jsx
 "use client";
 
+/* global BigInt */
 import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { db } from "../firebase";
@@ -14,7 +15,7 @@ import {
   addDoc,
   limit,
   runTransaction,
-  Timestamp, 
+  Timestamp,
 } from "firebase/firestore";
 import { ethers } from "ethers";
 import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "lucide-react";
@@ -27,8 +28,7 @@ const C = {
   pale: "#F6F1FA",
 };
 
-const CONTRACT_ADDRESS = "0x4b4E497248D12244b5081a514a52Ca0629AA401b";
-
+const CONTRACT_ADDRESS = "0xcBCa7402af3f087B2290CC80Aa52aA566a7ceBCD";
 
 const OTHER_MAX = 20;
 const LIMITS = Object.freeze({
@@ -166,8 +166,7 @@ export default function Doctor() {
             name: d.name || welcome?.name || "",
             phone: d.phone || welcome?.phone || "",
             facility: d.facility || welcome?.facility || welcome?.healthFacility || "",
-            healthFacility:
-              d.healthFacility || d.facility || welcome?.healthFacility || welcome?.facility || "",
+            healthFacility: d.healthFacility || d.facility || welcome?.healthFacility || welcome?.facility || "",
             speciality: d.speciality || d.specialty || welcome?.speciality || "",
           };
 
@@ -344,8 +343,8 @@ export default function Doctor() {
     return hideSecond ? [forms[0]] : forms;
   }
 
-  // 1) وصفتين = نفس prescriptionID (shared)
-  // 2) إذا واحد Sensitive = الاثنين Sensitive
+  // ✅ 1) وصفتين = نفس prescriptionID
+  // ✅ 2) إذا واحد Sensitive = الاثنين Sensitive
   async function confirmAndSave() {
     if (!selectedPatient) return setRxMsg("Please search for a patient first.");
 
@@ -390,69 +389,32 @@ export default function Doctor() {
 
       const vf2 = visibleForms();
 
-      // ✅ shared prescriptionID لكل الوثائق الناتجة من نفس الضغطه
       const sharedPrescriptionID = await generateSequentialPrescriptionId();
 
-      // ✅ shared sensitivity: إذا أي واحد Sensitive => كلهم Sensitive
       const anySensitive = vf2.some((f) => normalizeSensitivity(f.selectedMed?.sensitivity) === "Sensitive");
       const sharedSensitivity = anySensitive ? "Sensitive" : "NonSensitive";
 
-      // ===== ON-CHAIN =====
-      let txReceipt = null;
+      // ===== ON-CHAIN (✅ batch when 2 prescriptions) =====
       let perItemTxHashes = [];
       let onchainIds = [];
 
-      const supportsBatch = typeof contract.createPrescriptionsBatch === "function";
-
-      if (vf2.length > 1 && supportsBatch) {
+      if (vf2.length > 1) {
         const medicines = vf2.map((f) => String(f.selectedMed?.label || "").trim());
         const dosages = vf2.map((f) => String(f.dose || ""));
         const freqs = vf2.map((f) => String(f.timesPerDay || ""));
         const durs = vf2.map((f) => String(f.durationDays || ""));
 
-        const tx = await contract.createPrescriptionsBatch(patientHashBytes32, medicines, dosages, freqs, durs);
-        txReceipt = await tx.wait();
-        if (txReceipt?.status !== 1) throw new Error("Transaction reverted or failed.");
+        const tx = await contract.createMultiplePrescriptions(patientHashBytes32, medicines, dosages, freqs, durs);
+        const receipt = await tx.wait();
+        if (receipt?.status !== 1) throw new Error("Transaction reverted or failed.");
 
-        const sharedHash = txReceipt?.hash || txReceipt?.transactionHash || tx.hash;
-        perItemTxHashes = vf2.map(() => sharedHash);
-      } else {
-        for (let i = 0; i < vf2.length; i++) {
-          const f = vf2[i];
-          const medForChain = (f.selectedMed?.label || "").trim();
+        const txHash = receipt?.hash || receipt?.transactionHash || tx.hash;
+        perItemTxHashes = vf2.map(() => txHash);
 
-          const tx = await contract.createPrescription(patientHashBytes32, medForChain, f.dose, f.timesPerDay, f.durationDays);
-          const receipt = await tx.wait();
-          if (receipt?.status !== 1) throw new Error("Transaction reverted or failed.");
-
-          const txHash = receipt?.hash || receipt?.transactionHash || tx.hash;
-          perItemTxHashes.push(txHash);
-
-          // try extract onchainId
-          try {
-            const iface = new ethers.Interface(PRESCRIPTION.abi);
-            let found = null;
-            for (const log of receipt.logs || []) {
-              try {
-                const parsed = iface.parseLog(log);
-                if (parsed?.name === "PrescriptionCreated") {
-                  found = Number(parsed.args?.id ?? parsed.args?.[0]);
-                  break;
-                }
-              } catch {}
-            }
-            onchainIds.push(found);
-          } catch {
-            onchainIds.push(null);
-          }
-        }
-      }
-
-      if (txReceipt) {
         try {
           const iface = new ethers.Interface(PRESCRIPTION.abi);
           const ids = [];
-          for (const log of txReceipt.logs || []) {
+          for (const log of receipt.logs || []) {
             try {
               const parsed = iface.parseLog(log);
               if (parsed?.name === "PrescriptionCreated") {
@@ -464,6 +426,33 @@ export default function Doctor() {
         } catch {
           onchainIds = vf2.map(() => null);
         }
+      } else {
+        const f = vf2[0];
+        const medForChain = (f.selectedMed?.label || "").trim();
+
+        const tx = await contract.createPrescription(patientHashBytes32, medForChain, f.dose, f.timesPerDay, f.durationDays);
+        const receipt = await tx.wait();
+        if (receipt?.status !== 1) throw new Error("Transaction reverted or failed.");
+
+        const txHash = receipt?.hash || receipt?.transactionHash || tx.hash;
+        perItemTxHashes = [txHash];
+
+        try {
+          const iface = new ethers.Interface(PRESCRIPTION.abi);
+          let found = null;
+          for (const log of receipt.logs || []) {
+            try {
+              const parsed = iface.parseLog(log);
+              if (parsed?.name === "PrescriptionCreated") {
+                found = Number(parsed.args?.id ?? parsed.args?.[0]);
+                break;
+              }
+            } catch {}
+          }
+          onchainIds = [found];
+        } catch {
+          onchainIds = [null];
+        }
       }
 
       // ===== FIRESTORE: وثيقة لكل وصفة =====
@@ -471,7 +460,7 @@ export default function Doctor() {
         const f = vf2[i];
 
         const payload = {
-          [F.createdAt]: Timestamp.now(), 
+          [F.createdAt]: Timestamp.now(),
           [F.doctorId]: doctorAddress,
           [F.doctorName]: profile.name || "",
           [F.doctorPhone]: profile.phone || "",
@@ -492,7 +481,7 @@ export default function Doctor() {
           [F.patientNationalIdHash]: "0x" + natIdHashHex,
 
           [F.onchainTx]: perItemTxHashes[i] || "",
-          onchainId: onchainIds?.[i] ?? null, 
+          onchainId: onchainIds?.[i] ?? null,
 
           [F.prescriptionID]: sharedPrescriptionID,
           [F.sensitivity]: sharedSensitivity,
