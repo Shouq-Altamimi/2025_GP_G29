@@ -29,6 +29,7 @@ const C = {
 
 const CONTRACT_ADDRESS = "0x17B9Fb1b07a693d9BeE25B76dD377Dc18288a0C4";
 
+
 const OTHER_MAX = 20;
 const LIMITS = Object.freeze({
   medicalCondition: { min: 5, max: 120 },
