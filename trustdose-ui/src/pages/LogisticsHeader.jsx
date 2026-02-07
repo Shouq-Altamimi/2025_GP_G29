@@ -31,6 +31,7 @@ import {
   XCircle,
   Circle,
   Bell, 
+   History,
 } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail, signInAnonymously } from "firebase/auth";
 
@@ -441,6 +442,16 @@ export default function LogisticsHeader() {
                 <Bell size={18} />
                 <span>Notifications</span>
               </DrawerItem>
+              <DrawerItem
+    active={location.pathname.startsWith("/logistics/history")}
+    onClick={() => {
+      navigate("/logistics/history");
+      setOpen(false);
+    }}
+  >
+    <History size={18} />
+    <span>History</span>
+  </DrawerItem>
               <DrawerItem
                 onClick={() => {
                   setShowAccount(true);
