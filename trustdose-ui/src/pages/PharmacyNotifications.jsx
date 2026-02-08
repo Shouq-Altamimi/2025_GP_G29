@@ -377,7 +377,9 @@ React.useEffect(() => {
   const rxData = rxSnap.exists() ? (rxSnap.data() || {}) : {};
 
   const nid = String(rxData.nationalID || rxData.nationalId || "");
-  const patientDocId = nid ? `Ph_${nid}` : "";
+  const patientDocId = String(rxData.patientDocId || "");
+
+  //const patientDocId = nid ? `Ph_${nid}` : "";
 
   const pid = String(
     rxData.prescriptionID ||

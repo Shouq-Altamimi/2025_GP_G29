@@ -41,7 +41,17 @@ function formatFsTimestamp(v) {
   return String(v);
 }
 
-async function resolvePatientDocId() {
+function toMs(ts) {
+  if (!ts) return 0;
+  try {
+    if (typeof ts?.toDate === "function") return ts.toDate().getTime();
+  } catch {}
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+
+/*async function resolvePatientDocId() {
   // 1) prefer what PShell stores
   const cached =
     localStorage.getItem("patientDocId") ||
@@ -80,7 +90,60 @@ async function resolvePatientDocId() {
   }
 
   return null;
+}*/
+
+async function resolvePatientDocId() {
+  const cached =
+    localStorage.getItem("patientDocId") ||
+    localStorage.getItem("patientDocID") ||
+    "";
+
+  const pid =
+    localStorage.getItem("userId") ||
+    localStorage.getItem("patientId") ||
+    localStorage.getItem("patientID") ||
+    "";
+
+  // ✅ إذا فيه cached: لا تقبله إلا إذا يخص نفس المستخدم الحالي
+  if (cached && pid) {
+    const byId = await getDoc(doc(db, "patients", String(cached)));
+    if (byId.exists()) {
+      const d = byId.data() || {};
+      const nid =
+        String(d.nationalID || d.nationalId || d.nid || d.NID || "");
+
+      if (nid && String(nid) === String(pid)) {
+        return String(cached); // ✅ نفس الشخص
+      }
+
+      // ❌ cached لشخص ثاني → تجاهله
+      localStorage.removeItem("patientDocId");
+      localStorage.removeItem("patientDocID");
+    }
+  }
+
+  if (!pid) return null;
+
+  // if doc id matches directly
+  const byId2 = await getDoc(doc(db, "patients", String(pid)));
+  if (byId2.exists()) return String(pid);
+
+  const col = collection(db, "patients");
+  const tries = [
+    query(col, where("nationalId", "==", String(pid))),
+    query(col, where("nationalID", "==", String(pid))),
+    query(col, where("nid", "==", String(pid))),
+    query(col, where("NID", "==", String(pid))),
+  ];
+
+  for (const tq of tries) {
+    const qs = await getDocs(tq);
+    if (!qs.empty) return qs.docs[0].id;
+  }
+
+  return null;
 }
+
 
 export default function PatientNotifications() {
   const [loading, setLoading] = React.useState(true);
@@ -186,6 +249,11 @@ export default function PatientNotifications() {
   async function markAsRead(n) {
     await updateDoc(doc(db, "notifications", n.id), { read: true });
   }
+const sortedItems = React.useMemo(() => {
+  const arr = [...items];
+  arr.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
+  return arr;
+}, [items]);
 
   const unreadCount = items.filter((n) => !(n.read === true || n.read === "true")).length;
 
@@ -283,7 +351,7 @@ export default function PatientNotifications() {
         {/* LIST */}
         {items.length > 0 && (
           <section className="grid grid-cols-1 gap-4 mt-4">
-            {items.map((n) => {
+            {sortedItems.map((n) => {
               const isUnread = !(n.read === true || n.read === "true");
               const prescriptionId =
                 n.prescriptionID || n.prescriptionId || n.orderId || "—";
