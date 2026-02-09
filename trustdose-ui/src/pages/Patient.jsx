@@ -262,6 +262,30 @@ function WelcomeHeader({ name }) {
   );
 }
 
+function normalizeSensitivity(raw) {
+  const v = String(raw ?? "").trim().toLowerCase();
+
+  // Sensitive
+  if (v === "sensitive" || v === "true" || v === "1" || v === "yes" || v === "delivery") {
+    return "Sensitive";
+  }
+
+  // Non-Sensitive
+  if (
+    v === "non-sensitive" ||
+    v === "nonsensitive" ||
+    v === "not sensitive" ||
+    v === "false" ||
+    v === "0" ||
+    v === "no" ||
+    v === "pickup"
+  ) {
+    return "Non-Sensitive";
+  }
+
+  return "";
+}
+
 export default function PatientPage() {
   const [nid, setNid] = useState(null);
   const [logisticsName, setLogisticsName] = useState("—");
@@ -351,12 +375,76 @@ export default function PatientPage() {
 
   const openProfile = () => window.dispatchEvent(new Event("openPatientProfile"));
 
-  const total = rx.items.length;
+    // ✅ دمج الوصفات: نجمع كل الأدوية تحت نفس رقم الوصفة
+  const groupedRx = useMemo(() => {
+    const map = new Map();
+
+    const getKey = (p) =>
+      String(
+        p.prescriptionID ||
+          p.prescriptionId ||
+          p.rxNumber ||
+          p.prescriptionNumber ||
+          p.id // fallback
+      );
+
+    for (const p of rx.items || []) {
+      const key = getKey(p);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(p);
+    }
+
+    const out = Array.from(map.entries()).map(([key, meds]) => {
+      // ترتيب الأدوية داخل نفس الوصفة (اختياري)
+      meds.sort((a, b) =>
+        String(a.medicineLabel || a.medicineName || "").localeCompare(
+          String(b.medicineLabel || b.medicineName || "")
+        )
+      );
+
+      // نخلي "base" أحدث سجل داخل المجموعة (علشان التاريخ وغيره يكون منطقي)
+      const base =
+        meds.reduce((best, cur) => {
+          const bt = best?.createdAt?.toMillis?.() || 0;
+          const ct = cur?.createdAt?.toMillis?.() || 0;
+          return ct > bt ? cur : best;
+        }, meds[0]) || meds[0] || {};
+
+      // حالة الوصفة: إذا أي دواء dispensed نعتبر الوصفة dispensed
+      const anyDispensed = meds.some((m) => m?.dispensed);
+
+      return {
+        ...base,
+        id: key,      // ✅ مهم: نخلي id هو رقم الوصفة علشان toggleOpen يشتغل على المجموعة
+        meds,         // ✅ هنا الأدوية المدموجة
+        dispensed: anyDispensed,
+        _medCount: meds.length,
+      };
+    });
+
+    // ترتيب الوصفات من الأحدث
+    out.sort(
+      (a, b) =>
+        (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)
+    );
+
+    return out;
+  }, [rx.items]);
+
+ /* const total = rx.items.length;
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const startIdx = (safePage - 1) * PER_PAGE;
   const endIdx = Math.min(startIdx + PER_PAGE, total);
   const pageItems = rx.items.slice(startIdx, endIdx);
+*/
+
+  const total = groupedRx.length;
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const startIdx = (safePage - 1) * PER_PAGE;
+  const endIdx = Math.min(startIdx + PER_PAGE, total);
+  const pageItems = groupedRx.slice(startIdx, endIdx);
 
   const PaginationBar = () => (
     <div
@@ -510,6 +598,14 @@ export default function PatientPage() {
                 const doctor = p._doctorName || "—";
                 const pharmacy = p._pharmacyName || "—";
                 const logistics = p._logisticsName || "—";
+//const medSensitivity = normalizeSensitivity(m.sensitivity);
+//const groupSensitivity = normalizeSensitivity(groupSensitivityRaw);
+const groupSensitivityRaw =
+  p.sensitivity ?? (p.meds || []).find((mm) => mm.sensitivity)?.sensitivity;
+
+const groupSensitivity = normalizeSensitivity(groupSensitivityRaw);
+
+
 
                 const medTitle =
                   p.medicineLabel || p.micineName || p.medicineName || "Prescription";
@@ -617,10 +713,9 @@ export default function PatientPage() {
                         <div style={{ fontWeight: 700, color: "#374151" }}>Prescription Details</div>
 
                         <Row label="Patient Name" value={fullName} />
-                        <Row
-                          label="National ID"
-                          value={maskNid(p.patientNationalID || p.nationalID || p.nid)}
-                        />
+
+                        <Row label="National ID" value={maskNid(nid)} />
+
                         <Row label="Healthcare Facility" value={facility} />
                         <Row label="Doctor Name" value={doctor} />
                         <Row label="Pharmacy Name" value={pharmacy} />
@@ -632,46 +727,68 @@ export default function PatientPage() {
                         <Row label="Date & Time Consultation" value={createdFull} />
 
                         <div style={{ borderTop: "1px dashed #e5e7eb", paddingTop: 10 }}>
-                          <div style={{ fontWeight: 600, color: "#374151", marginBottom: 6 }}>
-                            Medicine Name:{" "}
-                            <span style={{ fontWeight: 700 }}>{medTitle}</span>
-                          </div>
-                          <Row label="Dosage" value={p.dosage || p.dose || "—"} />
-                          <Row label="Frequency" value={p.frequency || p.timesPerDay || "—"} />
-                          <Row label="Duration" value={p.durationDays ?? "—"} />
+  {(p.meds || [p]).slice(0, 2).map((m, idx) => {
+    const title =
+      m.medicineLabel || m.micineName || m.medicineName || "Prescription";
+const medSensitivity = normalizeSensitivity(m.sensitivity) || "Non-Sensitive";
 
-                          {p.sensitivity && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <div style={{ color: "#6b7280", width: 220 }}>Sensitivity</div>
-                              <div
-                                style={{
-                                  fontSize: 13,
-                                  padding: "4px 10px",
-                                  borderRadius: 999,
-                                  fontWeight: 700,
-                                  border: "1px solid",
-                                  borderColor:
-                                    p.sensitivity === "Sensitive"
-                                      ? TD.brand.dangerBorder
-                                      : TD.brand.successBorder,
-                                  background:
-                                    p.sensitivity === "Sensitive"
-                                      ? TD.brand.dangerBg
-                                      : TD.brand.successBg,
-                                  color:
-                                    p.sensitivity === "Sensitive"
-                                      ? TD.brand.dangerText
-                                      : TD.brand.successText,
-                                }}
-                              >
-                                {p.sensitivity === "Sensitive"
-                                  ? "Sensitive — (Delivery)"
-                                  : "Non-Sensitive — (Pickup)"}
-                              </div>
-                            </div>
-                          )}
+    return (
+      <div
+        key={idx}
+        style={{
+          borderTop: idx === 0 ? "none" : "1px dashed #e5e7eb",
+          paddingTop: idx === 0 ? 0 : 12,
+          marginTop: idx === 0 ? 0 : 12,
+        }}
+      >
+        <div style={{ fontWeight: 600, color: "#374151", marginBottom: 6 }}>
+          Medicine {idx + 1}:{" "}
+          <span style={{ fontWeight: 700 }}>{title}</span>
+        </div>
 
-                          {p.sensitivity === "Sensitive" && (
+        <Row label="Dosage" value={m.dosage || m.dose || "—"} />
+        <Row label="Frequency" value={m.frequency || m.timesPerDay || "—"} />
+        <Row label="Duration" value={m.durationDays ?? "—"} />
+        
+    {medSensitivity && (
+  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+    <div style={{ color: "#6b7280", width: 220 }}>Sensitivity</div>
+    <div
+      style={{
+        fontSize: 13,
+        padding: "4px 10px",
+        borderRadius: 999,
+        fontWeight: 700,
+        border: "1px solid",
+        borderColor:
+          medSensitivity === "Sensitive"
+            ? TD.brand.dangerBorder
+            : TD.brand.successBorder,
+        background:
+          medSensitivity === "Sensitive"
+            ? TD.brand.dangerBg
+            : TD.brand.successBg,
+        color:
+          medSensitivity === "Sensitive"
+            ? TD.brand.dangerText
+            : TD.brand.successText,
+      }}
+    >
+      {medSensitivity === "Sensitive"
+        ? "Sensitive — (Delivery)"
+        : "Non-Sensitive — (Pickup)"}
+    </div>
+  </div>
+)}
+
+      </div>
+    );
+  })}
+</div>
+
+
+
+                          {groupSensitivity === "Sensitive" && (
                             <div
                               style={{
                                 marginTop: 14,
@@ -695,7 +812,7 @@ export default function PatientPage() {
                             </div>
                           )}
 
-                          {p.sensitivity === "Sensitive" &&
+                          {groupSensitivity === "Sensitive" &&
                             (() => {
                               const step = getCurrentStep(p);
 
@@ -810,7 +927,6 @@ export default function PatientPage() {
 
                           {p.notes && <Row label="Notes" value={p.notes} />}
                         </div>
-                      </div>
                     )}
                   </div>
                 );
