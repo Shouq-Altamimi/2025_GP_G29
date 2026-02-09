@@ -286,10 +286,12 @@ function normalizeSensitivity(raw) {
   return "";
 }
 
+
 export default function PatientPage() {
   const [nid, setNid] = useState(null);
   const [logisticsName, setLogisticsName] = useState("—");
   const [logisticsPhone, setLogisticsPhone] = useState("—");
+const [medicinesMap, setMedicinesMap] = useState({});
 
   useEffect(() => {
     (async () => {
@@ -374,6 +376,23 @@ export default function PatientPage() {
   const toggleOpen = (id) => setOpenIds((s) => ({ ...s, [id]: !s[id] }));
 
   const openProfile = () => window.dispatchEvent(new Event("openPatientProfile"));
+
+  useEffect(() => {
+  (async () => {
+    try {
+      const snap = await getDocs(collection(db, "medicines"));
+      const map = {};
+      snap.forEach((d) => {
+        const data = d.data();
+        const key = String(data?.name || "").trim().toLowerCase();
+        if (key) map[key] = data;
+      });
+      setMedicinesMap(map);
+    } catch (e) {
+      console.error("Failed to load medicines", e);
+    }
+  })();
+}, []);
 
     // ✅ دمج الوصفات: نجمع كل الأدوية تحت نفس رقم الوصفة
   const groupedRx = useMemo(() => {
@@ -598,12 +617,27 @@ export default function PatientPage() {
                 const doctor = p._doctorName || "—";
                 const pharmacy = p._pharmacyName || "—";
                 const logistics = p._logisticsName || "—";
+                // ✅ helper: sensitivity from medicinesMap (fallback to rx field)
+const resolveMedSensitivity = (m) => {
+  const medKey = String(m.medicineName || m.medicineLabel || "")
+    .trim()
+    .toLowerCase();
+
+  const fromDB = medicinesMap?.[medKey];
+  return normalizeSensitivity(fromDB?.sensitivity || m?.sensitivity) || "Non-Sensitive";
+};
+
+// ✅ rule: if any med in this prescription is Sensitive => whole prescription is Delivery
+const groupHasSensitive = (p.meds || [p]).some(
+  (mm) => resolveMedSensitivity(mm) === "Sensitive"
+);
+
 //const medSensitivity = normalizeSensitivity(m.sensitivity);
 //const groupSensitivity = normalizeSensitivity(groupSensitivityRaw);
-const groupSensitivityRaw =
-  p.sensitivity ?? (p.meds || []).find((mm) => mm.sensitivity)?.sensitivity;
+// const groupSensitivityRaw =
+//   p.sensitivity ?? (p.meds || []).find((mm) => mm.sensitivity)?.sensitivity;
 
-const groupSensitivity = normalizeSensitivity(groupSensitivityRaw);
+// const groupSensitivity = normalizeSensitivity(groupSensitivityRaw);
 
 
 
@@ -727,10 +761,18 @@ const groupSensitivity = normalizeSensitivity(groupSensitivityRaw);
                         <Row label="Date & Time Consultation" value={createdFull} />
 
                         <div style={{ borderTop: "1px dashed #e5e7eb", paddingTop: 10 }}>
-  {(p.meds || [p]).slice(0, 2).map((m, idx) => {
+  {(p.meds || [p]).map((m, idx) => {
     const title =
       m.medicineLabel || m.micineName || m.medicineName || "Prescription";
-const medSensitivity = normalizeSensitivity(m.sensitivity) || "Non-Sensitive";
+const medKey = String(m.medicineName || m.medicineLabel || "")
+  .trim()
+  .toLowerCase();
+const medSensitivity = resolveMedSensitivity(m);
+
+// const fromDB = medicinesMap[medKey];
+
+// const medSensitivity =
+//   normalizeSensitivity(fromDB?.sensitivity) || "Non-Sensitive";
 
     return (
       <div
@@ -774,9 +816,12 @@ const medSensitivity = normalizeSensitivity(m.sensitivity) || "Non-Sensitive";
             : TD.brand.successText,
       }}
     >
-      {medSensitivity === "Sensitive"
-        ? "Sensitive — (Delivery)"
-        : "Non-Sensitive — (Pickup)"}
+     {medSensitivity === "Sensitive"
+  ? "Sensitive — (Delivery)"
+  : groupHasSensitive
+  ? "Non-Sensitive — (Delivery)"
+  : "Non-Sensitive — (Pickup)"}
+
     </div>
   </div>
 )}
@@ -788,7 +833,7 @@ const medSensitivity = normalizeSensitivity(m.sensitivity) || "Non-Sensitive";
 
 
 
-                          {groupSensitivity === "Sensitive" && (
+                          {groupHasSensitive && (
                             <div
                               style={{
                                 marginTop: 14,
@@ -812,7 +857,7 @@ const medSensitivity = normalizeSensitivity(m.sensitivity) || "Non-Sensitive";
                             </div>
                           )}
 
-                          {groupSensitivity === "Sensitive" &&
+                          {groupHasSensitive &&
                             (() => {
                               const step = getCurrentStep(p);
 
