@@ -445,6 +445,7 @@ export default function Logistics() {
       );
 
       //  FIX: loop through ALL meds in the group and call acceptDelivery for each onchainId (contract)
+      // idStr / [onchainId] 
       for (const idStr of g.onchainIds) {
         const tx = await contract.acceptDelivery(BigInt(idStr));
         await tx.wait();

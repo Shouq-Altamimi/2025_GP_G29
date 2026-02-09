@@ -1,5 +1,4 @@
 // src/pages/Logistics.jsx
-/* global BigInt */
 "use client";
 
 import React from "react";
@@ -186,7 +185,7 @@ export default function Logistics() {
             onchainId: x.onchainId ? BigInt(String(x.onchainId)) : null,
             patientName: x.patientName || "-",
             patientId: String(x.nationalID ?? "-"),
-            patientPhone, 
+            patientPhone,
             medicineLabel: x.medicineLabel || x.medicineName || "-",
             createdAtTS: x.createdAt?.toDate?.(),
             createdAt: formatFsTimestamp(x.createdAt),
@@ -224,19 +223,84 @@ export default function Logistics() {
       !r.deliveryConfirmed
   );
 
-  const total = visible.length;
+  //  SAME GROUPING LOGIC: group by prescriptionId (one card + one button)
+  const groups = React.useMemo(() => {
+    const map = new Map();
+
+    for (const r of visible) {
+      const key = r.prescriptionId || r._docId;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(r);
+    }
+
+    for (const [, arr] of map) {
+      arr.sort((a, b) =>
+        (a.medicineLabel || "").localeCompare(b.medicineLabel || "")
+      );
+    }
+
+    const out = Array.from(map.entries()).map(([prescriptionId, meds]) => {
+      const first = meds[0] || {};
+
+      const allHaveOnchainId = meds.every(
+        (m) => m.onchainId !== null && m.onchainId !== undefined
+      );
+
+      const onchainIds = Array.from(
+        new Set(
+          meds
+            .map((m) => m.onchainId)
+            .filter((v) => v !== null && v !== undefined)
+            .map((v) => v.toString())
+        )
+      );
+
+      const eligible = allHaveOnchainId && onchainIds.length > 0;
+
+      const createdAtTS = meds.reduce((acc, m) => {
+        const t = m.createdAtTS?.getTime?.() || 0;
+        return t > (acc?.getTime?.() || 0) ? m.createdAtTS : acc;
+      }, first.createdAtTS);
+
+      return {
+        prescriptionId,
+        patientName: first.patientName || "-",
+        patientId: first.patientId || "-",
+        patientPhone: first.patientPhone || "-",
+        createdAtTS,
+        createdAt: first.createdAt,
+        meds,
+        onchainIds,
+        eligible,
+        missingCount: meds.filter((m) => m.onchainId == null).length,
+      };
+    });
+
+    out.sort(
+      (a, b) =>
+        (b.createdAtTS?.getTime?.() || 0) - (a.createdAtTS?.getTime?.() || 0)
+    );
+
+    return out;
+  }, [visible]);
+
+  const total = groups.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const start = page * PAGE_SIZE;
   const end = Math.min(start + PAGE_SIZE, total);
-  const pageItems = visible.slice(start, end);
+  const pageItems = groups.slice(start, end);
 
-  /* Confirm delivery to patient */
-  async function handleAccept(r) {
+  /* Confirm delivery to patient (GROUP) */
+  async function handleAcceptGroup(g) {
     try {
       setMsg("");
-      setPending((p) => ({ ...p, [r.prescriptionId]: true }));
+      setPending((p) => ({ ...p, [g.prescriptionId]: true }));
 
-      if (r.onchainId == null) throw new Error("Missing on-chain ID.");
+      if (!g.eligible) {
+        throw new Error(
+          `Not eligible: missing on-chain id for ${g.missingCount} item(s).`
+        );
+      }
 
       const signer = await getSignerEnsured();
       const contract = new ethers.Contract(
@@ -245,16 +309,24 @@ export default function Logistics() {
         signer
       );
 
-      const tx = await contract.confirmDelivery(r.onchainId);
-      await tx.wait();
+      //  loop through ALL meds in the group and confirmDelivery for each onchainId
+      for (const idStr of g.onchainIds) {
+        const tx = await contract.confirmDelivery(BigInt(idStr));
+        await tx.wait();
+      }
 
-      await updateDoc(doc(db, "prescriptions", r._docId), {
-        deliveryConfirmed: true,
-        deliveryConfirmedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      await Promise.all(
+        g.meds.map((r) =>
+          updateDoc(doc(db, "prescriptions", r._docId), {
+            deliveryConfirmed: true,
+            deliveryConfirmedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          })
+        )
+      );
 
-      setRows((prev) => prev.filter((row) => row._docId !== r._docId));
+      const docIds = new Set(g.meds.map((x) => x._docId));
+      setRows((prev) => prev.filter((row) => !docIds.has(row._docId)));
 
       setShowSuccessPopup(true);
     } catch (err) {
@@ -262,11 +334,11 @@ export default function Logistics() {
 
       if (err?.code === "ACTION_REJECTED")
         setMsg("MetaMask request was declined. Please try again.");
-      else setMsg("Error occurred. Please try again.");
+      else setMsg(err?.message || "Error occurred. Please try again.");
     } finally {
       setPending((p) => {
         const cp = { ...p };
-        delete cp[r.prescriptionId];
+        delete cp[g.prescriptionId];
         return cp;
       });
     }
@@ -324,45 +396,63 @@ export default function Logistics() {
 
         {pageItems.length > 0 && (
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            {pageItems.map((r) => {
+            {pageItems.map((g) => {
               const dateTime =
-                r.createdAtTS?.toLocaleString("en-GB", {
+                g.createdAtTS?.toLocaleString("en-GB", {
                   day: "2-digit",
                   month: "long",
                   year: "numeric",
                   hour: "2-digit",
                   minute: "2-digit",
-                }) || r.createdAt;
+                }) || g.createdAt;
 
-              const isPending = !!pending[r.prescriptionId];
+              const isPending = !!pending[g.prescriptionId];
 
               return (
                 <div
-                  key={r._docId}
+                  key={g.prescriptionId}
                   className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between"
                 >
                   <div>
-                    <div className="text-lg font-bold text-slate-800">
-                      {r.medicineLabel}
+                    <div className="space-y-1 mb-3">
+                      {(g.meds || []).slice(0, 2).map((m, idx) => (
+                        <div
+                          key={`${g.prescriptionId}-med-${idx}`}
+                          className="text-lg font-bold text-slate-800 leading-snug line-clamp-1"
+                          title={m.medicineLabel}
+                        >
+                          {m.medicineLabel}
+                        </div>
+                      ))}
+
+                      {(g.meds || []).length === 1 && (
+                        <div className="text-lg font-bold text-slate-800 opacity-0 select-none">
+                          placeholder
+                        </div>
+                      )}
+
+                      {(g.meds || []).length > 2 && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          +{g.meds.length - 2} more
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Prescription ID:{" "}
-                      <span className="font-normal">{r.prescriptionId}</span>
+                      <span className="font-normal">{g.prescriptionId}</span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Patient:{" "}
                       <span className="font-normal">
-                        {r.patientName} — {r.patientId}
+                        {g.patientName} — {g.patientId}
                       </span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Patient Phone:{" "}
-                      <span className="font-normal">
-                        {r.patientPhone || "-"}
-                      </span>
+                      <span className="font-normal">{g.patientPhone || "-"}</span>
                     </div>
 
                     <div className="mt-6 flex flex-wrap gap-2">
@@ -372,18 +462,22 @@ export default function Logistics() {
                           backgroundColor: C.primary,
                           cursor: isPending ? "not-allowed" : "pointer",
                         }}
-                        onClick={() => handleAccept(r)}
-                        disabled={isPending}
+                        onClick={() => handleAcceptGroup(g)}
+                        disabled={isPending || !g.eligible}
+                        title={
+                          !g.eligible
+                            ? `Missing on-chain id for ${g.missingCount} item(s)`
+                            : ""
+                        }
                       >
                         {isPending && (
-                          <Loader2
-                            size={16}
-                            className="animate-spin text-white"
-                          />
+                          <Loader2 size={16} className="animate-spin text-white" />
                         )}
                         {isPending
                           ? "Processing..."
-                          : "Confirm Delivery to Patient"}
+                          : g.eligible
+                          ? "Confirm Delivery to Patient"
+                          : "Not eligible"}
                       </button>
                     </div>
                   </div>
@@ -424,9 +518,7 @@ export default function Logistics() {
                 <button
                   className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
                   style={{ background: C.primary }}
-                  onClick={() =>
-                    setPage((p) => Math.min(pageCount - 1, p + 1))
-                  }
+                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
                   disabled={page >= pageCount - 1}
                 >
                   Next →
