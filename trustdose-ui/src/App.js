@@ -16,7 +16,8 @@ import DoctorHome from "./DoctorHome";
 import Doctor from "./pages/Doctor";
 import Shell from "./pages/DoctorHeader.jsx";
 import PrescriptionsPage from "./pages/PrescriptionsPage";
-import Dashboard from "./pages/Dashboard.jsx";
+import DoctorHistory from "./pages/DoctorHistory.jsx";
+
 
 /* Patient */
 import PShell from "./pages/PShell.jsx";
@@ -30,12 +31,16 @@ import Pharmacy from "./pages/pharmacy.jsx";
 import DeliveryOrders from "./pages/DeliveryOrders.jsx";
 import PendingOrders from "./pages/PendingOrders.jsx";
 import PharmacyNotifications from "./pages/PharmacyNotifications";
+import PharmacyHistory from "./pages/PharmacyHistory";
+
 
 /* Logistics */
 import LogisticsHeader from "./pages/LogisticsHeader.jsx";
 import Logistics from "./pages/Logistics.jsx";
 import LogisticsPending from "./pages/LogisticsPending.jsx";
 import LogisticsNotifications from "./pages/LogisticsNotifications.jsx";
+import LogisticsHistory from "./pages/LogisticsHistory.jsx";
+
 
 /* Shared */
 import Welcome from "./pages/Welcome";
@@ -89,7 +94,7 @@ export default function App() {
         >
           <Route path="/doctor" element={<Doctor />} />
           <Route path="/prescriptions" element={<PrescriptionsPage />} />
-          <Route path="/dashboard" element={<Dashboard />} />
+         <Route path="/doctor/history" element={<DoctorHistory />} />
         </Route>
 
         {/* Patient */}
@@ -128,6 +133,8 @@ export default function App() {
             path="notifications"
             element={<PharmacyNotifications />}
           />
+          <Route path="history" element={<PharmacyHistory />} />
+
         </Route>
 
         {/* Logistics */}
@@ -145,6 +152,8 @@ export default function App() {
             path="notifications"
             element={<LogisticsNotifications />}
           />
+          <Route path="history" element={<LogisticsHistory />} />
+
         </Route>
 
         {/* 404 */}

@@ -34,6 +34,7 @@ import {
   Circle,
   AlertCircle,
   Bell, // ✅ Added
+    History, 
 } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
@@ -332,6 +333,7 @@ export default function PharmacyShell() {
 
   // ✅ Added active state for notifications
   const isNotifActive = location.pathname.startsWith("/pharmacy/notifications");
+const isHistActive = location.pathname.startsWith("/pharmacy/history"); 
 
   let subtitleText = "";
   if (isPickActive) {
@@ -494,6 +496,16 @@ export default function PharmacyShell() {
                 <Bell size={18} />
                 <span>Notifications</span>
               </DrawerItem>
+<DrawerItem
+  active={isHistActive}
+  onClick={() => {
+    navigate("/pharmacy/history");
+    setOpen(false);
+  }}
+>
+  <History size={18} />
+  <span>History</span>
+</DrawerItem>
 
               <DrawerItem
                 onClick={() => {

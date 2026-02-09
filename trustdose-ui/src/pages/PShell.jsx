@@ -34,6 +34,7 @@ import {
   XCircle,
   Circle,
    Bell,
+  FileText,
 } from "lucide-react";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
@@ -341,6 +342,18 @@ export default function PShell() {
 
 
             <nav className="px-3">
+        <DrawerItem
+  active={location.pathname === "/patient"}
+  onClick={() => {
+    navigate("/patient");
+    setOpen(false);
+  }}
+>
+  <FileText size={18} />
+  <span>My Prescriptions</span>
+</DrawerItem>
+
+
              <DrawerItem
   active={location.pathname === "/patient/notifications"}
   onClick={() => {
