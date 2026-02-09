@@ -1,4 +1,5 @@
 // src/pages/Logistics.jsx
+/* global BigInt */
 "use client";
 
 import React from "react";
