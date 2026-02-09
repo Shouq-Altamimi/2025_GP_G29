@@ -1,7 +1,5 @@
 // src/pages/Doctor.jsx
 "use client";
-
-/* global BigInt */
 import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { db } from "../firebase";
@@ -18,7 +16,13 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { ethers } from "ethers";
-import { FileText, AlertCircle, CheckCircle2, Search, ClipboardList } from "lucide-react";
+import {
+  FileText,
+  AlertCircle,
+  CheckCircle2,
+  Search,
+  ClipboardList,
+} from "lucide-react";
 import PRESCRIPTION from "../contracts/Prescription.json";
 
 const C = {
@@ -28,7 +32,7 @@ const C = {
   pale: "#F6F1FA",
 };
 
-const CONTRACT_ADDRESS = "0xcBCa7402af3f087B2290CC80Aa52aA566a7ceBCD";
+const CONTRACT_ADDRESS = "0x67344803bB281D385f87C3B08f89C52041D120fd";
 
 const OTHER_MAX = 20;
 const LIMITS = Object.freeze({
@@ -89,11 +93,14 @@ function readWelcomeSync() {
 async function sha256Hex(input) {
   const enc = new TextEncoder();
   const hash = await crypto.subtle.digest("SHA-256", enc.encode(input));
-  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return [...new Uint8Array(hash)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 async function getSignerEnsured() {
-  if (!window.ethereum) throw new Error("MetaMask not detected. Please install/enable it.");
+  if (!window.ethereum)
+    throw new Error("MetaMask not detected. Please install/enable it.");
   await window.ethereum.request({ method: "eth_requestAccounts" });
   const provider = new ethers.BrowserProvider(window.ethereum);
   return provider.getSigner();
@@ -106,7 +113,10 @@ export async function generateSequentialPrescriptionId() {
   const counterRef = doc(db, "counters", "prescriptions");
   const nextNumber = await runTransaction(db, async (tx) => {
     const snap = await tx.get(counterRef);
-    const current = snap.exists() && typeof snap.data().next === "number" ? snap.data().next : START_NUMBER;
+    const current =
+      snap.exists() && typeof snap.data().next === "number"
+        ? snap.data().next
+        : START_NUMBER;
     const updated = current + 1;
     tx.set(counterRef, { next: updated }, { merge: true });
     return updated;
@@ -155,7 +165,11 @@ export default function Doctor() {
 
       try {
         const colRef = collection(db, "doctors");
-        const qDoc = query(colRef, where("doctorId", "==", String(userDoctorID)), limit(1));
+        const qDoc = query(
+          colRef,
+          where("doctorId", "==", String(userDoctorID)),
+          limit(1)
+        );
         const snap = await getDocs(qDoc);
 
         if (!snap.empty) {
@@ -166,7 +180,12 @@ export default function Doctor() {
             name: d.name || welcome?.name || "",
             phone: d.phone || welcome?.phone || "",
             facility: d.facility || welcome?.facility || welcome?.healthFacility || "",
-            healthFacility: d.healthFacility || d.facility || welcome?.healthFacility || welcome?.facility || "",
+            healthFacility:
+              d.healthFacility ||
+              d.facility ||
+              welcome?.healthFacility ||
+              welcome?.facility ||
+              "",
             speciality: d.speciality || d.specialty || welcome?.speciality || "",
           };
 
@@ -213,7 +232,9 @@ export default function Doctor() {
   const [hideSecond, setHideSecond] = useState(false);
 
   function updateForm(i, patch) {
-    setForms((prev) => prev.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
+    setForms((prev) =>
+      prev.map((f, idx) => (idx === i ? { ...f, ...patch } : f))
+    );
   }
 
   function addOtherPrescription() {
@@ -295,12 +316,15 @@ export default function Doctor() {
     const { silent = false } = opts;
     const raw = idOverride ?? q ?? "";
     const natDigits = String(raw).replace(/\D/g, "");
-    const firstOk = natDigits.length > 0 && (natDigits[0] === "1" || natDigits[0] === "2");
+    const firstOk =
+      natDigits.length > 0 && (natDigits[0] === "1" || natDigits[0] === "2");
     const lenOk = natDigits.length === 10;
 
     if (!firstOk || !lenOk) {
       if (!silent) {
-        const msg = !firstOk ? "National ID must start with 1 or 2." : "National ID must be 10 digits.";
+        const msg = !firstOk
+          ? "National ID must start with 1 or 2."
+          : "National ID must be 10 digits.";
         setValidationMsg(msg);
         setSearchMsg("");
         setSelectedPatient(null);
@@ -322,7 +346,10 @@ export default function Doctor() {
         setSearched(true);
 
         sessionStorage.setItem("td_last_patient", natDigits);
-        sessionStorage.setItem("td_patient", JSON.stringify({ id: patient.id, name: patient.name }));
+        sessionStorage.setItem(
+          "td_patient",
+          JSON.stringify({ id: patient.id, name: patient.name })
+        );
       } else {
         setSelectedPatient(null);
         setSearched(true);
@@ -357,12 +384,16 @@ export default function Doctor() {
       if (mc.length < LIMITS.medicalCondition.min) {
         const realIdx = forms.findIndex((x) => x.key === f.key);
         if (realIdx >= 0) updateForm(realIdx, { mcTouched: true });
-        return setRxMsg(`Medical Condition (prescription #${i + 1}) must be at least ${LIMITS.medicalCondition.min} characters.`);
+        return setRxMsg(
+          `Medical Condition (prescription #${i + 1}) must be at least ${LIMITS.medicalCondition.min} characters.`
+        );
       }
       if (mc.length > LIMITS.medicalCondition.max) {
         const realIdx = forms.findIndex((x) => x.key === f.key);
         if (realIdx >= 0) updateForm(realIdx, { mcTouched: true });
-        return setRxMsg(`Medical Condition (prescription #${i + 1}) must be at most ${LIMITS.medicalCondition.max} characters.`);
+        return setRxMsg(
+          `Medical Condition (prescription #${i + 1}) must be at most ${LIMITS.medicalCondition.max} characters.`
+        );
       }
 
       if (!f.selectedMed) return setRxMsg(`Please choose a medicine for prescription #${i + 1}.`);
@@ -371,7 +402,9 @@ export default function Doctor() {
       if (!f.durationDays) return setRxMsg(`Please enter/select a duration for prescription #${i + 1}.`);
 
       if ((f.notes || "").length > LIMITS.notes.max) {
-        return setRxMsg(`Notes must be at most ${LIMITS.notes.max} characters (prescription #${i + 1}).`);
+        return setRxMsg(
+          `Notes must be at most ${LIMITS.notes.max} characters (prescription #${i + 1}).`
+        );
       }
     }
 
@@ -381,17 +414,20 @@ export default function Doctor() {
 
       const natId = selectedPatient.id?.toString() || "";
       const natIdHashHex = natId ? await sha256Hex(natId) : "";
-      const patientHashBytes32 = natIdHashHex ? "0x" + natIdHashHex : "0x" + "0".repeat(64);
+      const patientHashBytes32 = natIdHashHex
+        ? "0x" + natIdHashHex
+        : "0x" + "0".repeat(64);
 
       const signer = await getSignerEnsured();
       const doctorAddress = await signer.getAddress();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, PRESCRIPTION.abi, signer);
 
       const vf2 = visibleForms();
-
       const sharedPrescriptionID = await generateSequentialPrescriptionId();
 
-      const anySensitive = vf2.some((f) => normalizeSensitivity(f.selectedMed?.sensitivity) === "Sensitive");
+      const anySensitive = vf2.some(
+        (f) => normalizeSensitivity(f.selectedMed?.sensitivity) === "Sensitive"
+      );
       const sharedSensitivity = anySensitive ? "Sensitive" : "NonSensitive";
 
       // ===== ON-CHAIN (✅ batch when 2 prescriptions) =====
@@ -404,7 +440,13 @@ export default function Doctor() {
         const freqs = vf2.map((f) => String(f.timesPerDay || ""));
         const durs = vf2.map((f) => String(f.durationDays || ""));
 
-        const tx = await contract.createMultiplePrescriptions(patientHashBytes32, medicines, dosages, freqs, durs);
+        const tx = await contract.createMultiplePrescriptions(
+          patientHashBytes32,
+          medicines,
+          dosages,
+          freqs,
+          durs
+        );
         const receipt = await tx.wait();
         if (receipt?.status !== 1) throw new Error("Transaction reverted or failed.");
 
@@ -430,7 +472,13 @@ export default function Doctor() {
         const f = vf2[0];
         const medForChain = (f.selectedMed?.label || "").trim();
 
-        const tx = await contract.createPrescription(patientHashBytes32, medForChain, f.dose, f.timesPerDay, f.durationDays);
+        const tx = await contract.createPrescription(
+          patientHashBytes32,
+          medForChain,
+          f.dose,
+          f.timesPerDay,
+          f.durationDays
+        );
         const receipt = await tx.wait();
         if (receipt?.status !== 1) throw new Error("Transaction reverted or failed.");
 
@@ -480,12 +528,25 @@ export default function Doctor() {
           [F.patientDisplayId]: natId ? natId.slice(-4) : "",
           [F.patientNationalIdHash]: "0x" + natIdHashHex,
 
+          // ✅ NEW: helpful fields
+          patientDocId: selectedPatient.docId || "",
+          patientName: selectedPatient.name || "",
+          patientPhone: selectedPatient.phone || "",
+          patientNationalIdLast4: natId ? natId.slice(-4) : "",
+
+          // ✅ NEW: store full national id for older lookups (optional)
+          patientNationalId: natId || "",
+
+          // blockchain tx hash only
           [F.onchainTx]: perItemTxHashes[i] || "",
-          onchainId: onchainIds?.[i] ?? null,
+
+          // ✅ NEW: store on-chain ID per item (critical for Logistics eligibility)
+          ...(onchainIds?.[i] != null ? { onchainId: String(onchainIds[i]) } : {}),
 
           [F.prescriptionID]: sharedPrescriptionID,
           [F.sensitivity]: sharedSensitivity,
 
+          // keep flags (your app uses them later)
           dispensed: false,
           acceptDelivery: false,
           logisticsAccepted: false,
@@ -496,7 +557,10 @@ export default function Doctor() {
       }
 
       sessionStorage.setItem("td_last_patient", natId);
-      sessionStorage.setItem("td_patient", JSON.stringify({ id: natId, name: selectedPatient.name }));
+      sessionStorage.setItem(
+        "td_patient",
+        JSON.stringify({ id: natId, name: selectedPatient.name })
+      );
 
       setForms([emptyForm()]);
       setHideSecond(false);
@@ -531,7 +595,13 @@ export default function Doctor() {
     !selectedPatient ||
     visibleForms().some((f) => {
       const mc = (f.medicalCondition || "").trim();
-      return mc.length < LIMITS.medicalCondition.min || !f.selectedMed || !f.dose || !f.timesPerDay || !f.durationDays;
+      return (
+        mc.length < LIMITS.medicalCondition.min ||
+        !f.selectedMed ||
+        !f.dose ||
+        !f.timesPerDay ||
+        !f.durationDays
+      );
     });
 
   return (
@@ -539,7 +609,11 @@ export default function Doctor() {
       {(profile.name || profile.healthFacility || profile.speciality) && (
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 64, height: "auto" }} />
+            <img
+              src="/Images/TrustDose-pill.png"
+              alt="TrustDose Capsule"
+              style={{ width: 64, height: "auto" }}
+            />
             <div>
               <div className="font-extrabold text-2xl" style={{ color: "#334155" }}>
                 {profile?.name ? `Welcome, Dr. ${profile.name}` : "Welcome, Doctor"}
@@ -578,7 +652,11 @@ export default function Doctor() {
               />
 
               {q && (
-                <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 hover:opacity-80" style={{ color: C.ink }}>
+                <button
+                  onClick={clearSearch}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 hover:opacity-80"
+                  style={{ color: C.ink }}
+                >
                   ✕
                 </button>
               )}
@@ -589,8 +667,12 @@ export default function Doctor() {
               disabled={isLoading || !q.trim() || !!validationMsg}
               className="px-6 py-3 text-white rounded-xl font-medium transition-all flex items-center gap-2 disabled:opacity-60"
               style={{
-                backgroundColor: q.trim().length > 0 && !validationMsg ? C.primary : "rgba(176, 140, 193, 0.4)",
-                cursor: q.trim().length > 0 && !validationMsg ? "pointer" : "not-allowed",
+                backgroundColor:
+                  q.trim().length > 0 && !validationMsg
+                    ? C.primary
+                    : "rgba(176, 140, 193, 0.4)",
+                cursor:
+                  q.trim().length > 0 && !validationMsg ? "pointer" : "not-allowed",
               }}
             >
               <Search size={18} /> Search
@@ -599,7 +681,11 @@ export default function Doctor() {
 
           {(q || selectedPatient) && (
             <div className="flex justify-end mt-2">
-              <button onClick={clearSearch} className="px-6 py-3 rounded-xl font-medium" style={{ background: "#F3F4F6", color: "#374151" }}>
+              <button
+                onClick={clearSearch}
+                className="px-6 py-3 rounded-xl font-medium"
+                style={{ background: "#F3F4F6", color: "#374151" }}
+              >
                 Clear Search
               </button>
             </div>
@@ -630,7 +716,10 @@ export default function Doctor() {
                 <button
                   onClick={async () => {
                     const pidHash = "0x" + (await sha256Hex(selectedPatient.id.toString()));
-                    sessionStorage.setItem("td_patient", JSON.stringify({ id: selectedPatient.id, name: selectedPatient.name }));
+                    sessionStorage.setItem(
+                      "td_patient",
+                      JSON.stringify({ id: selectedPatient.id, name: selectedPatient.name })
+                    );
                     sessionStorage.setItem("td_last_patient", String(selectedPatient.id));
                     navigate(`/prescriptions?pid=${pidHash}`, {
                       replace: true,
@@ -653,7 +742,10 @@ export default function Doctor() {
               </h2>
 
               {!!rxMsg && (
-                <div className="p-3 rounded-lg mb-4 flex items-center gap-2 border" style={{ background: "#FEF2F2", color: "#991B1B", borderColor: "#FECACA" }}>
+                <div
+                  className="p-3 rounded-lg mb-4 flex items-center gap-2 border"
+                  style={{ background: "#FEF2F2", color: "#991B1B", borderColor: "#FECACA" }}
+                >
                   <AlertCircle size={18} />
                   {rxMsg}
                 </div>
@@ -703,7 +795,9 @@ export default function Doctor() {
                         }`}
                         style={{
                           outlineColor:
-                            f.mcTouched && (f.medicalCondition || "").trim().length < LIMITS.medicalCondition.min ? "#f87171" : C.primary,
+                            f.mcTouched && (f.medicalCondition || "").trim().length < LIMITS.medicalCondition.min
+                              ? "#f87171"
+                              : C.primary,
                         }}
                         placeholder="e.g., Hypertension"
                         value={f.medicalCondition}
@@ -716,7 +810,9 @@ export default function Doctor() {
 
                       <div className="mt-1 flex items-center justify-between text-xs">
                         {f.mcTouched && (f.medicalCondition || "").trim().length < LIMITS.medicalCondition.min && (
-                          <span className="text-rose-600">Please enter at least {LIMITS.medicalCondition.min} characters.</span>
+                          <span className="text-rose-600">
+                            Please enter at least {LIMITS.medicalCondition.min} characters.
+                          </span>
                         )}
                         <span className="text-gray-500">
                           {String(f.medicalCondition || "").length}/{LIMITS.medicalCondition.max}
@@ -791,7 +887,9 @@ export default function Doctor() {
                     )}
 
                     <div className="mt-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Notes (optional)
+                      </label>
 
                       <textarea
                         className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all resize-none"
@@ -862,9 +960,15 @@ export default function Doctor() {
 
       {showSuccessPopup && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border" style={{ background: C.pale, borderColor: C.primary }}>
+          <div
+            className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border"
+            style={{ background: C.pale, borderColor: C.primary }}
+          >
             <div className="flex flex-col items-center text-center">
-              <div className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full" style={{ backgroundColor: "#ECFDF3" }}>
+              <div
+                className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
+                style={{ backgroundColor: "#ECFDF3" }}
+              >
                 <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
               </div>
 
@@ -880,7 +984,10 @@ export default function Doctor() {
                   if (!selectedPatient?.id) return;
 
                   const pidHash = "0x" + (await sha256Hex(selectedPatient.id.toString()));
-                  sessionStorage.setItem("td_patient", JSON.stringify({ id: selectedPatient.id, name: selectedPatient.name }));
+                  sessionStorage.setItem(
+                    "td_patient",
+                    JSON.stringify({ id: selectedPatient.id, name: selectedPatient.name })
+                  );
                   sessionStorage.setItem("td_last_patient", String(selectedPatient.id));
                   navigate(`/prescriptions?pid=${pidHash}`, {
                     replace: true,
@@ -904,9 +1011,18 @@ export default function Doctor() {
 
 function InfoCard({ label, value, bold = false, highlight = false }) {
   return (
-    <div className="p-4 border rounded-xl" style={{ background: highlight ? "#F6F1FA" : "#F9FAFB", borderColor: highlight ? "#E9DFF1" : "#E5E7EB" }}>
+    <div
+      className="p-4 border rounded-xl"
+      style={{
+        background: highlight ? "#F6F1FA" : "#F9FAFB",
+        borderColor: highlight ? "#E9DFF1" : "#E5E7EB",
+      }}
+    >
       <div className="text-sm text-gray-600 mb-1">{label}</div>
-      <div className={`text-gray-800 ${bold ? "font-semibold" : ""}`} style={highlight ? { color: "#4A2C59", fontWeight: 600 } : undefined}>
+      <div
+        className={`text-gray-800 ${bold ? "font-semibold" : ""}`}
+        style={highlight ? { color: "#4A2C59", fontWeight: 600 } : undefined}
+      >
         {value ?? "—"}
       </div>
     </div>
@@ -970,13 +1086,17 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
           ))}
           {allowOther && <option value="__OTHER__">Other…</option>}
         </select>
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">▾</div>
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">
+          ▾
+        </div>
       </div>
 
       {isCustomMode && (
         <div className="mt-2">
           <input
-            className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"}`}
+            className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
+              showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+            }`}
             style={{ outlineColor: showError ? "#f87171" : C.primary }}
             placeholder={`Enter custom ${label.toLowerCase()}`}
             value={customText}
@@ -1055,13 +1175,17 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
           ))}
           {allowOther && <option value="__OTHER__">Other…</option>}
         </select>
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">▾</div>
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none leading-none text-gray-500 text-base">
+          ▾
+        </div>
       </div>
 
       {isCustomMode && (
         <div className="mt-2">
           <input
-            className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"}`}
+            className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
+              showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+            }`}
             style={{ outlineColor: showError ? "#f87171" : C.primary }}
             placeholder="Enter custom dosage"
             value={customText}
@@ -1262,10 +1386,14 @@ function mapPatient(dbRec, id) {
   if (!dbRec) return null;
   const national = dbRec.nationalId || dbRec.nationalID || id;
   const birth = dbRec.birthDate ?? dbRec.birthdate;
+
+  const phone = dbRec.contact || dbRec.phone || dbRec.mobile || "";
+
   return {
     docId: dbRec.docId,
     id: national?.toString() || id,
     name: dbRec.name || "—",
+    phone,
     age: toAgeAny(birth),
     heightCm: dbRec.heightCm || "",
     weightKg: dbRec.weightKg || "",
