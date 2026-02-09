@@ -370,8 +370,8 @@ export default function Doctor() {
     return hideSecond ? [forms[0]] : forms;
   }
 
-  // ✅ 1) وصفتين = نفس prescriptionID
-  // ✅ 2) إذا واحد Sensitive = الاثنين Sensitive
+  //  1) وصفتين = نفس prescriptionID
+  //  2) إذا واحد Sensitive = الاثنين Sensitive
   async function confirmAndSave() {
     if (!selectedPatient) return setRxMsg("Please search for a patient first.");
 
@@ -528,25 +528,22 @@ export default function Doctor() {
           [F.patientDisplayId]: natId ? natId.slice(-4) : "",
           [F.patientNationalIdHash]: "0x" + natIdHashHex,
 
-          // ✅ NEW: helpful fields
+          //  helpful fields
           patientDocId: selectedPatient.docId || "",
           patientName: selectedPatient.name || "",
           patientPhone: selectedPatient.phone || "",
           patientNationalIdLast4: natId ? natId.slice(-4) : "",
 
-          // ✅ NEW: store full national id for older lookups (optional)
           patientNationalId: natId || "",
 
-          // blockchain tx hash only
           [F.onchainTx]: perItemTxHashes[i] || "",
 
-          // ✅ NEW: store on-chain ID per item (critical for Logistics eligibility)
           ...(onchainIds?.[i] != null ? { onchainId: String(onchainIds[i]) } : {}),
 
           [F.prescriptionID]: sharedPrescriptionID,
           [F.sensitivity]: sharedSensitivity,
 
-          // keep flags (your app uses them later)
+          // keep flags 
           dispensed: false,
           acceptDelivery: false,
           logisticsAccepted: false,
