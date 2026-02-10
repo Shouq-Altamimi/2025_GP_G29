@@ -506,12 +506,8 @@ export default function AdminAnalytics() {
       : "Last 12 months";
 
   return (
-    <div
-      className="min-h-screen flex flex-col"
-      style={{
-        background: "linear-gradient(180deg,#F7F7FB 0%, #F3FBFC 100%)",
-      }}
-    >
+    <div className="min-h-screen flex flex-col bg-gray-50">
+
       <Header hideMenu={false} onMenuClick={() => setOpen(true)} />
 
       <main className="flex-1">
