@@ -257,7 +257,6 @@ export default function LogisticsHistory() {
           <div className="rounded-2xl border bg-white p-6 text-sm" style={{ borderColor: C.line, color: C.gray }}>
             No logistics-accepted prescriptions found.
             <div className="mt-2 text-xs">
-              تأكدي إن الوصفات فيها <b>logisticsAccepted = true</b> أو <b>logisticsAcceptedAt</b>.
             </div>
           </div>
         ) : (
