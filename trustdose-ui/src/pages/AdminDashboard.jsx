@@ -5,9 +5,10 @@ import {
   X,
   LayoutDashboard,
   UserPlus,
+  BarChart3,          // ✅ NEW
   LogOut,
   AlertCircle,
-  CheckCircle2,        
+  CheckCircle2,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Header from "../components/Header.jsx";
@@ -25,7 +26,7 @@ import {
   orderBy,
   limit,
   getDocs,
-  where, 
+  where,
 } from "firebase/firestore";
 import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "firebase/auth";
 
@@ -196,13 +197,19 @@ async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPasswo
   return { txHash: tx.hash, block: rc.blockNumber };
 }
 
+/* =======================
+   Sidebar (نضيف analytics فقط بدون ما نخرب شي)
+======================= */
 function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
   const location = useLocation();
+
   const go = (path) => {
     setOpen(false);
     onNav?.(path);
   };
-  const isActive = (path) => location.pathname === path;
+
+  // ✅ خليها مرنة وموحدة (تشتغل مع tabs مستقبلاً لو صارت)
+  const isActive = (path) => (location.pathname + location.search) === path;
 
   return (
     <>
@@ -243,6 +250,12 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
             <span>Add Doctor</span>
           </SidebarItem>
 
+          {/* ✅ NEW: Analytics tab */}
+          <SidebarItem active={isActive("/admin/analytics")} onClick={() => go("/admin/analytics")}>
+            <BarChart3 size={18} />
+            <span>Analytics</span>
+          </SidebarItem>
+
           <SidebarItem
             variant="ghost"
             onClick={() => {
@@ -258,6 +271,7 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
     </>
   );
 }
+
 function SidebarItem({ children, onClick, variant = "solid", active = false }) {
   const base =
     "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
@@ -267,7 +281,11 @@ function SidebarItem({ children, onClick, variant = "solid", active = false }) {
     ? "text-white/90 hover:bg-white/10"
     : "bg-white/25 text-white hover:bg-white/35";
   return (
-    <button onClick={onClick} className={`${base} ${styles}`} aria-current={active ? "page" : undefined}>
+    <button
+      onClick={onClick}
+      className={`${base} ${styles}`}
+      aria-current={active ? "page" : undefined}
+    >
       {children}
     </button>
   );
@@ -276,7 +294,7 @@ function SidebarItem({ children, onClick, variant = "solid", active = false }) {
 // min 5 chars
 const NAME_RE = /^[A-Za-z ]{5,}$/;
 const SPEC_RE = /^[A-Za-z ]{5,}$/;
-const LIC_RE = /^[A-Za-z0-9]{10}$/; 
+const LIC_RE = /^[A-Za-z0-9]{10}$/;
 
 function validateLic(v) {
   if (!v) return { ok: false, err: "License number is required." };
@@ -424,10 +442,8 @@ export default function AdminAddDoctorOnly() {
       if (!formOk) throw new Error("Please fill all required fields correctly");
       await ensureAuthReady();
 
-   
       const usedTempPassword = tempPassword;
 
-     
       setStatus("⏳ Checking license number…");
       const taken = await isLicenseTaken(licenseNumber);
       if (taken) {
@@ -438,7 +454,7 @@ export default function AdminAddDoctorOnly() {
 
       setStatus("⏳ Allocating sequential Access ID…");
       const id = await allocateSequentialAccessId();
-      const usedAccessId = id; 
+      const usedAccessId = id;
       setAccessId(id);
       setDoctorID(id);
 
@@ -478,14 +494,12 @@ export default function AdminAddDoctorOnly() {
 
       await markAccessIdClaimed_Firestore(id);
 
-      
       setSuccessModal({
         accessId: usedAccessId,
         tempPassword: usedTempPassword,
       });
 
       setStatus(`✅ Doctor added successfully.`);
-
 
       setLicenseNumber("");
       setName("");
@@ -510,7 +524,6 @@ export default function AdminAddDoctorOnly() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Header */}
       <Header hideMenu={false} onMenuClick={() => setOpen(true)} />
 
       {mmError && (
@@ -580,7 +593,6 @@ export default function AdminAddDoctorOnly() {
         </div>
       </section>
 
-      {/* Form box */}
       <main className="flex-1 flex items-center justify-center px-4 py-10">
         <aside className="w-full max-w-xl bg-white rounded-3xl shadow-xl border border-gray-200 p-6">
           <h3 className="mb-4 text-xl font-semibold text-[#4A2C59]">
@@ -631,9 +643,7 @@ export default function AdminAddDoctorOnly() {
                 )}`}
                 inputMode="text"
               />
-              <ErrorMsg>
-                {dirty.name && !vName.ok ? vName.err : ""}
-              </ErrorMsg>
+              <ErrorMsg>{dirty.name && !vName.ok ? vName.err : ""}</ErrorMsg>
             </div>
 
             <div>
@@ -653,18 +663,14 @@ export default function AdminAddDoctorOnly() {
                 )}`}
                 inputMode="text"
               />
-              <ErrorMsg>
-                {dirty.spec && !vSpec.ok ? vSpec.err : ""}
-              </ErrorMsg>
+              <ErrorMsg>{dirty.spec && !vSpec.ok ? vSpec.err : ""}</ErrorMsg>
             </div>
           </div>
 
           {/* IDs / Facility / License */}
           <div className="mt-3 grid grid-cols-1 gap-3">
             <div>
-              <label className="block text-sm text-gray-700 mb-1">
-                Doctor ID
-              </label>
+              <label className="block text-sm text-gray-700 mb-1">Doctor ID</label>
               <input
                 placeholder="Auto-generated (e.g., Dr-007)"
                 value={DoctorID}
@@ -674,9 +680,7 @@ export default function AdminAddDoctorOnly() {
             </div>
 
             <div>
-              <label className="block text-sm text-gray-700 mb-1">
-                Health Facility
-              </label>
+              <label className="block text-sm text-gray-700 mb-1">Health Facility</label>
               <input
                 value={healthFacility}
                 readOnly
@@ -701,9 +705,7 @@ export default function AdminAddDoctorOnly() {
                 )}`}
                 inputMode="text"
               />
-              <ErrorMsg>
-                {dirty.lic && !vLic.ok ? vLic.err : ""}
-              </ErrorMsg>
+              <ErrorMsg>{dirty.lic && !vLic.ok ? vLic.err : ""}</ErrorMsg>
             </div>
           </div>
 
@@ -734,12 +736,9 @@ export default function AdminAddDoctorOnly() {
               </button>
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              Please click &quot;Use MetaMask&quot; to automatically fill the
-              wallet address.
+              Please click &quot;Use MetaMask&quot; to automatically fill the wallet address.
             </p>
-            <ErrorMsg>
-              {dirty.wallet && !vWallet.ok ? vWallet.err : ""}
-            </ErrorMsg>
+            <ErrorMsg>{dirty.wallet && !vWallet.ok ? vWallet.err : ""}</ErrorMsg>
           </div>
 
           {/* Access ID + Temp Password  */}
@@ -783,7 +782,6 @@ export default function AdminAddDoctorOnly() {
 
       <Footer />
 
-      {/* Sidebar */}
       <TDAdminSidebar
         open={open}
         setOpen={setOpen}

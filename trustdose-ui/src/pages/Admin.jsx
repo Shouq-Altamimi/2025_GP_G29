@@ -18,6 +18,8 @@ import Footer from "../components/Footer.jsx";
 import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useNavigate, useLocation } from "react-router-dom";
+import { BarChart3 } from "lucide-react";
+
 
 const C = { primary: "#B08CC1", teal: "#52B9C4", ink: "#4A2C59" };
 
@@ -95,6 +97,21 @@ function Sidebar({ open, setOpen, onNav, onLogout }) {
             <UserPlus size={18} />
             <span>Add Doctor</span>
           </button>
+          <button
+            onClick={() => {
+              setOpen(false);
+              onNav("/admin/analytics");
+            }}
+            className={`w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium ${
+              isActive("/admin/analytics")
+                ? "bg-white text-[#5B3A70]"
+                : "bg-white/25 text-white hover:bg-white/35"
+            }`}
+          >
+            <BarChart3 size={18} />
+            <span>Analytics</span>
+          </button>
+
 
           <button
             onClick={() => {

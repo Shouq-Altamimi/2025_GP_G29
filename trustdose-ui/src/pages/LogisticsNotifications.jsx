@@ -1,3 +1,4 @@
+// src/pages/LogisticsNotifications.jsx
 "use client";
 
 import React from "react";
@@ -7,11 +8,14 @@ import {
   query,
   where,
   onSnapshot,
-  getDoc,
+  orderBy,
+  getDocs,
   doc,
+  getDoc,
+  updateDoc,
 } from "firebase/firestore";
 
-import { Loader2, Clock, CheckCircle2 } from "lucide-react";
+import { Loader2, Bell, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 
 const C = {
   primary: "#B08CC1",
@@ -56,10 +60,14 @@ async function resolveLogisticsDocId() {
 
   if (!lgId) return null;
 
-  // Try by document ID
+  // 1) Try by document ID
   const byId = await getDoc(doc(db, "logistics", String(lgId)));
   if (byId.exists()) return String(lgId);
 
+  // 2) Try by LogisticsID field
+  const col = collection(db, "logistics");
+  const qs = await getDocs(query(col, where("LogisticsID", "==", String(lgId))));
+  if (!qs.empty) return qs.docs[0].id;
 
   return null;
 }
@@ -69,10 +77,12 @@ export default function LogisticsNotifications() {
   const [logisticsDocId, setLogisticsDocId] = React.useState(null);
   const [header, setHeader] = React.useState({ companyName: "" });
 
+  const [listenErr, setListenErr] = React.useState("");
 
+  // ✅ Virtual notifications derived from prescriptions (24h)
   const [virtualItems, setVirtualItems] = React.useState([]);
 
-
+  // ✅ "read" للـ virtual (localStorage)
   const [virtualReadSet, setVirtualReadSet] = React.useState(() => {
     try {
       const raw = localStorage.getItem("lg_virtual_read") || "[]";
@@ -88,7 +98,7 @@ export default function LogisticsNotifications() {
     } catch {}
   }, []);
 
-
+  // Resolve logistics doc id + header
   React.useEffect(() => {
     let mounted = true;
 
@@ -102,7 +112,7 @@ export default function LogisticsNotifications() {
         if (docId) {
           const snap = await getDoc(doc(db, "logistics", docId));
           if (snap.exists()) {
-            const d = snap.data();
+            const d = snap.data() || {};
             setHeader({ companyName: d.companyName || d.name || "" });
           }
         }
@@ -116,78 +126,245 @@ export default function LogisticsNotifications() {
     return () => (mounted = false);
   }, []);
 
- 
-  React.useEffect(() => {
+  // =========================
+  // ✅ Virtual notifications from prescriptions (24h)
+  // =========================
+  /*React.useEffect(() => {
+    if (!logisticsDocId) return;
+
+    setListenErr("");
+    setLoading(true);
+
     let unsub = null;
     let canceled = false;
 
-    const qRef = query(
+    const attach = (qq, label) => {
+      unsub = onSnapshot(
+        qq,
+        (snap) => {
+          if (canceled) return;
+
+          const now = Date.now();
+          const cutoff24 = now - 24 * 60 * 60 * 1000;
+
+          const v = [];
+
+          snap.forEach((d) => {
+            const rx = d.data() || {};
+            const docId = d.id;
+
+            // لازم ما يكون تم تأكيد التسليم
+            if (rx.deliveryConfirmed === true) return;
+
+            // لازم يكون اللوجستيك قبل
+            if (rx.logisticsAccepted !== true) return;
+
+            // وقت قبول اللوجستيك
+            const acceptedMs = toMs(rx.logisticsAcceptedAt);
+            if (!acceptedMs) return;
+
+            // لازم تعدّت 24 ساعة
+            if (acceptedMs > cutoff24) return;
+
+            // خذي رقم الوصفة
+            const prescriptionId =
+              rx.prescriptionID ||
+              rx.prescriptionId ||
+              rx.prescriptionNum ||
+              rx.prescriptionNumber ||
+              docId;
+
+            const vid = `v24_${docId}`;
+            const isReadVirtual = virtualReadSet.has(vid);
+
+            v.push({
+              __virtual: true,
+              id: vid,
+              type: "DELIVERY_OVERDUE_24H",
+              orderId: docId,
+              prescriptionID: prescriptionId,
+              createdAt: rx.logisticsAcceptedAt,
+              read: isReadVirtual ? true : false,
+              title: "Delivery overdue (24h)",
+              message: `Prescription ${prescriptionId} has not been completed within 24 hours.`,
+            });
+          });
+
+          v.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
+          setVirtualItems(v);
+          setLoading(false);
+        },
+        (err) => {
+          console.error(`prescriptions listen error (${label}):`, err);
+          setLoading(false);
+          setVirtualItems([]);
+          setListenErr("Missing or insufficient permissions (rules).");
+        }
+      );
+    };
+
+    // حاولنا نرتب بالـ updatedAt لو موجود (أحيانًا يحتاج index)
+    const orderedQ = query(
+      collection(db, "prescriptions"),
+      where("deliveryConfirmed", "==", false),
+      orderBy("updatedAt", "desc")
+    );
+
+    const plainQ = query(
       collection(db, "prescriptions"),
       where("deliveryConfirmed", "==", false)
     );
 
-    unsub = onSnapshot(qRef, (snap) => {
-      if (canceled) return;
+    attach(orderedQ, "ordered");
 
-      const now = Date.now();
-      const cutoff24 = now - 24 * 60 * 60 * 1000;
-
-      const v = [];
-
-      snap.forEach((d) => {
-        const rx = d.data() || {};
-        const docId = d.id;
-
-        if (rx.deliveryConfirmed === true) return;
-        if (rx.logisticsAccepted !== true) return;
-
-        const tsMs = toMs(rx.logisticsAcceptedAt);
-        if (!tsMs) return;
-        if (tsMs > cutoff24) return;
-
-        const prescriptionId =
-          rx.prescriptionID ||
-          rx.prescriptionId ||
-          rx.prescriptionNum ||
-          rx.prescriptionNumber ||
-          rx.prescriptionID ||
-          docId;
-
-        const vid = `v24_${docId}`;
-        const isReadVirtual = virtualReadSet.has(vid);
-
-        v.push({
-          __virtual: true,
-          id: vid,
-          type: "DELIVERY_OVERDUE_24H",
-          orderId: docId,
-          prescriptionID: prescriptionId,
-          createdAt: rx.logisticsAcceptedAt,
-          read: isReadVirtual ? true : false,
-          title: "Delivery overdue (24h)",
-          message: `Prescription ${prescriptionId} has not been completed within 24 hours.`,
-        });
-      });
-
-      v.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
-      setVirtualItems(v);
-    });
+    // fallback لو طلع index error
+    const timer = setTimeout(() => {
+      // إذا ما جاء شيء والـ listenErr ممكن يكون index
+      // ما نقدر نعرف مباشرة إلا من رسالة الخطأ،
+      // لكن fallback الأفضل: إذا صارت مشكلة “index” جربي plain
+    }, 0);
 
     return () => {
       canceled = true;
+      clearTimeout(timer);
       try {
         if (unsub) unsub();
       } catch {}
     };
-  }, [virtualReadSet]);
+  }, [logisticsDocId, virtualReadSet]);*/
+  // =========================
+// ✅ Virtual notifications from prescriptions (24h) — with ordered->plain fallback
+// =========================
+React.useEffect(() => {
+  if (!logisticsDocId) return;
 
-  const unreadCount = virtualItems.filter((n) => !(n.read === true || n.read === "true")).length;
+  setListenErr("");
+  setLoading(true);
 
-  function markAsRead(n) {
-    const next = new Set(virtualReadSet);
-    next.add(n.id);
-    setVirtualReadSet(next);
-    persistVirtualRead(next);
+  let unsub = null;
+  let canceled = false;
+
+  const computeVirtual = (snap) => {
+    const now = Date.now();
+    const cutoff24 = now - 24 * 60 * 60 * 1000;
+
+    const v = [];
+
+    snap.forEach((d) => {
+      const rx = d.data() || {};
+      const docId = d.id;
+
+      if (rx.deliveryConfirmed === true) return;
+      if (rx.logisticsAccepted !== true) return;
+
+      const acceptedMs = toMs(rx.logisticsAcceptedAt);
+      if (!acceptedMs) return;
+
+      if (acceptedMs > cutoff24) return;
+
+      const prescriptionId =
+        rx.prescriptionID ||
+        rx.prescriptionId ||
+        rx.prescriptionNum ||
+        rx.prescriptionNumber ||
+        docId;
+
+      const vid = `v24_${docId}`;
+      const isReadVirtual = virtualReadSet.has(vid);
+
+      v.push({
+        __virtual: true,
+        id: vid,
+        type: "DELIVERY_OVERDUE_24H",
+        orderId: docId,
+        prescriptionID: prescriptionId,
+        createdAt: rx.logisticsAcceptedAt,
+        read: isReadVirtual ? true : false,
+        title: "Delivery overdue (24h)",
+        message: `Prescription ${prescriptionId} has not been completed within 24 hours.`,
+      });
+    });
+
+    // ترتيب بالواجهة (بدون index)
+    v.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
+    setVirtualItems(v);
+    setLoading(false);
+  };
+
+  const attach = (qq, label) => {
+    unsub = onSnapshot(
+      qq,
+      (snap) => {
+        if (canceled) return;
+        computeVirtual(snap);
+        setListenErr("");
+      },
+      (err) => {
+        console.error(`prescriptions listen error (${label}):`, err);
+
+        const msg = String(err?.message || "").toLowerCase();
+        const isIndex =
+          err?.code === "failed-precondition" ||
+          msg.includes("requires an index") ||
+          msg.includes("index");
+
+        // ✅ لو المشكلة index في ordered → سوّي fallback للـ plain
+        if (isIndex && label === "ordered") {
+          try {
+            if (unsub) unsub();
+          } catch {}
+          attach(plainQ, "plain");
+          return;
+        }
+
+        // غير كذا (غالباً رولز فعلاً)
+        setLoading(false);
+        setVirtualItems([]);
+        setListenErr("Missing or insufficient permissions (rules).");
+      }
+    );
+  };
+
+  // ordered (قد يحتاج index)
+  const orderedQ = query(
+    collection(db, "prescriptions"),
+    where("deliveryConfirmed", "==", false),
+    orderBy("updatedAt", "desc")
+  );
+
+  // plain (بدون orderBy)
+  const plainQ = query(
+    collection(db, "prescriptions"),
+    where("deliveryConfirmed", "==", false)
+  );
+
+  attach(orderedQ, "ordered");
+
+  return () => {
+    canceled = true;
+    try {
+      if (unsub) unsub();
+    } catch {}
+  };
+}, [logisticsDocId, virtualReadSet]);
+
+
+  const allItems = virtualItems;
+
+  const unreadCount = allItems.filter((n) => !(n.read === true || n.read === "true")).length;
+
+  async function markAsRead(n) {
+    // virtual: local فقط
+    if (n?.__virtual) {
+      const next = new Set(virtualReadSet);
+      next.add(n.id);
+      setVirtualReadSet(next);
+      persistVirtualRead(next);
+      return;
+    }
+
+    // (لو مستقبلاً عندك real notifications)
+    await updateDoc(doc(db, "notifications", n.id), { read: true });
   }
 
   if (loading) {
@@ -205,16 +382,20 @@ export default function LogisticsNotifications() {
   return (
     <div className="p-6">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
-        {/* Header */}
-        <div className="mb-6 flex items-center gap-3">
+        {listenErr && (
+          <div className="mb-4 p-4 rounded-xl flex items-center gap-2 text-red-700 bg-red-100 border border-red-300">
+            <AlertCircle size={20} />
+            <span className="text-sm font-medium">{listenErr}</span>
+          </div>
+        )}
 
+        {/* HEADER (بدون كبسولة) */}
+        <div className="mb-6 flex items-center">
           <div className="w-full">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h1 className="font-extrabold text-[24px]" style={{ color: "#334155" }}>
-                  {header.companyName
-                    ? `Notifications — ${header.companyName}`
-                    : "Notifications"}
+                  {header.companyName ? `Notifications — ${header.companyName}` : "Notifications"}
                 </h1>
 
                 <div className="mt-3 pt-3 border-t border-gray-200">
@@ -239,7 +420,7 @@ export default function LogisticsNotifications() {
         </div>
 
         {/* EMPTY */}
-        {virtualItems.length === 0 && (
+        {allItems.length === 0 && (
           <div className="p-8 border rounded-2xl bg-white shadow-sm text-center">
             <div
               className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
@@ -258,10 +439,12 @@ export default function LogisticsNotifications() {
         )}
 
         {/* LIST */}
-        {virtualItems.length > 0 && (
+        {allItems.length > 0 && (
           <section className="grid grid-cols-1 gap-4 mt-4">
-            {virtualItems.map((n) => {
+            {allItems.map((n) => {
+              const isOverdue24 = n.type === "DELIVERY_OVERDUE_24H";
               const isUnread = !(n.read === true || n.read === "true");
+
               const prescriptionId = n.prescriptionID || n.orderId || "—";
 
               return (
@@ -275,27 +458,35 @@ export default function LogisticsNotifications() {
                   <div className="flex items-start gap-3">
                     <div
                       className="h-11 w-11 rounded-2xl flex items-center justify-center"
-                      style={{ backgroundColor: "rgba(220,38,38,0.10)" }}
+                      style={{
+                        backgroundColor: isOverdue24 ? "rgba(220,38,38,0.10)" : "rgba(176,140,193,0.15)",
+                      }}
                     >
-                      <Clock size={20} style={{ color: "#DC2626" }} />
+                      {isOverdue24 ? (
+                        <Clock size={20} style={{ color: "#DC2626" }} />
+                      ) : (
+                        <Bell size={20} style={{ color: C.ink }} />
+                      )}
                     </div>
 
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="text-sm font-bold text-slate-800">
-                          Delivery overdue (24h)
+                          {n.title || "Notification"}
                         </div>
 
-                        <span
-                          className="px-2.5 py-1 rounded-full text-xs font-semibold border"
-                          style={{
-                            color: "#DC2626",
-                            borderColor: "rgba(220,38,38,0.35)",
-                            backgroundColor: "rgba(220,38,38,0.08)",
-                          }}
-                        >
-                          Overdue (24h)
-                        </span>
+                        {isOverdue24 && (
+                          <span
+                            className="px-2.5 py-1 rounded-full text-xs font-semibold border"
+                            style={{
+                              color: "#DC2626",
+                              borderColor: "rgba(220,38,38,0.35)",
+                              backgroundColor: "rgba(220,38,38,0.08)",
+                            }}
+                          >
+                            Overdue (24h)
+                          </span>
+                        )}
 
                         {isUnread && (
                           <span
@@ -311,7 +502,7 @@ export default function LogisticsNotifications() {
                         )}
                       </div>
 
-                      <div className="text-sm text-slate-700 mt-1">{n.message}</div>
+                      <div className="text-sm text-slate-700 mt-1">{n.message || "-"}</div>
 
                       <div className="mt-3 text-xs text-gray-500">
                         Prescription ID: <b className="text-slate-800">{prescriptionId}</b>

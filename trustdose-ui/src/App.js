@@ -10,6 +10,8 @@ import PasswordReset from "./pages/PasswordReset";
 /* Admin */
 import AdminDashboard from "./pages/AdminDashboard";
 import Admin from "./pages/Admin";
+import AdminAnalytics from "./pages/AdminAnalytics";
+
 
 /* Doctor */
 import DoctorHome from "./DoctorHome";
@@ -73,6 +75,8 @@ export default function App() {
             </RequireAuth>
           }
         />
+        <Route path="/admin/analytics" element={<AdminAnalytics />} />
+
 
         {/* Doctor Home */}
         <Route
