@@ -25,6 +25,7 @@ import {
   ChevronUp,
   Pill,
   PackageCheck,
+  Search, // ✅ ADD: search icon
 } from "lucide-react";
 
 const C = {
@@ -86,6 +87,11 @@ function RowItem({ icon, label, value }) {
   );
 }
 
+// ✅ ADD: helper للبحث (بدون ما نغير أي شي ثاني)
+function normalizeText(x) {
+  return String(x ?? "").trim().toLowerCase();
+}
+
 export default function LogisticsHistory() {
   const [filter, setFilter] = useState("all"); // all | delivered | inprogress
   const [expanded, setExpanded] = useState(() => new Set());
@@ -96,6 +102,9 @@ export default function LogisticsHistory() {
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(true);
   const [fetchingMore, setFetchingMore] = useState(false);
+
+  // ✅ ADD: search state
+  const [q, setQ] = useState("");
 
   async function loadPage(initial = false) {
     try {
@@ -174,6 +183,42 @@ export default function LogisticsHistory() {
     return base;
   }, [rows, filter]);
 
+  // ✅ ADD: search فوق نتائج الفلتر
+  const filteredWithSearch = useMemo(() => {
+    const t = normalizeText(q);
+    if (!t) return filtered;
+
+    return (filtered || []).filter((rx) => {
+      const med = rx?.medicineName || rx?.medicineLabel || "";
+      const patient = rx?.patientDisplayId || rx?.patientId || rx?.nationalID || "";
+      const doctor = rx?.doctorName || "";
+      const facility = rx?.doctorFacility || "";
+      const notes = rx?.notes || "";
+      const dosage = rx?.dosage || "";
+      const form = rx?.dosageForm || "";
+      const freq = rx?.frequency || "";
+      const dur = rx?.durationDays || "";
+      const sens = isSensitive(rx) ? "sensitive" : "non-sensitive";
+      const st = logisticsStatus(rx)?.label || "";
+
+      const hay = [
+        med,
+        patient,
+        doctor,
+        facility,
+        notes,
+        dosage,
+        form,
+        freq,
+        dur,
+        sens,
+        st,
+      ].map(normalizeText).join(" ");
+
+      return hay.includes(t);
+    });
+  }, [filtered, q]);
+
   function toggleExpand(id) {
     setExpanded((prev) => {
       const s = new Set(prev);
@@ -245,6 +290,30 @@ export default function LogisticsHistory() {
             </button>
           </div>
         </div>
+
+        {/* ✅ ADD: Search input */}
+        <div className="mt-4">
+          <div className="relative w-full sm:w-[520px]">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2"
+              size={18}
+              style={{ color: C.gray }}
+            />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search (medicine / patient / doctor / facility / notes...)"
+              className="w-full pl-10 pr-3 py-3 rounded-2xl border focus:outline-none focus:ring-2"
+              style={{ borderColor: C.line, outlineColor: C.primary }}
+            />
+          </div>
+
+          {!!q && (
+            <div className="mt-2 text-xs" style={{ color: C.gray }}>
+              Showing <b>{filteredWithSearch.length}</b> result(s)
+            </div>
+          )}
+        </div>
       </div>
 
       {/* List */}
@@ -253,14 +322,14 @@ export default function LogisticsHistory() {
           <div className="rounded-2xl border bg-white p-6 text-sm" style={{ borderColor: C.line, color: C.gray }}>
             Loading...
           </div>
-        ) : filtered.length === 0 ? (
+        ) : filteredWithSearch.length === 0 ? (
           <div className="rounded-2xl border bg-white p-6 text-sm" style={{ borderColor: C.line, color: C.gray }}>
             No logistics-accepted prescriptions found.
             <div className="mt-2 text-xs">
             </div>
           </div>
         ) : (
-          filtered.map((rx) => {
+          filteredWithSearch.map((rx) => {
             const expandedNow = expanded.has(rx.id);
             const sensitive = isSensitive(rx);
 
@@ -375,7 +444,7 @@ export default function LogisticsHistory() {
           })
         )}
 
-        {!loading && filtered.length > 0 && (
+        {!loading && filteredWithSearch.length > 0 && (
           <div className="pt-2">
             {hasMore ? (
               <button
