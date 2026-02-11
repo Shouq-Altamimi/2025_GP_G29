@@ -514,6 +514,7 @@ export default function AdminAnalytics() {
               <h1 className="text-[26px] leading-tight font-extrabold tracking-tight text-[#2A1E36]">
                 Analytics
               </h1>
+              <div className="mt-3 pt-3 border-t border-gray-200"></div>
               <p className="text-sm text-gray-500">{periodLabel}</p>
             </div>
 

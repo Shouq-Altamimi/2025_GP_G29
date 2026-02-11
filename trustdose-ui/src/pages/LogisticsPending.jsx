@@ -367,11 +367,7 @@ export default function Logistics() {
         )}
 
         <div className="mb-6 flex items-center gap-3">
-          <img
-            src="/Images/TrustDose-pill.png"
-            alt="TrustDose Capsule"
-            style={{ width: 64 }}
-          />
+          
 
           <div>
             <h1

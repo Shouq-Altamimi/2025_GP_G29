@@ -1,4 +1,4 @@
-// src/pages/Logistics.jsx
+
 /* global BigInt */
 "use client";
 
@@ -30,7 +30,7 @@ const C = {
 const PAGE_SIZE = 6;
 const LOGISTICS_ACCEPT_ADDRESS = "0x33b503588275CdAfcBe73eD51664919A3D4d3AC6";
 
-/* Timestamp formatter */
+
 function formatFsTimestamp(v) {
   if (!v) return "-";
   try {
@@ -55,7 +55,7 @@ function last4(id) {
   return s.length <= 4 ? s : s.slice(-4);
 }
 
-/* MetaMask signer */
+
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected.");
   await window.ethereum.request({ method: "eth_requestAccounts" });
@@ -63,9 +63,7 @@ async function getSignerEnsured() {
   return provider.getSigner();
 }
 
-// ✅ patient lookup supports BOTH docId styles:
-// 1) patients/{nationalId}
-// 2) patients/Ph_{nationalId}
+
 async function fetchPatientInfoByNationalId(nationalIdFull) {
   const id = String(nationalIdFull ?? "").trim();
   if (!id || id === "-" || id === "undefined") return { name: "-", phone: "-" };
@@ -106,10 +104,10 @@ export default function Logistics() {
   const [msg, setMsg] = React.useState("");
   const [page, setPage] = React.useState(0);
 
-  // key: prescriptionId -> boolean
+
   const [pending, setPending] = React.useState({});
 
-  // Filters
+ 
   const [qText, setQText] = React.useState("");
   const [fromDT, setFromDT] = React.useState("");
   const [toDT, setToDT] = React.useState("");
@@ -145,7 +143,7 @@ export default function Logistics() {
 
   const [showSuccessPopup, setShowSuccessPopup] = React.useState(false);
 
-  /* Load logistics header */
+  
   React.useEffect(() => {
     async function loadHeader() {
       try {
@@ -184,7 +182,7 @@ export default function Logistics() {
     loadHeader();
   }, []);
 
-  /* Load prescriptions */
+  
   React.useEffect(() => {
     let mounted = true;
 
@@ -231,7 +229,7 @@ export default function Logistics() {
         return;
       }
 
-      // 1) map docs -> rows
+     
       const data = snap.docs
         .map((d) => {
           const x = d.data() || {};
@@ -327,7 +325,7 @@ export default function Logistics() {
     return () => (mounted = false);
   }, []);
 
-  // Apply filters on rows first
+
   const filteredRows = React.useMemo(() => {
     let base = rows.filter(
       (r) => r.acceptDelivery && !r.dispensed && !r.logisticsAccepted
@@ -353,12 +351,12 @@ export default function Logistics() {
     return base;
   }, [rows, qText, fromDT, toDT]);
 
-  // Group by prescriptionId
+  
   const groups = React.useMemo(() => {
     const map = new Map();
 
     for (const r of filteredRows) {
-      // group by prescriptionId or docId 
+   
       const key = r.prescriptionId || r._docId;
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(r);
@@ -393,7 +391,6 @@ export default function Logistics() {
         return t > (acc?.getTime?.() || 0) ? m.createdAtTS : acc;
       }, first.createdAtTS);
 
-      // ✅ FIX: mask based on patientIdLast4 (new field)
       const mask = first.patientIdLast4 ? String(first.patientIdLast4) : last4(first.patientIdFull);
 
       return {
@@ -425,7 +422,7 @@ export default function Logistics() {
 
   React.useEffect(() => setPage(0), [qText, fromDT, toDT]);
 
-  /* Accept delivery for GROUP (one button) */
+
   async function handleAcceptGroup(g) {
     try {
       setMsg("");
@@ -444,8 +441,6 @@ export default function Logistics() {
         signer
       );
 
-      //  FIX: loop through ALL meds in the group and call acceptDelivery for each onchainId (contract)
-      // idStr / [onchainId] 
       for (const idStr of g.onchainIds) {
         const tx = await contract.acceptDelivery(BigInt(idStr));
         await tx.wait();
@@ -505,11 +500,7 @@ export default function Logistics() {
         )}
 
         <div className="mb-6 flex items-center gap-3">
-          <img
-            src="/Images/TrustDose-pill.png"
-            alt="TrustDose Capsule"
-            style={{ width: 64 }}
-          />
+         
 
           <div>
             <h1
@@ -532,7 +523,7 @@ export default function Logistics() {
           </div>
         </div>
 
-        {/* FILTER BAR */}
+       
         <div className="sticky top-0 z-30 mb-6">
           <div className="bg-white/95 backdrop-blur border rounded-2xl shadow-sm p-4">
             <div className="flex flex-col lg:flex-row lg:items-center gap-4">
@@ -621,7 +612,7 @@ export default function Logistics() {
           </div>
         </div>
 
-        {/* CARDS */}
+       
         {pageItems.length > 0 && (
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             {pageItems.map((g) => {
@@ -657,14 +648,14 @@ export default function Logistics() {
                         </div>
                       ))}
 
-                      {/* إذا دواء واحد: نضيف سطر فاضي  لتثبيت الشكل */}
+                   
                       {(g.meds || []).length === 1 && (
                         <div className="text-lg font-bold text-slate-800 opacity-0 select-none">
                           placeholder
                         </div>
                       )}
 
-                      {/* لو أكثر من 2 */}
+                 
                       {(g.meds || []).length > 2 && (
                         <div className="text-xs text-gray-500 mt-1">
                           +{g.meds.length - 2} more
@@ -691,7 +682,7 @@ export default function Logistics() {
                     </div>
                   </div>
 
-                  {/*  الزر ثابت بأسفل الكارد */}
+               
                   <div className="mt-4">
                     <button
                       className="w-max px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
@@ -767,7 +758,7 @@ export default function Logistics() {
         )}
       </div>
 
-      {/* SUCCESS POPUP */}
+      
       {showSuccessPopup && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
           <div

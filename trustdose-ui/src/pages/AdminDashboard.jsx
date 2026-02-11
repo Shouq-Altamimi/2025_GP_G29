@@ -579,12 +579,6 @@ export default function AdminAddDoctorOnly() {
 
       <section className="mx-auto w-full max-w-5xl px-6 mt-10 mb-4">
         <div className="flex items-center gap-0">
-          <img
-            src="/Images/TrustDose-pill.png"
-            alt=""
-            className="w-[75px] h-[75px] shrink-0 select-none"
-            onError={(e) => (e.currentTarget.style.display = "none")}
-          />
           <h1 className="text-[28px] leading-tight font-extrabold tracking-tight text-[#2A1E36]">
             Welcome, Admin
           </h1>

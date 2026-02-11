@@ -649,16 +649,11 @@ export default function Admin() {
 
       <section className="mx-auto w-full max-w-[1500px] px-8 mt-10">
         <div className="flex items-center gap-3">
-          <img
-            src="/Images/TrustDose-pill.png"
-            alt="pill"
-            className="w-[75px] h-[75px] shrink-0 select-none"
-            onError={(e) => (e.currentTarget.style.display = "none")}
-          />
           <div>
             <h1 className="text-[28px] leading-tight font-extrabold tracking-tight text-[#2A1E36]">
               Welcome, Admin
             </h1>
+            <div className="mt-3 pt-3 border-t border-gray-200"></div>
             <p className="text-gray-500 text-sm">Manage identities & compliance.</p>
           </div>
         </div>

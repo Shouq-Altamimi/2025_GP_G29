@@ -281,11 +281,6 @@ const sortedItems = React.useMemo(() => {
 
         {/* Header */}
         <div className="mb-6 flex items-center gap-3">
-          <img
-            src="/Images/TrustDose-pill.png"
-            alt="TrustDose Capsule"
-            style={{ width: 64 }}
-          />
 
           <div className="w-full">
             <div className="flex items-start justify-between gap-3">
