@@ -1,4 +1,4 @@
-// src/pages/Logistics.jsx
+
 /* global BigInt */
 "use client";
 
@@ -48,7 +48,7 @@ function formatFsTimestamp(v) {
   return String(v);
 }
 
-/* MetaMask signer */
+
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected.");
   await window.ethereum.request({ method: "eth_requestAccounts" });
@@ -70,7 +70,7 @@ export default function Logistics() {
 
   const [showSuccessPopup, setShowSuccessPopup] = React.useState(false);
 
-  /* Load logistics header */
+ 
   React.useEffect(() => {
     async function loadHeader() {
       try {
@@ -109,7 +109,6 @@ export default function Logistics() {
     loadHeader();
   }, []);
 
-  /* Load prescriptions */
   React.useEffect(() => {
     let mounted = true;
 
@@ -224,7 +223,7 @@ export default function Logistics() {
       !r.deliveryConfirmed
   );
 
-  //  SAME GROUPING LOGIC: group by prescriptionId (one card + one button)
+  
   const groups = React.useMemo(() => {
     const map = new Map();
 
@@ -291,7 +290,7 @@ export default function Logistics() {
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = groups.slice(start, end);
 
-  /* Confirm delivery to patient (GROUP) */
+  
   async function handleAcceptGroup(g) {
     try {
       setMsg("");
@@ -310,7 +309,7 @@ export default function Logistics() {
         signer
       );
 
-      //  loop through ALL meds in the group and confirmDelivery for each onchainId
+      
       for (const idStr of g.onchainIds) {
         const tx = await contract.confirmDelivery(BigInt(idStr));
         await tx.wait();

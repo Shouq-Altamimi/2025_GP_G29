@@ -1,4 +1,3 @@
-// src/pages/LogisticsNotifications.jsx
 "use client";
 
 import React from "react";
@@ -60,11 +59,11 @@ async function resolveLogisticsDocId() {
 
   if (!lgId) return null;
 
-  // 1) Try by document ID
+  
   const byId = await getDoc(doc(db, "logistics", String(lgId)));
   if (byId.exists()) return String(lgId);
 
-  // 2) Try by LogisticsID field
+ 
   const col = collection(db, "logistics");
   const qs = await getDocs(query(col, where("LogisticsID", "==", String(lgId))));
   if (!qs.empty) return qs.docs[0].id;
@@ -79,10 +78,10 @@ export default function LogisticsNotifications() {
 
   const [listenErr, setListenErr] = React.useState("");
 
-  // ✅ Virtual notifications derived from prescriptions (24h)
+  
   const [virtualItems, setVirtualItems] = React.useState([]);
 
-  // ✅ "read" للـ virtual (localStorage)
+ 
   const [virtualReadSet, setVirtualReadSet] = React.useState(() => {
     try {
       const raw = localStorage.getItem("lg_virtual_read") || "[]";
@@ -98,7 +97,7 @@ export default function LogisticsNotifications() {
     } catch {}
   }, []);
 
-  // Resolve logistics doc id + header
+ 
   React.useEffect(() => {
     let mounted = true;
 
@@ -126,115 +125,7 @@ export default function LogisticsNotifications() {
     return () => (mounted = false);
   }, []);
 
-  // =========================
-  // ✅ Virtual notifications from prescriptions (24h)
-  // =========================
-  /*React.useEffect(() => {
-    if (!logisticsDocId) return;
 
-    setListenErr("");
-    setLoading(true);
-
-    let unsub = null;
-    let canceled = false;
-
-    const attach = (qq, label) => {
-      unsub = onSnapshot(
-        qq,
-        (snap) => {
-          if (canceled) return;
-
-          const now = Date.now();
-          const cutoff24 = now - 24 * 60 * 60 * 1000;
-
-          const v = [];
-
-          snap.forEach((d) => {
-            const rx = d.data() || {};
-            const docId = d.id;
-
-            // لازم ما يكون تم تأكيد التسليم
-            if (rx.deliveryConfirmed === true) return;
-
-            // لازم يكون اللوجستيك قبل
-            if (rx.logisticsAccepted !== true) return;
-
-            // وقت قبول اللوجستيك
-            const acceptedMs = toMs(rx.logisticsAcceptedAt);
-            if (!acceptedMs) return;
-
-            // لازم تعدّت 24 ساعة
-            if (acceptedMs > cutoff24) return;
-
-            // خذي رقم الوصفة
-            const prescriptionId =
-              rx.prescriptionID ||
-              rx.prescriptionId ||
-              rx.prescriptionNum ||
-              rx.prescriptionNumber ||
-              docId;
-
-            const vid = `v24_${docId}`;
-            const isReadVirtual = virtualReadSet.has(vid);
-
-            v.push({
-              __virtual: true,
-              id: vid,
-              type: "DELIVERY_OVERDUE_24H",
-              orderId: docId,
-              prescriptionID: prescriptionId,
-              createdAt: rx.logisticsAcceptedAt,
-              read: isReadVirtual ? true : false,
-              title: "Delivery overdue (24h)",
-              message: `Prescription ${prescriptionId} has not been completed within 24 hours.`,
-            });
-          });
-
-          v.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
-          setVirtualItems(v);
-          setLoading(false);
-        },
-        (err) => {
-          console.error(`prescriptions listen error (${label}):`, err);
-          setLoading(false);
-          setVirtualItems([]);
-          setListenErr("Missing or insufficient permissions (rules).");
-        }
-      );
-    };
-
-    // حاولنا نرتب بالـ updatedAt لو موجود (أحيانًا يحتاج index)
-    const orderedQ = query(
-      collection(db, "prescriptions"),
-      where("deliveryConfirmed", "==", false),
-      orderBy("updatedAt", "desc")
-    );
-
-    const plainQ = query(
-      collection(db, "prescriptions"),
-      where("deliveryConfirmed", "==", false)
-    );
-
-    attach(orderedQ, "ordered");
-
-    // fallback لو طلع index error
-    const timer = setTimeout(() => {
-      // إذا ما جاء شيء والـ listenErr ممكن يكون index
-      // ما نقدر نعرف مباشرة إلا من رسالة الخطأ،
-      // لكن fallback الأفضل: إذا صارت مشكلة “index” جربي plain
-    }, 0);
-
-    return () => {
-      canceled = true;
-      clearTimeout(timer);
-      try {
-        if (unsub) unsub();
-      } catch {}
-    };
-  }, [logisticsDocId, virtualReadSet]);*/
-  // =========================
-// ✅ Virtual notifications from prescriptions (24h) — with ordered->plain fallback
-// =========================
 React.useEffect(() => {
   if (!logisticsDocId) return;
 
@@ -285,7 +176,7 @@ React.useEffect(() => {
       });
     });
 
-    // ترتيب بالواجهة (بدون index)
+   
     v.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
     setVirtualItems(v);
     setLoading(false);
@@ -308,7 +199,7 @@ React.useEffect(() => {
           msg.includes("requires an index") ||
           msg.includes("index");
 
-        // ✅ لو المشكلة index في ordered → سوّي fallback للـ plain
+       
         if (isIndex && label === "ordered") {
           try {
             if (unsub) unsub();
@@ -317,7 +208,7 @@ React.useEffect(() => {
           return;
         }
 
-        // غير كذا (غالباً رولز فعلاً)
+    
         setLoading(false);
         setVirtualItems([]);
         setListenErr("Missing or insufficient permissions (rules).");
@@ -325,14 +216,14 @@ React.useEffect(() => {
     );
   };
 
-  // ordered (قد يحتاج index)
+  
   const orderedQ = query(
     collection(db, "prescriptions"),
     where("deliveryConfirmed", "==", false),
     orderBy("updatedAt", "desc")
   );
 
-  // plain (بدون orderBy)
+ 
   const plainQ = query(
     collection(db, "prescriptions"),
     where("deliveryConfirmed", "==", false)
@@ -354,7 +245,7 @@ React.useEffect(() => {
   const unreadCount = allItems.filter((n) => !(n.read === true || n.read === "true")).length;
 
   async function markAsRead(n) {
-    // virtual: local فقط
+    
     if (n?.__virtual) {
       const next = new Set(virtualReadSet);
       next.add(n.id);
@@ -363,7 +254,7 @@ React.useEffect(() => {
       return;
     }
 
-    // (لو مستقبلاً عندك real notifications)
+
     await updateDoc(doc(db, "notifications", n.id), { read: true });
   }
 
@@ -389,7 +280,7 @@ React.useEffect(() => {
           </div>
         )}
 
-        {/* HEADER (بدون كبسولة) */}
+     
         <div className="mb-6 flex items-center">
           <div className="w-full">
             <div className="flex items-start justify-between gap-3">
@@ -419,7 +310,7 @@ React.useEffect(() => {
           </div>
         </div>
 
-        {/* EMPTY */}
+       
         {allItems.length === 0 && (
           <div className="p-8 border rounded-2xl bg-white shadow-sm text-center">
             <div

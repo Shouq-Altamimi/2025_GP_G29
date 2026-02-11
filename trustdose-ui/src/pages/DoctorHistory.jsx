@@ -40,19 +40,19 @@ function pillStyle(active) {
     color: C.ink,
   };
 }
-// ✅ Regex للحروف العربية + الرموز/الأرقام العربية
+
 const ARABIC_RE =
   /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0660-\u0669\u06F0-\u06F9\u060C\u061B\u061F]/g;
 
-// ينظّف النص من العربي
+
 function stripArabic(text) {
   return String(text || "").replace(ARABIC_RE, "");
 }
 
-// يمنع الكتابة العربية أثناء الإدخال
+
 function isArabicCharInput(e) {
   const k = e.key || "";
-  // إذا ضغط Enter/Backspace/Arrow... لا تمنع
+ 
   if (k.length !== 1) return false;
   return ARABIC_RE.test(k);
 }
@@ -73,7 +73,7 @@ function safeStr(v) {
   return String(v);
 }
 
-/** ✅ يعتمد على الحقل الحقيقي عندكم: sensitivity: "Sensitive" */
+
 function isSensitiveRx(r) {
   const s = String(r?.sensitivity ?? "").trim().toLowerCase();
   if (!s) return false;
@@ -116,9 +116,7 @@ function SensitiveBadge({ sensitive }) {
   );
 }
 
-/** ✅ patientDisplayId عندكم مثل 7890
- * نحاول نجيب بياناته من patients بحيث patientId == patientDisplayId
- */
+
 async function fetchPatientsMap(patientDisplayIds) {
   const ids = Array.from(new Set(patientDisplayIds.filter(Boolean).map(String)));
   const map = new Map();
@@ -173,7 +171,7 @@ export default function DoctorHistory() {
           return;
         }
 
-        // 1) Get doctor profile first (to know wallet/docId + name)
+        
         const doctorSnap = await getDocs(
           query(
             collection(db, "doctors"),
@@ -189,17 +187,15 @@ export default function DoctorHistory() {
         }
 
         const doctorDoc = doctorSnap.docs[0];
-        const doctorWalletOrDocId = doctorDoc.id; // غالبًا 0x...
+        const doctorWalletOrDocId = doctorDoc.id; 
         const doctorName = String(doctorDoc.data()?.name || "").trim();
 
         const presRef = collection(db, "prescriptions");
 
-        // 2) Primary: match by doctorId (wallet) الموجود في prescriptions
         let presSnap = await getDocs(
           query(presRef, where("doctorId", "==", doctorWalletOrDocId), fsLimit(400))
         );
 
-        // 3) Fallback: match by doctorName (لو بعض الوصفات القديمة محفوظة بالاسم)
         if (presSnap.empty && doctorName) {
           presSnap = await getDocs(
             query(presRef, where("doctorName", "==", doctorName), fsLimit(400))
@@ -216,7 +212,6 @@ export default function DoctorHistory() {
 
         setRows(list);
 
-        // patient lookup (باستخدام patientDisplayId)
         const ids = list.map((r) => r.patientDisplayId).filter(Boolean);
         const map = await fetchPatientsMap(ids);
         setPatientsById(map);
@@ -275,7 +270,7 @@ export default function DoctorHistory() {
   return (
     <div style={{ background: C.bg }}>
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6 py-6">
-        {/* Header card (نفس ستايل PharmacyHistory) */}
+       
         <div
           className="rounded-3xl border bg-white p-5 shadow-sm"
           style={{ borderColor: C.line }}
@@ -299,7 +294,7 @@ export default function DoctorHistory() {
               </div>
             </div>
 
-            {/* Filter pills (نفس pills) */}
+        
             <div className="flex items-center gap-2">
               <button
                 className="px-4 py-2 rounded-xl text-sm font-semibold border transition"
@@ -325,7 +320,6 @@ export default function DoctorHistory() {
             </div>
           </div>
 
-          {/* Search (بنفس شكل الكروت) */}
           <div className="mt-4 relative w-full sm:w-[520px]">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2"
@@ -343,7 +337,7 @@ export default function DoctorHistory() {
     const cleaned = stripArabic(paste);
     if (cleaned !== paste) {
       e.preventDefault();
-      setQText((prev) => (prev + cleaned).slice(0, 200)); // اختياري: حد للطول
+      setQText((prev) => (prev + cleaned).slice(0, 200)); 
     }
   }}
   placeholder="Search (name/rx...etc)"
@@ -354,7 +348,6 @@ export default function DoctorHistory() {
           </div>
         </div>
 
-        {/* Error */}
         {err && (
           <div
             className="mt-5 rounded-2xl border p-4 text-sm"
@@ -368,7 +361,7 @@ export default function DoctorHistory() {
           </div>
         )}
 
-        {/* List */}
+      
         <div className="mt-5 space-y-4">
           {loading ? (
             <div
@@ -406,7 +399,7 @@ export default function DoctorHistory() {
                   className="rounded-3xl border bg-white shadow-sm overflow-hidden"
                   style={{ borderColor: C.line }}
                 >
-                  {/* Top row */}
+             
                   <div className="p-4 md:p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0 w-full">
@@ -417,7 +410,7 @@ export default function DoctorHistory() {
 
                           <SensitiveBadge sensitive={sensitive} />
 
-                          {/* Date badge (نفس ستايل PharmacyHistory) */}
+                    
                           <span
                             className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full border"
                             style={{
@@ -431,7 +424,7 @@ export default function DoctorHistory() {
                           </span>
                         </div>
 
-                        {/* ✅ Patient + Facility */}
+                       
                         <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <RowItem
                             icon={<User size={16} />}
@@ -450,7 +443,7 @@ export default function DoctorHistory() {
                         </div>
                       </div>
 
-                      {/* Expand */}
+                   
                       <button
                         onClick={() => setOpenId(show ? null : r.id)}
                         className="shrink-0 px-4 py-2 rounded-xl border text-sm font-semibold hover:bg-slate-50"
@@ -469,7 +462,7 @@ export default function DoctorHistory() {
                     </div>
                   </div>
 
-                  {/* Details */}
+            
                   {show && (
                     <div className="border-t" style={{ borderColor: C.line }}>
                       <div className="p-4 md:p-5 grid grid-cols-1 md:grid-cols-3 gap-4">

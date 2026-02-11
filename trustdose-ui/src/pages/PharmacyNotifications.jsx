@@ -113,11 +113,11 @@ async function resolvePharmacyDocId() {
 
   if (!phId) return null;
 
-  // 1) Try by document ID
+
   const byId = await getDoc(doc(db, "pharmacies", String(phId)));
   if (byId.exists()) return String(phId);
 
-  // 2) Try by PharmacyID / pharmacyId field (fallbacks)
+
   const col = collection(db, "pharmacies");
   const tries = [
     query(col, where("PharmacyID", "==", String(phId))),
@@ -138,14 +138,14 @@ export default function PharmacyNotifications() {
   const [pharmacyDocId, setPharmacyDocId] = React.useState(null);
   const [header, setHeader] = React.useState({ companyName: "" });
 
-  // Real notifications (from notifications collection)
+  
   const [items, setItems] = React.useState([]);
   const [listenErr, setListenErr] = React.useState("");
 
-  // Virtual notifications (derived from prescriptions)
+  
   const [virtualItems, setVirtualItems] = React.useState([]);
 
-  // ✅ “read” for virtual items (local storage)
+
   const [virtualReadSet, setVirtualReadSet] = React.useState(() => {
     try {
       const raw = localStorage.getItem("ph_virtual_read") || "[]";
@@ -161,11 +161,10 @@ export default function PharmacyNotifications() {
     } catch {}
   }, []);
 
-  // ✅ cache عشان ما نعيد fetch لنفس orderId كل مرة
-  const rxIdCacheRef = React.useRef(new Map()); // orderId -> prescriptionID
-  const fetchingRef = React.useRef(new Set()); // orderId being fetched
+ 
+  const rxIdCacheRef = React.useRef(new Map());
+  const fetchingRef = React.useRef(new Set()); 
 
-  // Resolve pharmacy doc id + header (بس للهيدر)
   React.useEffect(() => {
     let mounted = true;
 
@@ -195,9 +194,7 @@ export default function PharmacyNotifications() {
     return () => (mounted = false);
   }, []);
 
-  // =========================
-  // 1) REAL notifications listener (لصيدلية وحدة: بدون toPharmacyDocId)
-  // =========================
+ 
   React.useEffect(() => {
     setLoading(true);
     setListenErr("");
@@ -257,9 +254,7 @@ export default function PharmacyNotifications() {
     };
   }, []);
 
-  // =========================
-  // 2) Fetch prescriptionID for notifications that only have orderId
-  // =========================
+  
   React.useEffect(() => {
     if (!items?.length) return;
 
@@ -272,7 +267,7 @@ export default function PharmacyNotifications() {
     if (need.length === 0) return;
 
     (async () => {
-      const updatesByNotifId = new Map(); // notifId -> prescriptionID
+      const updatesByNotifId = new Map(); 
 
       await Promise.all(
         need.map(async (n) => {
@@ -324,17 +319,16 @@ export default function PharmacyNotifications() {
       );
     })();
   }, [items]);
+// =========================
+// ✅ 3) VIRTUAL notifications from prescriptions (48h) + AUTO RESET
+//    ✅ notification stays until deliveryConfirmed === true
+// =========================
+React.useEffect(() => {
+  let unsub = null;
+  let canceled = false;
 
-  // =========================
-  // ✅ 3) VIRTUAL notifications from prescriptions (48h) + AUTO RESET
-  //    ✅ notification stays until deliveryConfirmed === true
-  // =========================
-  React.useEffect(() => {
-    let unsub = null;
-    let canceled = false;
-
-    // يمنع تكرار الريست داخل نفس الجلسة
-    const resetOnceRef = new Set();
+  // يمنع تكرار الريست داخل نفس الجلسة
+  const resetOnceRef = new Set();
 
     const attach = (qRef) => {
       unsub = onSnapshot(
@@ -352,8 +346,8 @@ export default function PharmacyNotifications() {
             const rx = d.data() || {};
             const docId = d.id;
 
-            // ✅ يختفي فقط إذا تم التسليم
-            if (rx.deliveryConfirmed === true) return;
+          // ✅ يختفي فقط إذا تم التسليم
+          if (rx.deliveryConfirmed === true) return;
 
             const prescriptionId =
               rx.prescriptionID ||
@@ -365,32 +359,32 @@ export default function PharmacyNotifications() {
             const vid = `v48_${docId}`;
             const isReadVirtual = virtualReadSet.has(vid);
 
-            // ✅ الحالة A: تم التعامل مع 48h سابقاً → يبقى الإشعار ظاهر
-            if (rx.overdue48HandledAt) {
-              const fixedMessage48 = `Prescription ${prescriptionId}  not completed within 48 hours and has been returned to the Delivery Orders list for redispensing.`;
+          // ✅ الحالة A: تم التعامل مع 48h سابقاً → يبقى الإشعار ظاهر
+          if (rx.overdue48HandledAt) {
+            const fixedMessage48 = `Prescription ${prescriptionId}  not completed within 48 hours and has been returned to the Delivery Orders list for redispensing.`;
 
-              v.push({
-                __virtual: true,
-                id: vid,
-                type: "DELIVERY_OVERDUE_48H",
-                orderId: docId,
-                prescriptionID: prescriptionId,
-                // ✅ نستخدم overdue48BaseAt (أو handledAt) بدل logisticsAcceptedAt
-                createdAt: rx.overdue48BaseAt || rx.overdue48HandledAt,
-                read: isReadVirtual ? true : false,
-                title: "Delivery Overdue (48h)",
-                message: fixedMessage48,
-              });
-              return;
-            }
+            v.push({
+              __virtual: true,
+              id: vid,
+              type: "DELIVERY_OVERDUE_48H",
+              orderId: docId,
+              prescriptionID: prescriptionId,
+              // ✅ نستخدم overdue48BaseAt (أو handledAt) بدل logisticsAcceptedAt
+              createdAt: rx.overdue48BaseAt || rx.overdue48HandledAt,
+              read: isReadVirtual ? true : false,
+              title: "Delivery Overdue (48h)",
+              message: fixedMessage48,
+            });
+            return;
+          }
 
-            // ✅ الحالة B: لسه ما تسجلت 48h → نفحص logisticsAcceptedAt
-            const tsMs = toMs(rx.logisticsAcceptedAt);
-            if (!tsMs) return;
-            if (tsMs > cutoff48) return;
+          // ✅ الحالة B: لسه ما تسجلت 48h → نفحص logisticsAcceptedAt
+          const tsMs = toMs(rx.logisticsAcceptedAt);
+          if (!tsMs) return;
+          if (tsMs > cutoff48) return;
 
-            // ✅ وصلنا 48h → اعرض إشعار
-            const fixedMessage48 = `Prescription ${prescriptionId} not completed within 48 hours and has been returned to the Delivery Orders list for redispensing.`;
+          // ✅ وصلنا 48h → اعرض إشعار
+          const fixedMessage48 = `Prescription ${prescriptionId} not completed within 48 hours and has been returned to the Delivery Orders list for redispensing.`;
 
             v.push({
               __virtual: true,
@@ -404,29 +398,31 @@ export default function PharmacyNotifications() {
               message: fixedMessage48,
             });
 
-            // ✅ وجدنا متأخر → جهز للريست مرة وحدة
-            if (!resetOnceRef.has(docId)) {
-              resetOnceRef.add(docId);
-              toReset.push({ docId, baseAt: rx.logisticsAcceptedAt });
-            }
-          });
+          // ✅ وجدنا متأخر → جهز للريست مرة وحدة
+          if (!resetOnceRef.has(docId)) {
+            resetOnceRef.add(docId);
+            toReset.push({ docId, baseAt: rx.logisticsAcceptedAt });
+          }
+        });
 
-          // ✅ اعرض الإشعارات
-          v.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
-          setVirtualItems(v);
+        // ✅ اعرض الإشعارات
+        v.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
+        setVirtualItems(v);
 
-          // ✅ AUTO RESET + حفظ overdue48BaseAt (عشان الإشعار ما يختفي)
-          if (toReset.length > 0) {
-            await Promise.all(
-              toReset.map(async ({ docId, baseAt }) => {
-                try {
-                  // 1) هات بيانات الوصفة (قبل التحديث) عشان نجيب patient + pid
-                  const rxSnap = await getDoc(doc(db, "prescriptions", docId));
-                  const rxData = rxSnap.exists() ? rxSnap.data() || {} : {};
+        // ✅ AUTO RESET + حفظ overdue48BaseAt (عشان الإشعار ما يختفي)
+        if (toReset.length > 0) {
+          await Promise.all(
+            toReset.map(async ({ docId, baseAt }) => {
+              
+              try {
+                // 1) هات بيانات الوصفة (قبل التحديث) عشان نجيب patient + pid
+  const rxSnap = await getDoc(doc(db, "prescriptions", docId));
+  const rxData = rxSnap.exists() ? (rxSnap.data() || {}) : {};
 
-                  const nid = String(rxData.nationalID || rxData.nationalId || "");
-                  const patientDocId = String(rxData.patientDocId || "");
-                  //const patientDocId = nid ? `Ph_${nid}` : "";
+  const nid = String(rxData.nationalID || rxData.nationalId || "");
+  const patientDocId = String(rxData.patientDocId || "");
+
+  //const patientDocId = nid ? `Ph_${nid}` : "";
 
                   const pid = String(
                     rxData.prescriptionID ||
@@ -444,24 +440,23 @@ export default function PharmacyNotifications() {
                     acceptDeliveryAt: deleteField(),
                     acceptDeliveryTx: deleteField(),
 
-                    // ✅ أهم سطر: نخزن وقت القبول الأصلي
-                    overdue48BaseAt: baseAt || serverTimestamp(),
+                  // ✅ أهم سطر: نخزن وقت القبول الأصلي
+                  overdue48BaseAt: baseAt || serverTimestamp(),
 
-                    overdue48HandledAt: serverTimestamp(),
-                    overdue48Reason: "DELIVERY_NOT_COMPLETED_48H",
-                    updatedAt: serverTimestamp(),
-                  });
-
-                  // 3) ✅ ثانياً: بعد نجاح التحديث… ارسل إشعار للمريض
-                  if (patientDocId) {
-                    const dupQ = query(
-                      collection(db, "notifications"),
-                      where("toRole", "==", "patient"),
-                      where("toPatientDocId", "==", patientDocId),
-                      where("orderId", "==", docId),
-                      where("type", "==", "PRESCRIPTION_REDISPENSED_48H"),
-                      limit(1)
-                    );
+                  overdue48HandledAt: serverTimestamp(),
+                  overdue48Reason: "DELIVERY_NOT_COMPLETED_48H",
+                  updatedAt: serverTimestamp(),
+                });
+                // 3) ✅ ثانياً: بعد نجاح التحديث… ارسل إشعار للمريض
+  if (patientDocId) {
+    const dupQ = query(
+      collection(db, "notifications"),
+      where("toRole", "==", "patient"),
+      where("toPatientDocId", "==", patientDocId),
+      where("orderId", "==", docId),
+      where("type", "==", "PRESCRIPTION_REDISPENSED_48H"),
+      limit(1)
+    );
 
                     const dupSnap = await getDocs(dupQ);
 
@@ -500,12 +495,9 @@ export default function PharmacyNotifications() {
       );
     };
 
-    // ✅ صيدلية وحدة: نجيب كل الوصفات غير المسلّمة ونفلتر بالواجهة
-    const qRef = query(
-      collection(db, "prescriptions"),
-      where("deliveryConfirmed", "==", false)
-    );
-    attach(qRef);
+  // ✅ صيدلية وحدة: نجيب كل الوصفات غير المسلّمة ونفلتر بالواجهة
+  const qRef = query(collection(db, "prescriptions"), where("deliveryConfirmed", "==", false));
+  attach(qRef);
 
     return () => {
       canceled = true;
@@ -516,7 +508,7 @@ export default function PharmacyNotifications() {
   }, [virtualReadSet]);
 
   // =========================
-  // ✅ combine virtual + real + ✅ DEDUPE
+  // ✅ combine virtual + real
   // =========================
   const allItems = React.useMemo(() => {
     return dedupeByRx([...virtualItems, ...items]); // ✅ إشعار واحد لكل prescriptionID
@@ -525,21 +517,15 @@ export default function PharmacyNotifications() {
   const unreadCount = allItems.filter((n) => !(n.read === true || n.read === "true")).length;
 
   async function markAsRead(n) {
-    // ✅ أولاً: virtual ids (local فقط)
-    if (Array.isArray(n.__virtualIds) && n.__virtualIds.length) {
-      const next = new Set(virtualReadSet);
-      n.__virtualIds.forEach((vid) => next.add(vid));
-      setVirtualReadSet(next);
-      persistVirtualRead(next);
-    } else if (n?.__virtual) {
-      // fallback لو جاك عنصر virtual غير مدموج
+  
+    if (n?.__virtual) {
       const next = new Set(virtualReadSet);
       next.add(n.id);
       setVirtualReadSet(next);
       persistVirtualRead(next);
     }
 
-    // ✅ ثانياً: real ids (Firestore)
+
     if (Array.isArray(n.__realIds) && n.__realIds.length) {
       await Promise.all(
         n.__realIds.map((rid) =>
@@ -549,10 +535,8 @@ export default function PharmacyNotifications() {
       return;
     }
 
-    // fallback لو جاك عنصر real غير مدموج
-    if (!n?.__virtual && n?.id) {
-      await updateDoc(doc(db, "notifications", n.id), { read: true });
-    }
+    // real notification
+    await updateDoc(doc(db, "notifications", n.id), { read: true });
   }
 
   if (loading) {
@@ -577,7 +561,7 @@ export default function PharmacyNotifications() {
           </div>
         )}
 
-        {/* Header */}
+   
         <div className="mb-6 flex items-center gap-3">
           <img
             src="/Images/TrustDose-pill.png"
@@ -627,7 +611,7 @@ export default function PharmacyNotifications() {
           </div>
         </div>
 
-        {/* EMPTY */}
+        
         {allItems.length === 0 && (
           <div className="p-8 border rounded-2xl bg-white shadow-sm text-center">
             <div
@@ -646,7 +630,7 @@ export default function PharmacyNotifications() {
           </div>
         )}
 
-        {/* LIST */}
+    
         {allItems.length > 0 && (
           <section className="grid grid-cols-1 gap-4 mt-4">
             {allItems.map((n) => {

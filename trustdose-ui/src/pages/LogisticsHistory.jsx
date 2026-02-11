@@ -54,7 +54,7 @@ function isSensitive(rx) {
   return s === "sensitive" || rx?.isSensitive === true;
 }
 
-// منطق حالة التوصيل للوجستيك
+
 function logisticsStatus(rx) {
   const delivered = rx?.deliveryConfirmed === true || rx?.deliveryConfirmedAt;
   const accepted = rx?.logisticsAccepted === true || rx?.logisticsAcceptedAt;
@@ -93,7 +93,7 @@ function normalizeText(x) {
 }
 
 export default function LogisticsHistory() {
-  const [filter, setFilter] = useState("all"); // all | delivered | inprogress
+  const [filter, setFilter] = useState("all"); 
   const [expanded, setExpanded] = useState(() => new Set());
 
   const [rows, setRows] = useState([]);
@@ -145,7 +145,7 @@ export default function LogisticsHistory() {
 
         const page = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-        // المطلوب للوجستيك: كل وصفة تم قبولها من اللوجستيك
+      
         const acceptedOnly = page.filter((p) => p?.logisticsAccepted === true || p?.logisticsAcceptedAt);
 
         collected = collected.concat(acceptedOnly);
@@ -171,7 +171,7 @@ export default function LogisticsHistory() {
 
   useEffect(() => {
     loadPage(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, []);
 
   const filtered = useMemo(() => {
@@ -230,7 +230,7 @@ export default function LogisticsHistory() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 md:px-6 py-6">
-      {/* Header card */}
+   
       <div className="rounded-3xl border bg-white p-5 shadow-sm" style={{ borderColor: C.line }}>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
@@ -251,7 +251,6 @@ export default function LogisticsHistory() {
             </div>
           </div>
 
-          {/* Filter */}
           <div className="flex items-center gap-2">
             <button
               className="px-4 py-2 rounded-xl text-sm font-semibold border transition"
@@ -316,7 +315,7 @@ export default function LogisticsHistory() {
         </div>
       </div>
 
-      {/* List */}
+     
       <div className="mt-5 space-y-4">
         {loading ? (
           <div className="rounded-2xl border bg-white p-6 text-sm" style={{ borderColor: C.line, color: C.gray }}>

@@ -38,7 +38,7 @@ const C = {
 
 const PAGE_SIZE = 10;
 
-// بما إن عندكم شركة/جهة لوجستيك وحدة:
+
 const LOGISTICS_NAME = "Dr. Sulaiman Al Habib Logistics";
 
 function pillStyle(active) {
@@ -70,7 +70,7 @@ function isSensitive(rx) {
   return s === "sensitive" || rx?.isSensitive === true;
 }
 
-// ✅ Regex للحروف العربية + الرموز/الأرقام العربية
+
 const ARABIC_RE =
   /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0660-\u0669\u06F0-\u06F9\u060C\u061B\u061F]/g;
 
@@ -80,12 +80,12 @@ function stripArabic(text) {
 
 function isArabicCharInput(e) {
   const k = e.key || "";
-  // مفاتيح التحكم (Enter, Backspace, arrows...) لا نمنعها
+
   if (k.length !== 1) return false;
   return ARABIC_RE.test(k);
 }
 
-// منطق حالة الشحنة (حسب الحقول اللي وريتيها)
+
 function deliveryStatus(rx) {
   const delivered = rx?.deliveryConfirmed === true || rx?.deliveryConfirmedAt;
   const logisticsAccepted = rx?.logisticsAccepted === true || rx?.logisticsAcceptedAt;
@@ -127,13 +127,12 @@ export default function PharmacyHistory() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // للـ pagination
-  const [cursor, setCursor] = useState(null);     // آخر doc من آخر fetch
+
+  const [cursor, setCursor] = useState(null);  
   const [hasMore, setHasMore] = useState(true);
   const [fetchingMore, setFetchingMore] = useState(false);
 
-  // نجيب دفعات من prescriptions مرتبة بالأحدث (updatedAt desc)
-  // ونفلتر "dispensed === true" داخل الكلاينت (عشان نتفادى موضوع الـ indexes)
+
   async function loadPage(initial = false) {
     try {
       if (initial) {
@@ -147,8 +146,7 @@ export default function PharmacyHistory() {
 
       let localCursor = initial ? null : cursor;
 
-      // نجيب أكثر من 10 عشان ممكن كثير منها مو dispensed
-      // ثم نقصّها لحد ما نوصل 10 "dispensed"
+
       const COL = collection(db, "prescriptions");
 
       let keepGoing = true;
@@ -170,36 +168,36 @@ export default function PharmacyHistory() {
           break;
         }
 
-        // حدثي cursor لآخر doc بهذه الصفحة
+      
         tempCursor = snap.docs[snap.docs.length - 1];
 
         const page = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-        // المطلوب: أي وصفة تم صرفها من الصيدلية
+       
         const dispensedOnly = page.filter((p) => p?.dispensed === true || p?.dispensedAt);
 
         collected = collected.concat(dispensedOnly);
 
-        // إذا الصفحة أقل من limit معناها خلاص ما فيه زيادة
+      
         if (snap.docs.length < 25) keepGoing = false;
       }
 
-      // نقصّ أول 10 فقط للعرض
+     
       const nextBatch = collected.slice(0, PAGE_SIZE);
 
       setRows((prev) => (initial ? nextBatch : prev.concat(nextBatch)));
       setCursor(tempCursor);
 
-      // إذا ما جمعنا شيء أو وصلنا نهاية البيانات
+    
       if (!tempCursor || nextBatch.length === 0) {
         setHasMore(false);
       } else {
-        // إذا جمعنا أقل من PAGE_SIZE معناه غالباً قربنا للنهاية
+
         if (nextBatch.length < PAGE_SIZE) setHasMore(false);
       }
     } catch (e) {
       console.error("PharmacyHistory load error:", e);
-      // لا نكسر الصفحة
+      
       setHasMore(false);
     } finally {
       setLoading(false);
@@ -209,7 +207,7 @@ export default function PharmacyHistory() {
 
   useEffect(() => {
     loadPage(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, []);
 
   const filtered = useMemo(() => {
@@ -263,7 +261,7 @@ export default function PharmacyHistory() {
   return (
     <div style={{ background: C.bg }}>
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6 py-6">
-        {/* Card header */}
+     
         <div
           className="rounded-3xl border bg-white p-5 shadow-sm"
           style={{ borderColor: C.line }}
@@ -287,7 +285,7 @@ export default function PharmacyHistory() {
               </div>
             </div>
 
-            {/* Filter pills */}
+         
             <div className="flex items-center gap-2">
               <button
                 className="px-4 py-2 rounded-xl text-sm font-semibold border transition"
@@ -313,7 +311,7 @@ export default function PharmacyHistory() {
             </div>
           </div>
 
-          {/* ✅ Search (same as DoctorHistory) + منع العربي */}
+        
           <div className="mt-4 relative w-full sm:w-[520px]">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2"
@@ -346,7 +344,7 @@ export default function PharmacyHistory() {
           </div>
         </div>
 
-        {/* List */}
+     
         <div className="mt-5 space-y-4">
           {loading ? (
             <div
@@ -371,11 +369,11 @@ export default function PharmacyHistory() {
               const status = deliveryStatus(rx);
               const tb = toneBadge(status.tone);
 
-              // بيانات أساسية
+              
               const med = rx?.medicineName || rx?.medicineLabel || "Prescription";
               const date = rx?.dispensedAt || rx?.updatedAt || rx?.createdAt;
 
-              // patient display
+           
               const patient = rx?.patientDisplayId || rx?.patientId || rx?.nationalID || "-";
               const doctor = rx?.doctorName || "-";
               const facility = rx?.doctorFacility || "-";
@@ -386,7 +384,7 @@ export default function PharmacyHistory() {
                   className="rounded-3xl border bg-white shadow-sm overflow-hidden"
                   style={{ borderColor: C.line }}
                 >
-                  {/* Top row */}
+          
                   <div className="p-4 md:p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
@@ -395,7 +393,7 @@ export default function PharmacyHistory() {
                             {med}
                           </div>
 
-                          {/* Sensitive badge */}
+               
                           <span
                             className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full border"
                             style={{
@@ -408,7 +406,6 @@ export default function PharmacyHistory() {
                             {sensitive ? "Sensitive" : "Non-sensitive"}
                           </span>
 
-                          {/* Date badge */}
                           <span
                             className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full border"
                             style={{
@@ -421,7 +418,7 @@ export default function PharmacyHistory() {
                             {fmtDate(date)}
                           </span>
 
-                          {/* Delivery badge */}
+                        
                           <span
                             className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full border"
                             style={{
@@ -442,7 +439,7 @@ export default function PharmacyHistory() {
                         </div>
                       </div>
 
-                      {/* Expand */}
+                  
                       <button
                         onClick={() => toggleExpand(rx.id)}
                         className="shrink-0 px-4 py-2 rounded-xl border text-sm font-semibold hover:bg-slate-50"
@@ -461,7 +458,7 @@ export default function PharmacyHistory() {
                     </div>
                   </div>
 
-                  {/* Details */}
+               
                   {expandedNow && (
                     <div className="border-t" style={{ borderColor: C.line }}>
                       <div className="p-4 md:p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -491,7 +488,6 @@ export default function PharmacyHistory() {
             })
           )}
 
-          {/* More */}
           {!loading && filtered.length > 0 && (
             <div className="pt-2">
               {hasMore ? (

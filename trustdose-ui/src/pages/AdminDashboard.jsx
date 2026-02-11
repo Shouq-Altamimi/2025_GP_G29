@@ -5,7 +5,7 @@ import {
   X,
   LayoutDashboard,
   UserPlus,
-  BarChart3,          // ✅ NEW
+  BarChart3,       
   LogOut,
   AlertCircle,
   CheckCircle2,
@@ -197,9 +197,7 @@ async function saveOnChain({ contractAddress, doctorWallet, accessId, tempPasswo
   return { txHash: tx.hash, block: rc.blockNumber };
 }
 
-/* =======================
-   Sidebar (نضيف analytics فقط بدون ما نخرب شي)
-======================= */
+
 function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
   const location = useLocation();
 
@@ -208,7 +206,7 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
     onNav?.(path);
   };
 
-  // ✅ خليها مرنة وموحدة (تشتغل مع tabs مستقبلاً لو صارت)
+  
   const isActive = (path) => (location.pathname + location.search) === path;
 
   return (

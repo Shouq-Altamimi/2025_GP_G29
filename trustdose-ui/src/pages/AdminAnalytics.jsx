@@ -208,9 +208,6 @@ function Sidebar({ open, setOpen, onNav, onLogout }) {
   );
 }
 
-/* =======================
-   UI
-======================= */
 function PeriodTabs({ value, onChange }) {
   const items = [
     { k: "day", label: "Daily" },
