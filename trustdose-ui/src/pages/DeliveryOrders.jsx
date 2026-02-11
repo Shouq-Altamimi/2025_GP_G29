@@ -1,4 +1,4 @@
-// src/pages/DeliveryOrders.jsx لا تحذف وعدل على اللي اتفقنا
+// src/pages/DeliveryOrders.jsx 
 /* global BigInt */
 "use client";
 
@@ -264,7 +264,6 @@ export default function DeliveryOrders({ pharmacyId }) {
     return base;
   }, [rows, fromDT, toDT]);
 
-  // ✅ GROUPING: اجمع حسب prescriptionId (كرت واحد + زر واحد)
   const groups = React.useMemo(() => {
     const map = new Map();
 
@@ -292,7 +291,6 @@ export default function DeliveryOrders({ pharmacyId }) {
         )
       );
 
-      // ✅ eligible إذا فيه على الأقل onchainId واحد
       const eligible = onchainIds.length > 0;
 
       const createdAtTS = meds.reduce((acc, m) => {
@@ -340,7 +338,6 @@ export default function DeliveryOrders({ pharmacyId }) {
     return new ethers.BrowserProvider(window.ethereum);
   }
 
-  // ✅ Accept GROUP
   async function handleAcceptGroup(g) {
     const key = String(g.prescriptionId);
     if (pending[key]) return;
@@ -349,7 +346,6 @@ export default function DeliveryOrders({ pharmacyId }) {
     setPageError("");
 
     try {
-      // fresh check لكل docs داخل المجموعة
       const refs = g.meds.map((m) => doc(db, "prescriptions", m._docId));
       const freshSnaps = await Promise.all(refs.map((r) => getDoc(r)));
 
@@ -370,7 +366,6 @@ export default function DeliveryOrders({ pharmacyId }) {
         return;
       }
 
-      // on-chain accept لكل onchainId موجود
       let txHashes = [];
       if (g.onchainIds?.length) {
         const provider = getDeliveryAcceptProvider();
@@ -394,17 +389,13 @@ export default function DeliveryOrders({ pharmacyId }) {
         acceptDeliveryAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
 
-        // ✅ اتفقنا: بعد قبول الصيدلية، الطلب يجهز للوجستيك
         status: RX_STATUS.PHARM_ACCEPTED,
 
-        // ✅ الـ 48 ساعة تبدأ لاحقًا من logisticsAcceptedAt (في صفحة اللوجستيك)
         logisticsAccepted: false,
         logisticsAcceptedAt: null,
 
-        // ✅ ما تم التسليم
         deliveryConfirmed: false,
 
-        // ✅ فلاغات إشعارات (تستخدمها الـ Cloud Function عشان ما تكرر)
         deliveryOverdue24Notified: false,
         deliveryOverdue48Notified: false,
       };
