@@ -15,8 +15,8 @@ import {
   deleteField,
   serverTimestamp,
   Timestamp,
-    addDoc,
-    limit,
+  addDoc,
+  limit,
 } from "firebase/firestore";
 
 import { Loader2, Bell, Clock, CheckCircle2, AlertCircle } from "lucide-react";
@@ -53,6 +53,54 @@ function toMs(ts) {
   if (typeof ts === "number") return ts;
   const d = new Date(ts);
   return isNaN(d.getTime()) ? null : d.getTime();
+}
+
+// ✅ DEDUPE (اشعار واحد لكل prescriptionID + type)
+function dedupeByRx(notifs) {
+  const map = new Map(); // key -> merged
+
+  for (const n of notifs) {
+    const pid = String(n.prescriptionID || n.orderId || "");
+    const key = `${String(n.type || "GEN")}__${pid}`;
+
+    const isUnread = !(n.read === true || n.read === "true");
+    const created = toMs(n.createdAt) || 0;
+
+    if (!map.has(key)) {
+      map.set(key, {
+        ...n,
+        id: key, // ✅ id جديد للكرت المدموج
+        __realIds: [],
+        __virtualIds: [],
+        __anyUnread: isUnread,
+        __maxCreatedAt: created,
+      });
+    } else {
+      const cur = map.get(key);
+
+      // ✅ نخلي أحدث createdAt
+      if (created > (cur.__maxCreatedAt || 0)) {
+        cur.__maxCreatedAt = created;
+        cur.createdAt = n.createdAt;
+      }
+
+      // ✅ لو أي واحد unread → الكرت يعتبر unread
+      cur.__anyUnread = cur.__anyUnread || isUnread;
+    }
+
+    const merged = map.get(key);
+
+    if (n.__virtual) merged.__virtualIds.push(n.id);
+    else merged.__realIds.push(n.id);
+  }
+
+  const out = Array.from(map.values()).map((x) => ({
+    ...x,
+    read: x.__anyUnread ? false : true,
+  }));
+
+  out.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
+  return out;
 }
 
 async function resolvePharmacyDocId() {
@@ -276,49 +324,73 @@ export default function PharmacyNotifications() {
       );
     })();
   }, [items]);
-// =========================
-// ✅ 3) VIRTUAL notifications from prescriptions (48h) + AUTO RESET
-//    ✅ notification stays until deliveryConfirmed === true
-// =========================
-React.useEffect(() => {
-  let unsub = null;
-  let canceled = false;
 
-  // يمنع تكرار الريست داخل نفس الجلسة
-  const resetOnceRef = new Set();
+  // =========================
+  // ✅ 3) VIRTUAL notifications from prescriptions (48h) + AUTO RESET
+  //    ✅ notification stays until deliveryConfirmed === true
+  // =========================
+  React.useEffect(() => {
+    let unsub = null;
+    let canceled = false;
 
-  const attach = (qRef) => {
-    unsub = onSnapshot(
-      qRef,
-      async (snap) => {
-        if (canceled) return;
+    // يمنع تكرار الريست داخل نفس الجلسة
+    const resetOnceRef = new Set();
 
-        const now = Date.now();
-        const cutoff48 = now - 48 * 60 * 60 * 1000;
+    const attach = (qRef) => {
+      unsub = onSnapshot(
+        qRef,
+        async (snap) => {
+          if (canceled) return;
 
-        const v = [];
-        const toReset = [];
+          const now = Date.now();
+          const cutoff48 = now - 48 * 60 * 60 * 1000;
 
-        snap.forEach((d) => {
-          const rx = d.data() || {};
-          const docId = d.id;
+          const v = [];
+          const toReset = [];
 
-          // ✅ يختفي فقط إذا تم التسليم
-          if (rx.deliveryConfirmed === true) return;
+          snap.forEach((d) => {
+            const rx = d.data() || {};
+            const docId = d.id;
 
-          const prescriptionId =
-            rx.prescriptionID ||
-            rx.prescriptionId ||
-            rx.prescriptionNum ||
-            rx.prescriptionNumber ||
-            docId;
+            // ✅ يختفي فقط إذا تم التسليم
+            if (rx.deliveryConfirmed === true) return;
 
-          const vid = `v48_${docId}`;
-          const isReadVirtual = virtualReadSet.has(vid);
+            const prescriptionId =
+              rx.prescriptionID ||
+              rx.prescriptionId ||
+              rx.prescriptionNum ||
+              rx.prescriptionNumber ||
+              docId;
 
-          // ✅ الحالة A: تم التعامل مع 48h سابقاً → يبقى الإشعار ظاهر
-          if (rx.overdue48HandledAt) {
-            const fixedMessage48 = `Prescription ${prescriptionId}  not completed within 48 hours and has been returned to the Delivery Orders list for redispensing.`;
+            const vid = `v48_${docId}`;
+            const isReadVirtual = virtualReadSet.has(vid);
+
+            // ✅ الحالة A: تم التعامل مع 48h سابقاً → يبقى الإشعار ظاهر
+            if (rx.overdue48HandledAt) {
+              const fixedMessage48 = `Prescription ${prescriptionId}  not completed within 48 hours and has been returned to the Delivery Orders list for redispensing.`;
+
+              v.push({
+                __virtual: true,
+                id: vid,
+                type: "DELIVERY_OVERDUE_48H",
+                orderId: docId,
+                prescriptionID: prescriptionId,
+                // ✅ نستخدم overdue48BaseAt (أو handledAt) بدل logisticsAcceptedAt
+                createdAt: rx.overdue48BaseAt || rx.overdue48HandledAt,
+                read: isReadVirtual ? true : false,
+                title: "Delivery Overdue (48h)",
+                message: fixedMessage48,
+              });
+              return;
+            }
+
+            // ✅ الحالة B: لسه ما تسجلت 48h → نفحص logisticsAcceptedAt
+            const tsMs = toMs(rx.logisticsAcceptedAt);
+            if (!tsMs) return;
+            if (tsMs > cutoff48) return;
+
+            // ✅ وصلنا 48h → اعرض إشعار
+            const fixedMessage48 = `Prescription ${prescriptionId} not completed within 48 hours and has been returned to the Delivery Orders list for redispensing.`;
 
             v.push({
               __virtual: true,
@@ -326,162 +398,161 @@ React.useEffect(() => {
               type: "DELIVERY_OVERDUE_48H",
               orderId: docId,
               prescriptionID: prescriptionId,
-              // ✅ نستخدم overdue48BaseAt (أو handledAt) بدل logisticsAcceptedAt
-              createdAt: rx.overdue48BaseAt || rx.overdue48HandledAt,
+              createdAt: rx.logisticsAcceptedAt,
               read: isReadVirtual ? true : false,
               title: "Delivery Overdue (48h)",
               message: fixedMessage48,
             });
-            return;
-          }
 
-          // ✅ الحالة B: لسه ما تسجلت 48h → نفحص logisticsAcceptedAt
-          const tsMs = toMs(rx.logisticsAcceptedAt);
-          if (!tsMs) return;
-          if (tsMs > cutoff48) return;
-
-          // ✅ وصلنا 48h → اعرض إشعار
-          const fixedMessage48 = `Prescription ${prescriptionId} not completed within 48 hours and has been returned to the Delivery Orders list for redispensing.`;
-
-          v.push({
-            __virtual: true,
-            id: vid,
-            type: "DELIVERY_OVERDUE_48H",
-            orderId: docId,
-            prescriptionID: prescriptionId,
-            createdAt: rx.logisticsAcceptedAt,
-            read: isReadVirtual ? true : false,
-            title: "Delivery Overdue (48h)",
-            message: fixedMessage48,
+            // ✅ وجدنا متأخر → جهز للريست مرة وحدة
+            if (!resetOnceRef.has(docId)) {
+              resetOnceRef.add(docId);
+              toReset.push({ docId, baseAt: rx.logisticsAcceptedAt });
+            }
           });
 
-          // ✅ وجدنا متأخر → جهز للريست مرة وحدة
-          if (!resetOnceRef.has(docId)) {
-            resetOnceRef.add(docId);
-            toReset.push({ docId, baseAt: rx.logisticsAcceptedAt });
+          // ✅ اعرض الإشعارات
+          v.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
+          setVirtualItems(v);
+
+          // ✅ AUTO RESET + حفظ overdue48BaseAt (عشان الإشعار ما يختفي)
+          if (toReset.length > 0) {
+            await Promise.all(
+              toReset.map(async ({ docId, baseAt }) => {
+                try {
+                  // 1) هات بيانات الوصفة (قبل التحديث) عشان نجيب patient + pid
+                  const rxSnap = await getDoc(doc(db, "prescriptions", docId));
+                  const rxData = rxSnap.exists() ? rxSnap.data() || {} : {};
+
+                  const nid = String(rxData.nationalID || rxData.nationalId || "");
+                  const patientDocId = String(rxData.patientDocId || "");
+                  //const patientDocId = nid ? `Ph_${nid}` : "";
+
+                  const pid = String(
+                    rxData.prescriptionID ||
+                      rxData.prescriptionId ||
+                      rxData.prescriptionNum ||
+                      rxData.prescriptionNumber ||
+                      docId
+                  );
+
+                  await updateDoc(doc(db, "prescriptions", docId), {
+                    logisticsAccepted: false,
+                    logisticsAcceptedAt: deleteField(),
+
+                    acceptDelivery: false,
+                    acceptDeliveryAt: deleteField(),
+                    acceptDeliveryTx: deleteField(),
+
+                    // ✅ أهم سطر: نخزن وقت القبول الأصلي
+                    overdue48BaseAt: baseAt || serverTimestamp(),
+
+                    overdue48HandledAt: serverTimestamp(),
+                    overdue48Reason: "DELIVERY_NOT_COMPLETED_48H",
+                    updatedAt: serverTimestamp(),
+                  });
+
+                  // 3) ✅ ثانياً: بعد نجاح التحديث… ارسل إشعار للمريض
+                  if (patientDocId) {
+                    const dupQ = query(
+                      collection(db, "notifications"),
+                      where("toRole", "==", "patient"),
+                      where("toPatientDocId", "==", patientDocId),
+                      where("orderId", "==", docId),
+                      where("type", "==", "PRESCRIPTION_REDISPENSED_48H"),
+                      limit(1)
+                    );
+
+                    const dupSnap = await getDocs(dupQ);
+
+                    if (dupSnap.empty) {
+                      await addDoc(collection(db, "notifications"), {
+                        toRole: "patient",
+                        toPatientDocId: patientDocId,
+
+                        type: "PRESCRIPTION_REDISPENSED_48H",
+                        title: "Prescription Redispensed",
+                        message: `Your prescription ${pid} has been returned for redispensing (delivery was not completed within 48 hours).`,
+
+                        orderId: docId,
+                        prescriptionID: pid,
+
+                        read: false,
+                        createdAt: serverTimestamp(),
+                      });
+                    }
+                  }
+                } catch (e) {
+                  console.error(
+                    "AUTO RESET (48h) failed for prescription:",
+                    docId,
+                    e
+                  );
+                }
+              })
+            );
           }
-        });
-
-        // ✅ اعرض الإشعارات
-        v.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
-        setVirtualItems(v);
-
-        // ✅ AUTO RESET + حفظ overdue48BaseAt (عشان الإشعار ما يختفي)
-        if (toReset.length > 0) {
-          await Promise.all(
-            toReset.map(async ({ docId, baseAt }) => {
-              
-              try {
-                // 1) هات بيانات الوصفة (قبل التحديث) عشان نجيب patient + pid
-  const rxSnap = await getDoc(doc(db, "prescriptions", docId));
-  const rxData = rxSnap.exists() ? (rxSnap.data() || {}) : {};
-
-  const nid = String(rxData.nationalID || rxData.nationalId || "");
-  const patientDocId = String(rxData.patientDocId || "");
-
-  //const patientDocId = nid ? `Ph_${nid}` : "";
-
-  const pid = String(
-    rxData.prescriptionID ||
-    rxData.prescriptionId ||
-    rxData.prescriptionNum ||
-    rxData.prescriptionNumber ||
-    docId
-  );
-                await updateDoc(doc(db, "prescriptions", docId), {
-                  logisticsAccepted: false,
-                  logisticsAcceptedAt: deleteField(),
-
-                  acceptDelivery: false,
-                  acceptDeliveryAt: deleteField(),
-                  acceptDeliveryTx: deleteField(),
-
-                  // ✅ أهم سطر: نخزن وقت القبول الأصلي
-                  overdue48BaseAt: baseAt || serverTimestamp(),
-
-                  overdue48HandledAt: serverTimestamp(),
-                  overdue48Reason: "DELIVERY_NOT_COMPLETED_48H",
-                  updatedAt: serverTimestamp(),
-                });
-                // 3) ✅ ثانياً: بعد نجاح التحديث… ارسل إشعار للمريض
-  if (patientDocId) {
-    const dupQ = query(
-      collection(db, "notifications"),
-      where("toRole", "==", "patient"),
-      where("toPatientDocId", "==", patientDocId),
-      where("orderId", "==", docId),
-      where("type", "==", "PRESCRIPTION_REDISPENSED_48H"),
-      limit(1)
-    );
-
-    const dupSnap = await getDocs(dupQ);
-
-    if (dupSnap.empty) {
-      await addDoc(collection(db, "notifications"), {
-        toRole: "patient",
-        toPatientDocId: patientDocId,
-
-        type: "PRESCRIPTION_REDISPENSED_48H",
-        title: "Prescription Redispensed",
-        message: `Your prescription ${pid} has been returned for redispensing (delivery was not completed within 48 hours).`,
-
-        orderId: docId,
-        prescriptionID: pid,
-
-        read: false,
-        createdAt: serverTimestamp(),
-      });
-    }
-  }
-              } catch (e) {
-                console.error("AUTO RESET (48h) failed for prescription:", docId, e);
-              }
-            })
-          );
+        },
+        (err) => {
+          console.error("prescriptions overdue listen error:", err);
+          setVirtualItems([]);
         }
-      },
-      (err) => {
-        console.error("prescriptions overdue listen error:", err);
-        setVirtualItems([]);
-      }
+      );
+    };
+
+    // ✅ صيدلية وحدة: نجيب كل الوصفات غير المسلّمة ونفلتر بالواجهة
+    const qRef = query(
+      collection(db, "prescriptions"),
+      where("deliveryConfirmed", "==", false)
     );
-  };
+    attach(qRef);
 
-  // ✅ صيدلية وحدة: نجيب كل الوصفات غير المسلّمة ونفلتر بالواجهة
-  const qRef = query(collection(db, "prescriptions"), where("deliveryConfirmed", "==", false));
-  attach(qRef);
-
-  return () => {
-    canceled = true;
-    try {
-      if (unsub) unsub();
-    } catch {}
-  };
-}, [virtualReadSet]);
-
-
+    return () => {
+      canceled = true;
+      try {
+        if (unsub) unsub();
+      } catch {}
+    };
+  }, [virtualReadSet]);
 
   // =========================
-  // ✅ combine virtual + real
+  // ✅ combine virtual + real + ✅ DEDUPE
   // =========================
   const allItems = React.useMemo(() => {
-    return [...virtualItems, ...items];
+    return dedupeByRx([...virtualItems, ...items]); // ✅ إشعار واحد لكل prescriptionID
   }, [virtualItems, items]);
 
   const unreadCount = allItems.filter((n) => !(n.read === true || n.read === "true")).length;
 
   async function markAsRead(n) {
-    // virtual: local فقط
-    if (n?.__virtual) {
+    // ✅ أولاً: virtual ids (local فقط)
+    if (Array.isArray(n.__virtualIds) && n.__virtualIds.length) {
+      const next = new Set(virtualReadSet);
+      n.__virtualIds.forEach((vid) => next.add(vid));
+      setVirtualReadSet(next);
+      persistVirtualRead(next);
+    } else if (n?.__virtual) {
+      // fallback لو جاك عنصر virtual غير مدموج
       const next = new Set(virtualReadSet);
       next.add(n.id);
       setVirtualReadSet(next);
       persistVirtualRead(next);
+    }
+
+    // ✅ ثانياً: real ids (Firestore)
+    if (Array.isArray(n.__realIds) && n.__realIds.length) {
+      await Promise.all(
+        n.__realIds.map((rid) =>
+          updateDoc(doc(db, "notifications", rid), { read: true })
+        )
+      );
       return;
     }
 
-    // real notification
-    await updateDoc(doc(db, "notifications", n.id), { read: true });
+    // fallback لو جاك عنصر real غير مدموج
+    if (!n?.__virtual && n?.id) {
+      await updateDoc(doc(db, "notifications", n.id), { read: true });
+    }
   }
 
   if (loading) {
@@ -508,17 +579,29 @@ React.useEffect(() => {
 
         {/* Header */}
         <div className="mb-6 flex items-center gap-3">
-          <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 64 }} />
+          <img
+            src="/Images/TrustDose-pill.png"
+            alt="TrustDose Capsule"
+            style={{ width: 64 }}
+          />
 
           <div className="w-full">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h1 className="font-extrabold text-[24px]" style={{ color: "#334155" }}>
-                  {header.companyName ? `Notifications — ${header.companyName}` : "Notifications"}
+                <h1
+                  className="font-extrabold text-[24px]"
+                  style={{ color: "#334155" }}
+                >
+                  {header.companyName
+                    ? `Notifications — ${header.companyName}`
+                    : "Notifications"}
                 </h1>
 
                 <div className="mt-3 pt-3 border-t border-gray-200">
-                  <p className="text-[15px] font-medium" style={{ color: "#64748b" }}>
+                  <p
+                    className="text-[15px] font-medium"
+                    style={{ color: "#64748b" }}
+                  >
                     Reminder alerts
                   </p>
                 </div>
@@ -528,8 +611,14 @@ React.useEffect(() => {
                 className="px-3 py-1 rounded-full text-sm font-semibold border"
                 style={{
                   color: unreadCount > 0 ? "#DC2626" : C.ink,
-                  borderColor: unreadCount > 0 ? "rgba(220,38,38,0.35)" : "rgba(176,140,193,0.35)",
-                  backgroundColor: unreadCount > 0 ? "rgba(220,38,38,0.08)" : "rgba(176,140,193,0.08)",
+                  borderColor:
+                    unreadCount > 0
+                      ? "rgba(220,38,38,0.35)"
+                      : "rgba(176,140,193,0.35)",
+                  backgroundColor:
+                    unreadCount > 0
+                      ? "rgba(220,38,38,0.08)"
+                      : "rgba(176,140,193,0.08)",
                 }}
               >
                 Unread: {unreadCount}
@@ -541,7 +630,10 @@ React.useEffect(() => {
         {/* EMPTY */}
         {allItems.length === 0 && (
           <div className="p-8 border rounded-2xl bg-white shadow-sm text-center">
-            <div className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full" style={{ backgroundColor: "#ECFDF3" }}>
+            <div
+              className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
+              style={{ backgroundColor: "#ECFDF3" }}
+            >
               <CheckCircle2 size={24} style={{ color: "#16A34A" }} />
             </div>
 
@@ -565,17 +657,19 @@ React.useEffect(() => {
               const isUnread = !(n.read === true || n.read === "true");
               const prescriptionId = n.prescriptionID || n.orderId || "—";
 
-              const cardTitle =
-                isOverdue48 ? "Delivery Overdue (48h)"
-                : isOverdue24 ? "Delivery Overdue (24h)"
+              const cardTitle = isOverdue48
+                ? "Delivery Overdue (48h)"
+                : isOverdue24
+                ? "Delivery Overdue (24h)"
                 : n.title || "Notification";
 
               const fixedMessage48 = `Prescription ${prescriptionId} was  not completed within 48 hours and has been returned to the Delivery Orders list for redispensing`;
               const fixedMessage24 = `Prescription ${prescriptionId} was  not completed within 24 hours and has been returned to the Delivery Orders list for redispensing`;
 
-              const messageToShow =
-                isOverdue48 ? fixedMessage48
-                : isOverdue24 ? fixedMessage24
+              const messageToShow = isOverdue48
+                ? fixedMessage48
+                : isOverdue24
+                ? fixedMessage24
                 : n.message || "-";
 
               return (
@@ -583,22 +677,32 @@ React.useEffect(() => {
                   key={n.id}
                   className="p-4 border rounded-2xl bg-white shadow-sm flex items-start justify-between gap-3"
                   style={{
-                    borderColor: isUnread ? "rgba(176,140,193,0.55)" : "rgba(226,232,240,1)",
+                    borderColor: isUnread
+                      ? "rgba(176,140,193,0.55)"
+                      : "rgba(226,232,240,1)",
                   }}
                 >
                   <div className="flex items-start gap-3">
                     <div
                       className="h-11 w-11 rounded-2xl flex items-center justify-center"
                       style={{
-                        backgroundColor: isOverdue ? "rgba(220,38,38,0.10)" : "rgba(176,140,193,0.15)",
+                        backgroundColor: isOverdue
+                          ? "rgba(220,38,38,0.10)"
+                          : "rgba(176,140,193,0.15)",
                       }}
                     >
-                      {isOverdue ? <Clock size={20} style={{ color: "#DC2626" }} /> : <Bell size={20} style={{ color: C.ink }} />}
+                      {isOverdue ? (
+                        <Clock size={20} style={{ color: "#DC2626" }} />
+                      ) : (
+                        <Bell size={20} style={{ color: C.ink }} />
+                      )}
                     </div>
 
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <div className="text-sm font-bold text-slate-800">{cardTitle}</div>
+                        <div className="text-sm font-bold text-slate-800">
+                          {cardTitle}
+                        </div>
 
                         {isOverdue && (
                           <span
@@ -616,20 +720,24 @@ React.useEffect(() => {
                         {isUnread && (
                           <span
                             className="px-2.5 py-1 rounded-full text-xs font-semibold border"
-                            style={{ color: "#166534", borderColor: "#BBE5C8", backgroundColor: "#ECFDF3" }}
+                            style={{
+                              color: "#166534",
+                              borderColor: "#BBE5C8",
+                              backgroundColor: "#ECFDF3",
+                            }}
                           >
                             New
                           </span>
                         )}
-
-                    
-                  
                       </div>
 
-                      <div className="text-sm text-slate-700 mt-1">{messageToShow}</div>
+                      <div className="text-sm text-slate-700 mt-1">
+                        {messageToShow}
+                      </div>
 
                       <div className="mt-3 text-xs text-gray-500">
-                        Prescription ID: <b className="text-slate-800">{prescriptionId}</b>
+                        Prescription ID:{" "}
+                        <b className="text-slate-800">{prescriptionId}</b>
                         <span className="mx-2">•</span>
                         {formatFsTimestamp(n.createdAt)}
                       </div>

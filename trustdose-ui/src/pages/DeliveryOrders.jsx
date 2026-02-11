@@ -1,4 +1,4 @@
-// src/pages/DeliveryOrders.jsx لا تحذف وعدل على اللي اتفقنا 
+// src/pages/DeliveryOrders.jsx لا تحذف وعدل على اللي اتفقنا
 /* global BigInt */
 "use client";
 
@@ -8,7 +8,7 @@ import { db } from "../firebase";
 import {
   collection,
   query,
-  where, 
+  where,
   getDocs,
   orderBy,
   doc,
@@ -19,14 +19,21 @@ import {
 import { Loader2, CheckCircle2 } from "lucide-react";
 import { ethers } from "ethers";
 import DELIVERY_ACCEPT from "../contracts/DeliveryAccept.json";
- 
-const C = { primary: "#B08CC1", primaryDark: "#9F76B4", teal: "#52B9C4", ink: "#4A2C59" };
-const RX_STATUS = { DELIVERY_REQUESTED: "DELIVERY_REQUESTED", PHARM_ACCEPTED: "PHARM_ACCEPTED" };
+
+const C = {
+  primary: "#B08CC1",
+  primaryDark: "#9F76B4",
+  teal: "#52B9C4",
+  ink: "#4A2C59",
+};
+const RX_STATUS = {
+  DELIVERY_REQUESTED: "DELIVERY_REQUESTED",
+  PHARM_ACCEPTED: "PHARM_ACCEPTED",
+};
 const PAGE_SIZE = 6;
- 
+
 const DELIVERY_ACCEPT_ADDRESS = "0xFBE49a895c15Eb235eA79829AaE4C2ad5856Dd20";
 const DELIVERY_ACCEPT_ABI = DELIVERY_ACCEPT?.abi ?? [];
-
 
 function formatFsTimestamp(v) {
   if (!v) return "-";
@@ -79,19 +86,15 @@ function setQuickFilterRange(hours, setFromDT, setToDT) {
   setToDT(fmt(now));
 }
 
-
 export default function DeliveryOrders({ pharmacyId }) {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState([]);
   const [msg, setMsg] = React.useState("");
   const [page, setPage] = React.useState(0);
-  const [pending, setPending] = React.useState({}); 
+  const [pending, setPending] = React.useState({});
   const [fromDT, setFromDT] = React.useState("");
-const [toDT, setToDT] = React.useState("");
+  const [toDT, setToDT] = React.useState("");
 
-
-
- 
   const [successModal, setSuccessModal] = React.useState(null);
 
   const outletCtx = useOutletContext?.() || {};
@@ -104,7 +107,7 @@ const [toDT, setToDT] = React.useState("");
       setLoading(true);
       setRows([]);
       setMsg("");
-      setPageError(""); 
+      setPageError("");
       const col = collection(db, "prescriptions");
 
       async function runQ(wheres, useOrder = true) {
@@ -124,7 +127,10 @@ const [toDT, setToDT] = React.useState("");
         candidates.push([
           where("pharmacyId", "==", pharmacyId),
           where("sensitivity", "==", "Sensitive"),
-          where("status", "in", [RX_STATUS.DELIVERY_REQUESTED, RX_STATUS.PHARM_ACCEPTED]),
+          where("status", "in", [
+            RX_STATUS.DELIVERY_REQUESTED,
+            RX_STATUS.PHARM_ACCEPTED,
+          ]),
           where("dispensed", "==", false),
         ]);
         candidates.push([
@@ -178,8 +184,9 @@ const [toDT, setToDT] = React.useState("");
 
         return {
           _docId: d.id,
-          prescriptionId: displayId, 
-          prescriptionNum: typeof x.prescriptionNum === "number" ? x.prescriptionNum : null,
+          prescriptionId: displayId,
+          prescriptionNum:
+            typeof x.prescriptionNum === "number" ? x.prescriptionNum : null,
           onchainId,
           patientName: x.patientName || "-",
           patientId: String(x.nationalID ?? x.patientDisplayId ?? "-"),
@@ -188,7 +195,8 @@ const [toDT, setToDT] = React.useState("");
           doctorPhone: x.doctorPhone || x.phone || "-",
           medicineLabel: x.medicineLabel || x.medicineName || "-",
           dose: x.dosage || x.dose || "-",
-          frequency: x.frequency || (x.timesPerDay ? `${x.timesPerDay} times/day` : "-"),
+          frequency:
+            x.frequency || (x.timesPerDay ? `${x.timesPerDay} times/day` : "-"),
           durationDays: x.durationDays ?? x.duration ?? "-",
           medicalCondition: x.medicalCondition || x.reason || "",
           notes: x.notes || "",
@@ -212,7 +220,9 @@ const [toDT, setToDT] = React.useState("");
           typeof a.prescriptionNum === "number"
             ? a.prescriptionNum
             : (() => {
-                const n = Number(a.prescriptionId?.toString().replace(/^[a-z]/i, "")); 
+                const n = Number(
+                  a.prescriptionId?.toString().replace(/^[a-z]/i, "")
+                );
                 return Number.isNaN(n) ? 0 : n;
               })();
 
@@ -220,7 +230,9 @@ const [toDT, setToDT] = React.useState("");
           typeof b.prescriptionNum === "number"
             ? b.prescriptionNum
             : (() => {
-                const n = Number(b.prescriptionId?.toString().replace(/^[a-z]/i, "")); 
+                const n = Number(
+                  b.prescriptionId?.toString().replace(/^[a-z]/i, "")
+                );
                 return Number.isNaN(n) ? 0 : n;
               })();
 
@@ -240,73 +252,141 @@ const [toDT, setToDT] = React.useState("");
     };
   }, [pharmacyId, setPageError]);
 
-  /*const total = rows.length;
+  const filteredRows = React.useMemo(() => {
+    let base = rows;
+
+    const from = parseDTLocal(fromDT);
+    const to = parseDTLocal(toDT);
+
+    if (from) base = base.filter((r) => r.createdAtTS && r.createdAtTS >= from);
+    if (to) base = base.filter((r) => r.createdAtTS && r.createdAtTS <= to);
+
+    return base;
+  }, [rows, fromDT, toDT]);
+
+  // ✅ GROUPING: اجمع حسب prescriptionId (كرت واحد + زر واحد)
+  const groups = React.useMemo(() => {
+    const map = new Map();
+
+    for (const r of filteredRows) {
+      const key = r.prescriptionId || r._docId;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(r);
+    }
+
+    for (const [, arr] of map) {
+      arr.sort((a, b) =>
+        (a.medicineLabel || "").localeCompare(b.medicineLabel || "")
+      );
+    }
+
+    const out = Array.from(map.entries()).map(([prescriptionId, meds]) => {
+      const first = meds[0] || {};
+
+      const onchainIds = Array.from(
+        new Set(
+          meds
+            .map((m) => m.onchainId)
+            .filter((v) => v !== null && v !== undefined)
+            .map((v) => v.toString())
+        )
+      );
+
+      // ✅ eligible إذا فيه على الأقل onchainId واحد
+      const eligible = onchainIds.length > 0;
+
+      const createdAtTS = meds.reduce((acc, m) => {
+        const t = m.createdAtTS?.getTime?.() || 0;
+        return t > (acc?.getTime?.() || 0) ? m.createdAtTS : acc;
+      }, first.createdAtTS);
+
+      return {
+        prescriptionId,
+        createdAtTS,
+        createdAt: first.createdAt,
+        patientName: first.patientName || "-",
+        patientId: first.patientId || "-",
+        doctorName: first.doctorName || "-",
+        doctorFacility: first.doctorFacility || "",
+        doctorPhone: first.doctorPhone || "-",
+        medicalCondition: first.medicalCondition || "",
+        notes: first.notes || "",
+        meds,
+        onchainIds,
+        eligible,
+        missingCount: meds.filter((m) => m.onchainId == null).length,
+      };
+    });
+
+    out.sort(
+      (a, b) =>
+        (b.createdAtTS?.getTime?.() || 0) - (a.createdAtTS?.getTime?.() || 0)
+    );
+
+    return out;
+  }, [filteredRows]);
+
+  const total = groups.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const start = page * PAGE_SIZE;
   const end = Math.min(start + PAGE_SIZE, total);
-  const pageItems = rows.slice(start, end);
-  */
- const filteredRows = React.useMemo(() => {
-  let base = rows;
+  const pageItems = groups.slice(start, end);
 
-  const from = parseDTLocal(fromDT);
-  const to = parseDTLocal(toDT);
-
-  if (from) base = base.filter((r) => r.createdAtTS && r.createdAtTS >= from);
-  if (to) base = base.filter((r) => r.createdAtTS && r.createdAtTS <= to);
-
-  return base;
-}, [rows, fromDT, toDT]);
-
-const total = filteredRows.length;
-const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-const start = page * PAGE_SIZE;
-const end = Math.min(start + PAGE_SIZE, total);
-const pageItems = filteredRows.slice(start, end);
-
-// reset page when filters change
-React.useEffect(() => setPage(0), [fromDT, toDT, rows.length]);
+  // reset page when filters change
+  React.useEffect(() => setPage(0), [fromDT, toDT, rows.length]);
 
   function getDeliveryAcceptProvider() {
     if (!window.ethereum) throw new Error("MetaMask is not available");
     return new ethers.BrowserProvider(window.ethereum);
   }
 
-  async function handleAccept(r) {
-    const key = String(r.prescriptionId);
+  // ✅ Accept GROUP
+  async function handleAcceptGroup(g) {
+    const key = String(g.prescriptionId);
     if (pending[key]) return;
 
     setPending((s) => ({ ...s, [key]: true }));
-    setPageError(""); 
+    setPageError("");
 
     try {
-      const ref = doc(db, "prescriptions", r._docId);
-      const fresh = await getDoc(ref);
-      if (!fresh.exists()) throw new Error("Prescription doc not found");
+      // fresh check لكل docs داخل المجموعة
+      const refs = g.meds.map((m) => doc(db, "prescriptions", m._docId));
+      const freshSnaps = await Promise.all(refs.map((r) => getDoc(r)));
 
-      const freshData = fresh.data();
+      const valid = [];
+      for (let i = 0; i < freshSnaps.length; i++) {
+        const snap = freshSnaps[i];
+        if (!snap.exists()) continue;
+        const data = snap.data() || {};
+        if (data.dispensed === true) continue;
+        if (data.acceptDelivery === true) continue;
 
-      if (freshData.dispensed === true) {
-        alert("This prescription was already dispensed. You cannot accept delivery.");
-        setRows((arr) => arr.filter((x) => x._docId !== r._docId));
+        valid.push({ ref: refs[i], docId: g.meds[i]._docId });
+      }
+
+      if (valid.length === 0) {
+        const docIds = new Set(g.meds.map((x) => x._docId));
+        setRows((arr) => arr.filter((x) => !docIds.has(x._docId)));
         return;
       }
 
-      if (freshData.acceptDelivery === true) {
-        setRows((arr) => arr.filter((x) => x._docId !== r._docId));
-        return;
-      }
-
-      let txHash = null;
-      if (r.onchainId != null) {
+      // on-chain accept لكل onchainId موجود
+      let txHashes = [];
+      if (g.onchainIds?.length) {
         const provider = getDeliveryAcceptProvider();
         await provider.send("eth_requestAccounts", []);
         const signer = await provider.getSigner();
-        const contract = new ethers.Contract(DELIVERY_ACCEPT_ADDRESS, DELIVERY_ACCEPT_ABI, signer);
+        const contract = new ethers.Contract(
+          DELIVERY_ACCEPT_ADDRESS,
+          DELIVERY_ACCEPT_ABI,
+          signer
+        );
 
-        const tx = await contract.accept(r.onchainId);
-        await tx.wait();
-        txHash = tx.hash;
+        for (const idStr of g.onchainIds) {
+          const tx = await contract.accept(BigInt(idStr));
+          await tx.wait();
+          txHashes.push(tx.hash);
+        }
       }
 
       const updatePayload = {
@@ -328,15 +408,20 @@ React.useEffect(() => setPage(0), [fromDT, toDT, rows.length]);
         deliveryOverdue24Notified: false,
         deliveryOverdue48Notified: false,
       };
-      if (txHash) {
-        updatePayload.acceptDeliveryTx = txHash;
-      }
-      await updateDoc(ref, updatePayload);
 
-      // نشيل الكارد من الستيت
-      setRows((arr) => arr.filter((x) => x._docId !== r._docId));
+      if (txHashes.length === 1) updatePayload.acceptDeliveryTx = txHashes[0];
+      if (txHashes.length > 1) updatePayload.acceptDeliveryTxs = txHashes;
 
-      console.log("Marked acceptDelivery", txHash ? "with tx " + txHash : "without on-chain tx");
+      await Promise.all(valid.map(({ ref }) => updateDoc(ref, updatePayload)));
+
+      // نشيل كل كروت المجموعة من الستيت
+      const docIds = new Set(g.meds.map((x) => x._docId));
+      setRows((arr) => arr.filter((x) => !docIds.has(x._docId)));
+
+      console.log(
+        "Marked acceptDelivery group",
+        txHashes.length ? `with ${txHashes.length} tx(s)` : "without on-chain tx"
+      );
 
       setSuccessModal({
         title: "Sensitive prescription accepted",
@@ -355,7 +440,7 @@ React.useEffect(() => setPage(0), [fromDT, toDT, rows.length]);
         m = "MetaMask request was declined. Please try again.";
       }
 
-      setPageError(m); 
+      setPageError(m);
     } finally {
       setPending((s) => {
         const t = { ...s };
@@ -397,7 +482,10 @@ React.useEffect(() => setPage(0), [fromDT, toDT, rows.length]);
                   <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
                 </div>
 
-                <h3 className="text-lg font-semibold mb-1" style={{ color: C.ink }}>
+                <h3
+                  className="text-lg font-semibold mb-1"
+                  style={{ color: C.ink }}
+                >
                   {successModal.title}
                 </h3>
 
@@ -421,122 +509,146 @@ React.useEffect(() => setPage(0), [fromDT, toDT, rows.length]);
         )}
 
         {/* Date/Time Filter Bar */}
-<div className="sticky top-0 z-30 mb-6">
-  <div className="bg-white/95 backdrop-blur border rounded-2xl shadow-sm p-4">
-    <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setTodayRange(setFromDT, setToDT)}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium border hover:bg-gray-50"
-          style={{ color: C.ink }}
-        >
-          Today
-        </button>
+        <div className="sticky top-0 z-30 mb-6">
+          <div className="bg-white/95 backdrop-blur border rounded-2xl shadow-sm p-4">
+            <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTodayRange(setFromDT, setToDT)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border hover:bg-gray-50"
+                  style={{ color: C.ink }}
+                >
+                  Today
+                </button>
 
-        <button
-          type="button"
-          onClick={() => setQuickFilterRange(24, setFromDT, setToDT)}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium border hover:bg-gray-50"
-          style={{ color: C.ink }}
-        >
-          Last 24h
-        </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickFilterRange(24, setFromDT, setToDT)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border hover:bg-gray-50"
+                  style={{ color: C.ink }}
+                >
+                  Last 24h
+                </button>
 
-        <button
-          type="button"
-          onClick={() => setQuickFilterRange(48, setFromDT, setToDT)}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 bg-red-50 text-red-700"
-        >
-          Last 48h
-        </button>
-      </div>
+                <button
+                  type="button"
+                  onClick={() => setQuickFilterRange(48, setFromDT, setToDT)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 bg-red-50 text-red-700"
+                >
+                  Last 48h
+                </button>
+              </div>
 
-      <div className="flex flex-1 flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[180px]">
-          <input
-            type="datetime-local"
-            max="9999-12-31T23:59"
-            value={fromDT.replace(" ", "T")}
-            onChange={(e) => setFromDT(e.target.value.slice(0, 16).replace("T", " "))}
-            className="w-full pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
-            style={{ outlineColor: C.primary }}
-          />
+              <div className="flex flex-1 flex-wrap gap-3 items-center">
+                <div className="relative flex-1 min-w-[180px]">
+                  <input
+                    type="datetime-local"
+                    max="9999-12-31T23:59"
+                    value={fromDT.replace(" ", "T")}
+                    onChange={(e) =>
+                      setFromDT(e.target.value.slice(0, 16).replace("T", " "))
+                    }
+                    className="w-full pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+                    style={{ outlineColor: C.primary }}
+                  />
+                </div>
+
+                <span className="text-gray-400 text-sm font-bold">to</span>
+
+                <div className="relative flex-1 min-w-[180px]">
+                  <input
+                    type="datetime-local"
+                    max="9999-12-31T23:59"
+                    value={toDT.replace(" ", "T")}
+                    onChange={(e) =>
+                      setToDT(e.target.value.slice(0, 16).replace("T", " "))
+                    }
+                    className="w-full pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
+                    style={{ outlineColor: C.primary }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFromDT("");
+                    setToDT("");
+                  }}
+                  className="px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm"
+                  style={{ backgroundColor: C.primary, color: "#fff" }}
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <span className="text-gray-400 text-sm font-bold">to</span>
-
-        <div className="relative flex-1 min-w-[180px]">
-          <input
-            type="datetime-local"
-            max="9999-12-31T23:59"
-            value={toDT.replace(" ", "T")}
-            onChange={(e) => setToDT(e.target.value.slice(0, 16).replace("T", " "))}
-            className="w-full pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2"
-            style={{ outlineColor: C.primary }}
-          />
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            setFromDT("");
-            setToDT("");
-          }}
-          className="px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm"
-          style={{ backgroundColor: C.primary, color: "#fff" }}
-        >
-          Clear Filters
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
 
         {pageItems.length > 0 && (
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {pageItems.map((r) => {
-              if (r.dispensed || r.acceptDelivery) return null;
+            {pageItems.map((g) => {
+              const dateTime =
+                g.createdAtTS?.toLocaleString("en-GB", {
+                  day: "2-digit",
+                  month: "long",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }) || g.createdAt || "-";
 
-              const prescriber = r.doctorName ? `Dr. ${r.doctorName}` : "-";
-              const facility = r.doctorFacility ? ` — ${r.doctorFacility}` : "";
-              const dateTime = r.createdAtTS
-                ? r.createdAtTS.toLocaleString("en-GB", {
-                    day: "2-digit",
-                    month: "long",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : r.createdAt || "-";
+              const isPending = !!pending[String(g.prescriptionId)];
 
-              const isPending = !!pending[String(r.prescriptionId)];
-              const disabled = isPending;
+              const prescriber = g.doctorName ? `Dr. ${g.doctorName}` : "-";
+              const facility = g.doctorFacility ? ` — ${g.doctorFacility}` : "";
 
               return (
-                <div key={r._docId} className="p-4 border rounded-xl bg-white shadow-sm">
+                <div
+                  key={g.prescriptionId}
+                  className="p-4 border rounded-xl bg-white shadow-sm"
+                >
                   <div>
-                    <div className="text-lg font-bold text-slate-800 truncate">
-                      {r.medicineLabel || "—"}
+                    {/* meds title (first 2) */}
+                    <div className="space-y-1 mb-3">
+                      {(g.meds || []).slice(0, 2).map((m, idx) => (
+                        <div
+                          key={`${g.prescriptionId}-med-${idx}`}
+                          className="text-lg font-bold text-slate-800 leading-snug line-clamp-1"
+                          title={m.medicineLabel}
+                        >
+                          {m.medicineLabel || "—"}
+                        </div>
+                      ))}
+
+                      {(g.meds || []).length === 1 && (
+                        <div className="text-lg font-bold text-slate-800 opacity-0 select-none">
+                          placeholder
+                        </div>
+                      )}
+
+                      {(g.meds || []).length > 2 && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          +{g.meds.length - 2} more
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Prescription ID:{" "}
-                      <span className="font-normal">{r.prescriptionId}</span>
+                      <span className="font-normal">{g.prescriptionId}</span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Patient:{" "}
                       <span className="font-normal">
-                        {r.patientName || "—"}
-                        {r.patientId ? ` — ${String(r.patientId)}` : ""}
+                        {g.patientName || "—"}
+                        {g.patientId ? ` — ${String(g.patientId)}` : ""}
                       </span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Doctor Phone:{" "}
-                      <span className="font-normal">{r.doctorPhone}</span>
+                      <span className="font-normal">{g.doctorPhone}</span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
@@ -547,25 +659,17 @@ React.useEffect(() => setPage(0), [fromDT, toDT, rows.length]);
                       </span>
                     </div>
 
-                    <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Dosage:{" "}
-                      <span className="font-normal">
-                        {r.dose || "—"} • {r.frequency || "—"} •{" "}
-                        {r.durationDays || "—"}
-                      </span>
-                    </div>
-
                     <div className="text-sm text-slate-700 mt-2 font-semibold">
                       Medical Condition:{" "}
                       <span className="font-normal">
-                        {r.medicalCondition || "—"}
+                        {g.medicalCondition || "—"}
                       </span>
                     </div>
 
                     <div className="mt-1 min-h-[28px]">
-                      {!!r.notes && (
+                      {!!g.notes && (
                         <div className="text-sm text-slate-700 font-semibold">
-                          Notes: <span className="font-normal">{r.notes}</span>
+                          Notes: <span className="font-normal">{g.notes}</span>
                         </div>
                       )}
                     </div>
@@ -579,27 +683,41 @@ React.useEffect(() => setPage(0), [fromDT, toDT, rows.length]);
                         backgroundColor: isPending ? "#D8C2E6" : C.primary,
                       }}
                       onMouseEnter={(e) => {
-                        if (!isPending && !disabled) {
+                        if (!isPending && g.eligible) {
                           e.currentTarget.style.backgroundColor = C.primaryDark;
                         }
                       }}
                       onMouseLeave={(e) => {
-                        if (!isPending && !disabled) {
+                        if (!isPending && g.eligible) {
                           e.currentTarget.style.backgroundColor = C.primary;
                         }
                       }}
-                      title="Accept this prescription"
-                      onClick={() => handleAccept(r)}
-                      disabled={disabled}
+                      title={
+                        g.eligible
+                          ? "Accept this prescription (group)"
+                          : `Missing on-chain id for ${g.missingCount} item(s)`
+                      }
+                      onClick={() => handleAcceptGroup(g)}
+                      disabled={isPending || !g.eligible}
                     >
                       {isPending && (
                         <Loader2 size={16} className="animate-spin text-white" />
                       )}
 
                       <span className="text-white">
-                        {isPending ? "Processing…" : "Accept"}
+                        {isPending
+                          ? "Processing…"
+                          : g.eligible
+                          ? "Accept"
+                          : "Not eligible"}
                       </span>
                     </button>
+
+                    {!g.eligible && (
+                      <div className="mt-2 text-xs text-red-600">
+                        Missing on-chain id for {g.missingCount} item(s)
+                      </div>
+                    )}
                   </div>
 
                   <div className="text-right text-xs text-gray-500 mt-1">

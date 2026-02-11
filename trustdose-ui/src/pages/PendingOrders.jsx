@@ -55,7 +55,7 @@ async function getSignerEnsured() {
 export default function PendingOrders({ pharmacyId }) {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState([]);
-  const [msg, setMsg] = React.useState(""); 
+  const [msg, setMsg] = React.useState("");
   const [page, setPage] = React.useState(0);
   const [processingId, setProcessingId] = React.useState(null);
 
@@ -71,7 +71,7 @@ export default function PendingOrders({ pharmacyId }) {
       setLoading(true);
       setRows([]);
       setMsg("");
-      setPageError(""); 
+      setPageError("");
 
       const col = collection(db, "prescriptions");
 
@@ -139,14 +139,11 @@ export default function PendingOrders({ pharmacyId }) {
           medicineLabel: x.medicineLabel || x.medicineName || "-",
           dose: x.dosage || x.dose || "-",
           frequency:
-            x.frequency ||
-            (x.timesPerDay ? `${x.timesPerDay} times/day` : "-"),
+            x.frequency || (x.timesPerDay ? `${x.timesPerDay} times/day` : "-"),
           durationDays: x.durationDays ?? x.duration ?? "-",
           medicalCondition: x.medicalCondition || x.reason || "",
           notes: x.notes || "",
-          createdAtTS: x?.createdAt?.toDate?.()
-            ? x.createdAt.toDate()
-            : undefined,
+          createdAtTS: x?.createdAt?.toDate?.() ? x.createdAt.toDate() : undefined,
           createdAt: formatFsTimestamp(x.createdAt),
           updatedAt: formatFsTimestamp(x.updatedAt),
           dispensed: !!x.dispensed,
@@ -167,6 +164,7 @@ export default function PendingOrders({ pharmacyId }) {
       if (mounted) {
         setRows(filtered);
         setLoading(false);
+        setPage(0);
       }
     }
 
@@ -174,19 +172,81 @@ export default function PendingOrders({ pharmacyId }) {
     return () => (mounted = false);
   }, [pharmacyId, setPageError]);
 
-  async function handleMarkReceived(r) {
+  // ✅ GROUPING: اجمع حسب prescriptionId (كرت واحد + زر واحد)
+  const groups = React.useMemo(() => {
+    const map = new Map();
+
+    for (const r of rows) {
+      const key = r.prescriptionId || r._docId;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(r);
+    }
+
+    for (const [, arr] of map) {
+      arr.sort((a, b) =>
+        (a.medicineLabel || "").localeCompare(b.medicineLabel || "")
+      );
+    }
+
+    const out = Array.from(map.entries()).map(([prescriptionId, meds]) => {
+      const first = meds[0] || {};
+
+      const onchainIds = Array.from(
+        new Set(
+          meds
+            .map((m) => m.onchainId)
+            .filter((v) => Number.isFinite(v))
+            .map((v) => String(v))
+        )
+      );
+
+      const allHaveOnchainId = meds.every((m) => Number.isFinite(m.onchainId));
+      const eligible = allHaveOnchainId && onchainIds.length > 0;
+
+      const createdAtTS = meds.reduce((acc, m) => {
+        const t = m.createdAtTS?.getTime?.() || 0;
+        return t > (acc?.getTime?.() || 0) ? m.createdAtTS : acc;
+      }, first.createdAtTS);
+
+      return {
+        prescriptionId,
+        patientName: first.patientName || "-",
+        patientId: first.patientId || "-",
+        doctorName: first.doctorName || "-",
+        doctorFacility: first.doctorFacility || "",
+        doctorPhone: first.doctorPhone || "-",
+        medicalCondition: first.medicalCondition || "",
+        notes: first.notes || "",
+        createdAtTS,
+        createdAt: first.createdAt,
+        meds,
+        onchainIds,
+        eligible,
+        missingCount: meds.filter((m) => !Number.isFinite(m.onchainId)).length,
+      };
+    });
+
+    out.sort(
+      (a, b) =>
+        (b.createdAtTS?.getTime?.() ?? 0) - (a.createdAtTS?.getTime?.() ?? 0)
+    );
+
+    return out;
+  }, [rows]);
+
+  async function handleMarkReceivedGroup(g) {
     try {
       setMsg("");
       setPageError("");
 
-      if (!Number.isFinite(r.onchainId)) {
-        const m = "Missing on-chain id.";
+      if (!g?.eligible) {
+        const m = `Missing on-chain id for ${g?.missingCount ?? 0} item(s).`;
         setMsg(m);
         setPageError(m);
         return;
       }
 
-      setProcessingId(r._docId);
+      setProcessingId(String(g.prescriptionId));
 
       const signer = await getSignerEnsured();
       const logisticsAddr = await signer.getAddress();
@@ -197,25 +257,38 @@ export default function PendingOrders({ pharmacyId }) {
         signer
       );
 
-      const tx = await logistics.receiveFromPharmacy(r.onchainId);
-      const receipt = await tx.wait();
-      const txHash = receipt?.hash || tx.hash;
+      // ✅ on-chain: نفّذ receive لكل onchainId داخل المجموعة
+      let lastTxHash = null;
+      const txHashes = [];
+      for (const idStr of g.onchainIds) {
+        const tx = await logistics.receiveFromPharmacy(Number(idStr));
+        const receipt = await tx.wait();
+        const txHash = receipt?.hash || tx.hash;
+        lastTxHash = txHash;
+        txHashes.push(txHash);
+      }
 
-      await updateDoc(doc(db, "prescriptions", r._docId), {
-        dispensed: true,
-        dispensedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        logisticsReceivedBy: logisticsAddr,
-        logisticsReceiveTx: txHash,
-      });
+      // ✅ Firestore: حدّث كل docs داخل المجموعة
+      await Promise.all(
+        g.meds.map((r) =>
+          updateDoc(doc(db, "prescriptions", r._docId), {
+            dispensed: true,
+            dispensedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            logisticsReceivedBy: logisticsAddr,
+            logisticsReceiveTx: lastTxHash, // نفس حقل الكود الأصلي
+            // إذا تبين تحفظين كل التراكنز: logisticsReceiveTxs: txHashes
+          })
+        )
+      );
 
-      setRows((old) => old.filter((x) => x._docId !== r._docId));
+      const docIds = new Set(g.meds.map((x) => x._docId));
+      setRows((old) => old.filter((x) => !docIds.has(x._docId)));
 
       // ✅ نفس عنوان/رسالة البوب-أب
       setSuccessModal({
         title: "Prescription dispensed successfully",
-        message:
-          "The prescription has been dispensed and handed over to logistics.",
+        message: "The prescription has been dispensed and handed over to logistics.",
       });
     } catch (err) {
       console.error("Error:", err);
@@ -244,11 +317,11 @@ export default function PendingOrders({ pharmacyId }) {
     );
   }
 
-  const total = rows.length;
+  const total = groups.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const start = page * PAGE_SIZE;
   const end = Math.min(start + PAGE_SIZE, total);
-  const pageItems = rows.slice(start, end);
+  const pageItems = groups.slice(start, end);
 
   return (
     <div className="p-6">
@@ -270,10 +343,7 @@ export default function PendingOrders({ pharmacyId }) {
                   <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
                 </div>
 
-                <h3
-                  className="text-lg font-semibold mb-1"
-                  style={{ color: C.ink }}
-                >
+                <h3 className="text-lg font-semibold mb-1" style={{ color: C.ink }}>
                   {successModal.title}
                 </h3>
 
@@ -298,47 +368,74 @@ export default function PendingOrders({ pharmacyId }) {
 
         {pageItems.length > 0 && (
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {pageItems.map((r) => {
-              const prescriber = r.doctorName ? `Dr. ${r.doctorName}` : "-";
-              const facility = r.doctorFacility ? ` — ${r.doctorFacility}` : "";
-              const dateTime = r.createdAtTS
-                ? r.createdAtTS.toLocaleString("en-GB", {
+            {pageItems.map((g) => {
+              const prescriber = g.doctorName ? `Dr. ${g.doctorName}` : "-";
+              const facility = g.doctorFacility ? ` — ${g.doctorFacility}` : "";
+              const dateTime = g.createdAtTS
+                ? g.createdAtTS.toLocaleString("en-GB", {
                     day: "2-digit",
                     month: "long",
                     year: "numeric",
                     hour: "2-digit",
                     minute: "2-digit",
                   })
-                : r.createdAt || "-";
+                : g.createdAt || "-";
 
-              const hasOnchainId = Number.isFinite(r.onchainId);
-              const isProcessing = processingId === r._docId;
+              const isProcessing = processingId === String(g.prescriptionId);
+
+              // ✅ Dosage summary (أول 2 + عدد الباقي)
+              const dosageSummary = (g.meds || []).slice(0, 2).map((m) => {
+                const dose = m.dose || "-";
+                const freq = m.frequency || "-";
+                const dur = m.durationDays || "-";
+                return `${dose} • ${freq} • ${dur}`;
+              });
 
               return (
                 <div
-                  key={r._docId}
+                  key={g.prescriptionId}
                   className="p-4 border rounded-xl bg-white shadow-sm"
                 >
                   <div>
-                    <div className="text-lg font-bold text-slate-800 truncate">
-                      {r.medicineLabel}
+                    <div className="space-y-1 mb-3">
+                      {(g.meds || []).slice(0, 2).map((m, idx) => (
+                        <div
+                          key={`${g.prescriptionId}-med-${idx}`}
+                          className="text-lg font-bold text-slate-800 leading-snug line-clamp-1"
+                          title={m.medicineLabel}
+                        >
+                          {m.medicineLabel}
+                        </div>
+                      ))}
+
+                      {(g.meds || []).length === 1 && (
+                        <div className="text-lg font-bold text-slate-800 opacity-0 select-none">
+                          placeholder
+                        </div>
+                      )}
+
+                      {(g.meds || []).length > 2 && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          +{g.meds.length - 2} more
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Prescription ID:{" "}
-                      <span className="font-normal">{r.prescriptionId}</span>
+                      <span className="font-normal">{g.prescriptionId}</span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Patient:{" "}
                       <span className="font-normal">
-                        {r.patientName} — {r.patientId}
+                        {g.patientName} — {g.patientId}
                       </span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Doctor Phone:{" "}
-                      <span className="font-normal">{r.doctorPhone}</span>
+                      <span className="font-normal">{g.doctorPhone}</span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
@@ -347,26 +444,52 @@ export default function PendingOrders({ pharmacyId }) {
                         {prescriber} {facility}
                       </span>
                     </div>
+{/* ✅ Dosage per medicine with label */}
+<div className="mt-1 space-y-1">
+  {(g.meds || []).slice(0, 2).map((m, idx) => {
+    const dose = m.dose || "-";
+    const freq = m.frequency || "-";
+    const dur = m.durationDays || "-";
 
-                    <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Dosage:{" "}
-                      <span className="font-normal">
-                        {r.dose} • {r.frequency} • {r.durationDays}
-                      </span>
-                    </div>
+    return (
+      <div
+        key={`${g.prescriptionId}-dose-${idx}`}
+        className="text-sm text-slate-700 font-semibold"
+      >
+        Dosage ({m.medicineLabel || "—"}):{" "}
+        <span className="font-normal">
+          {dose} • {freq} • {dur}
+        </span>
+      </div>
+    );
+  })}
+
+  {(g.meds || []).length > 2 && (
+    <div className="text-xs text-gray-500 mt-1">
+      +{g.meds.length - 2} more dosages
+    </div>
+  )}
+</div>
+
+
+                    {/* لو أكثر من 2 نوضح أنه فيه زيادة */}
+                    {(g.meds || []).length > 2 && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        +{g.meds.length - 2} more dosages
+                      </div>
+                    )}
 
                     <div className="text-sm text-slate-700 mt-2 font-semibold">
                       Medical Condition:{" "}
                       <span className="font-normal">
-                        {r.medicalCondition || "—"}
+                        {g.medicalCondition || "—"}
                       </span>
                     </div>
 
                     <div className="mt-1 min-h-[28px]">
-                      {!!r.notes && (
+                      {!!g.notes && (
                         <div className="text-sm text-slate-700 font-semibold">
-                          Notes:{" "}
-                          <span className="font-normal">{r.notes}</span>
+                          Notes: <span className="font-normal">{g.notes}</span>
                         </div>
                       )}
                     </div>
@@ -374,8 +497,8 @@ export default function PendingOrders({ pharmacyId }) {
 
                   <div className="mt-1">
                     <button
-                      onClick={() => handleMarkReceived(r)}
-                      disabled={!hasOnchainId || isProcessing}
+                      onClick={() => handleMarkReceivedGroup(g)}
+                      disabled={!g.eligible || isProcessing}
                       className="w-max px-4 py-2 text-sm rounded-lg transition-colors
                                  flex items-center gap-1.5 font-medium shadow-sm
                                  disabled:opacity-50 disabled:cursor-not-allowed text-white"
@@ -404,11 +527,17 @@ export default function PendingOrders({ pharmacyId }) {
                         <>
                           <FileText size={16} className="text-white" />
                           <span className="text-white">
-                            {hasOnchainId ? "Confirm & Dispens" : "Not eligible"}
+                            {g.eligible ? "Confirm & Dispens" : "Not eligible"}
                           </span>
                         </>
                       )}
                     </button>
+
+                    {!g.eligible && (
+                      <div className="mt-2 text-xs text-red-600">
+                        Missing on-chain id for {g.missingCount} item(s)
+                      </div>
+                    )}
                   </div>
 
                   <div className="text-right text-xs text-gray-500 mt-1">
