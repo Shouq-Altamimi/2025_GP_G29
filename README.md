@@ -17,7 +17,7 @@ The platform is especially valuable for sensitive medicines like insulin, which 
 - **Smart Contracts (Truffle, Ganache)**  
 - **Frontend (React.js, Web3.js)**  
 - **Backend (Node.js middleware)**  
-- **IoT Sensors (ESP32, DHT11)**  
+- **IoT Sensors (ESP-8266, DHT-22)**  
 
 ## Launching Instructions (Briefly)  
 1. **Clone the repository & install dependencies:**  
