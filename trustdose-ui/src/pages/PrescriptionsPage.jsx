@@ -22,7 +22,6 @@ function shortAddr(a) {
   const s = String(a);
   return s.length > 10 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s;
 }
-///////////////
  function normalizeDTInput(v) {
   return String(v).replace(/[^0-9:\- T]/g, "").replace(/\s+/g, " ").slice(0, 16);
 }
@@ -32,7 +31,6 @@ function parseDTLocal(v) {
   const s = v.trim();
   if (!s) return null;
 
-  // يقبل: "2026-02-02T12:30" أو "2026-02-02 12:30"
   const cleaned = s.replace("T", " ");
   const [datePart, timePart] = cleaned.split(" ");
   if (!datePart || !timePart) return null;
@@ -45,24 +43,20 @@ function parseDTLocal(v) {
   return new Date(y, m - 1, d, hh, mm, 0, 0);
 }
 
-///////////////
 function isValidDT(v) {
   if (!v || typeof v !== "string") return false;
   const s = v.trim();
-  // نقبل فقط: "YYYY-MM-DD HH:MM"
   if (!/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}$/.test(s)) return false;
 
   const [datePart, timePart] = s.split(" ");
   const [y, m, d] = datePart.split("-").map(Number);
   const [hh, mm] = timePart.split(":").map(Number);
 
-  // حدود منطقية
   if (m < 1 || m > 12) return false;
   if (hh < 0 || hh > 23) return false;
   if (mm < 0 || mm > 59) return false;
 
-  // تحقق من عدد أيام الشهر (يشمل leap year)
-  const lastDay = new Date(y, m, 0).getDate(); // آخر يوم بالشهر
+  const lastDay = new Date(y, m, 0).getDate(); 
   if (d < 1 || d > lastDay) return false;
 
   return true;
@@ -88,33 +82,16 @@ export default function PrescriptionsPage({ role = "doctor", onDispense, dispens
   const [loading, setLoading] = useState(true);
   const [qText, setQText] = useState("");
   
-  ////
   const [fromDT, setFromDT] = useState("");
 const [toDT, setToDT] = useState("");
-/////
   const [page, setPage] = useState(0);
-  ///
- // أضف هذه الدالة داخل المكون فوق سطر الـ return
-/*const setQuickFilter = (hours) => {
-  const now = new Date();
-  const past = new Date(now.getTime() - hours * 60 * 60 * 1000);
-  
-  // تنسيق يحول التاريخ لصيغة يفهمها حقل datetime-local
-  const formatForInput = (d) => {
-    const pad = (n) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-  
-  setFromDT(formatForInput(past).replace("T", " ")); // نحدث الحالة (State)
-  setToDT(formatForInput(now).replace("T", " "));
-};*/
+
 const setQuickFilter = (hours) => {
   const now = new Date();
   const past = new Date(now.getTime() - hours * 60 * 60 * 1000);
   
   const formatForInput = (d) => {
     const pad = (n) => n.toString().padStart(2, '0');
-    // d.getFullYear() سيعطيك 4 أرقام، نستخدم slice لضمان عدم الزيادة مستقبلاً
     const year = d.getFullYear().toString().slice(-4); 
     return `${year}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
@@ -123,7 +100,6 @@ const setQuickFilter = (hours) => {
   setToDT(formatForInput(now).replace("T", " "));
 };
 
-  /* Resolve patient hash */
   useEffect(() => {
     (async () => {
       const sp = new URLSearchParams(location.search);
@@ -169,11 +145,9 @@ const setQuickFilter = (hours) => {
 
         const data = snap.docs.map((d) => {
           const raw = d.data();
-          //const createdAtTS = raw?.createdAt?.toDate?.() || null;
           const createdAtTS =
   raw?.createdAt?.toDate?.() ||
   (raw?.createdAt?.seconds ? new Date(raw.createdAt.seconds * 1000) : null);
-///////////////////////////
           return { id: d.id, ...raw, createdAtTS };
         });
 
@@ -200,7 +174,6 @@ let from = parseDTLocal(fromDT);
 let to = parseDTLocal(toDT);
 
 
-// لو المستخدم عكسهم
 if (from && to && from > to) {
   const tmp = from;
   from = to;
@@ -211,7 +184,6 @@ if (from) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS >= from);
 if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
 
 
-  // فلترة باسم الدواء (اللي كانت موجودة)
   const v = qText.trim().toLowerCase();
   if (v) {
     rows = rows.filter((r) =>
@@ -222,14 +194,6 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
   return rows;
 }, [list, qText, fromDT, toDT]);
 
-/*
-  const filtered = useMemo(() => {
-    const v = qText.trim().toLowerCase();
-    if (!v) return list;
-    return list.filter((r) =>
-      (r.medicineLabel || r.medicineName || "").toLowerCase().includes(v)
-    );
-  }, [list, qText]);*/
 
   const total = filtered.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -237,7 +201,6 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = filtered.slice(start, end);
 
-  //useEffect(() => setPage(0), [qText]);
   useEffect(() => setPage(0), [qText, fromDT, toDT]);
 //
   useEffect(() => setPage((p) => Math.min(p, pageCount - 1)), [pageCount]);
@@ -247,7 +210,6 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
       {/* Back button in header area */}
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-4">
-          <img src="/Images/TrustDose-pill.png" alt="TrustDose Capsule" style={{ width: 56, height: "auto" }} />
           <h1 className="text-2xl font-bold" style={{ color: C.ink }}>
             {pageRole === "pharmacy" ? "Prescriptions (Pharmacy)" : "Prescriptions"}{" "}
             {patientName ? `for ${patientName}` : ""}
@@ -290,7 +252,6 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
   <div className="bg-white/95 backdrop-blur border rounded-2xl shadow-sm p-4">
     <div className="flex flex-col lg:flex-row lg:items-center gap-4">
       
-      {/* Quick Presets - الأزرار السريعة المهمة للنظام الطبي */}
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => {
@@ -326,10 +287,9 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
           {/* حقل From */}
 <input
   type="datetime-local"
-  max="9999-12-31T23:59" // تحديد سقف للسنة بـ 4 أرقام
+  max="9999-12-31T23:59"
   value={fromDT.replace(" ", "T")}
   onChange={(e) => {
-    // نأخذ أول 16 حرفاً فقط لضمان عدم تمدد النص
     const val = e.target.value.slice(0, 16); 
     setFromDT(val.replace("T", " "));
   }}
@@ -341,7 +301,6 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
         <span className="text-gray-400 text-sm">to</span>
 
         <div className="relative flex-1 min-w-[180px]">
-         {/* حقل To */}
 <input
   type="datetime-local"
   max="9999-12-31T23:59"

@@ -604,27 +604,22 @@ export default function Doctor() {
   return (
     <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-6 py-6 md:py-8">
       {(profile.name || profile.healthFacility || profile.speciality) && (
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img
-              src="/Images/TrustDose-pill.png"
-              alt="TrustDose Capsule"
-              style={{ width: 64, height: "auto" }}
-            />
-            <div>
-              <div className="font-extrabold text-2xl" style={{ color: "#334155" }}>
-                {profile?.name ? `Welcome, Dr. ${profile.name}` : "Welcome, Doctor"}
-              </div>
-              {(profile?.healthFacility || profile?.speciality) && (
-                <div className="text-sm text-gray-600">
-                  {profile?.healthFacility || ""}
-                  {profile?.healthFacility && profile?.speciality ? " • " : ""}
-                  {profile?.speciality || ""}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <div className="mb-4">
+  <div className="font-extrabold text-2xl" style={{ color: "#334155" }}>
+    {profile?.name ? `Welcome, Dr. ${profile.name}` : "Welcome, Doctor"}
+  </div>
+
+  <div className="mt-3 mb-3 h-px w-full bg-gray-200" />
+
+  {(profile?.healthFacility || profile?.speciality) && (
+    <div className="text-sm text-gray-600">
+      {profile?.healthFacility || ""}
+      {profile?.healthFacility && profile?.speciality ? " • " : ""}
+      {profile?.speciality || ""}
+    </div>
+  )}
+</div>
+
       )}
 
       <section className="space-y-6">
