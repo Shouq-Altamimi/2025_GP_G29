@@ -217,7 +217,6 @@ function formatFsCreatedAt(v) {
   return base.replace(",", "") + " UTC+3";
 }
 
-// ===== Date/Time filter helpers (same as Logistics) =====
 function parseDTLocal(v) {
   if (!v || typeof v !== "string") return null;
   const cleaned = v.trim().replace("T", " ");
@@ -255,10 +254,8 @@ function setQuickFilterRange(hours, setFromDT, setToDT) {
 }
 
 function rowCreatedDate(row) {
-  // Prefer Firestore Date object if available
   if (row?.createdAtTS instanceof Date && !isNaN(row.createdAtTS)) return row.createdAtTS;
 
-  // If createdAt exists as ISO/string
   if (row?.createdAt) {
     const d = new Date(String(row.createdAt));
     if (d instanceof Date && !isNaN(d)) return d;
@@ -281,7 +278,6 @@ function PickUpSection({ setRxs, q, setQ, addNotification }) {
 
   const [dispensingId, setDispensingId] = useState(null);
 
-  // --- Date/Time filter (same as Logistics) ---
 const [fromDT, setFromDT] = useState("");
 const [toDT, setToDT] = useState("");
 
@@ -350,7 +346,7 @@ const [toDT, setToDT] = useState("");
       notes: data.notes || "",
 
       doctorName: docName,
-      doctorPhone: docPhone, // 📌 فقط نسخة احتياطية، لكن العرض حيكون من doctors
+      doctorPhone: docPhone,
       doctorFacility: data.doctorFacility || "",
 
       frequency: freq,
@@ -387,10 +383,9 @@ const [toDT, setToDT] = useState("");
     setResults([]);
     setError("");
     setInfoMsg("");
-    setPage(0); // reset pagination on input change
+    setPage(0); 
   }
 
-  // ✅ فنكشن تقرأ رقم الدكتور من جدول doctors بالاسم
   async function enrichWithDoctorPhone(list) {
     const cache = new Map(); // name -> phone
     const out = [];
@@ -715,12 +710,6 @@ const filteredResults = useMemo(() => {
 }, [results, fromDT, toDT]);
 
 
-  /*const total = results.length;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const start = page * PAGE_SIZE;
-  const end = Math.min(start + PAGE_SIZE, total);
-  const pageItems = results.slice(start, end);
-  */
   const total = filteredResults.length;
 const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 const start = page * PAGE_SIZE;
@@ -728,7 +717,6 @@ const end = Math.min(start + PAGE_SIZE, total);
 const pageItems = filteredResults.slice(start, end);
 
 
-  //React.useEffect(() => setPage(0), [JSON.stringify(results)]);
 
   React.useEffect(() => setPage(0), [JSON.stringify(results), fromDT, toDT]);
 

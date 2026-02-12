@@ -391,11 +391,7 @@ const isHistActive = location.pathname.startsWith("/pharmacy/history");
       {isPharmacyPage && !isNotifActive && (
   <div className="mx-auto w-full max-w-6xl px-4 md:px-6 mt-4">
     <div className="mb-6 flex items-center gap-3">
-      <img
-        src="/Images/TrustDose-pill.png"
-        alt="TrustDose Capsule"
-        style={{ width: 64, height: "auto" }}
-      />
+   
       <div>
         <h1 className="font-extrabold text-[24px]" style={{ color: "#334155" }}>
           {pharmacy?.pharmacyName || pharmacy?.name
@@ -568,7 +564,7 @@ function Row({ label, value }) {
 }
 
 function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
-  // Phone
+
   const [phone, setPhone] = useState(pharmacy?.phone || "");
   const [initialPhone, setInitialPhone] = useState(pharmacy?.phone || "");
   const [phoneError, setPhoneError] = useState("");
@@ -672,7 +668,7 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
     }
   }
 
-  // Email
+
   const hasEmail = !!pharmacy?.email;
   const [emailInput, setEmailInput] = useState("");
   const [emailMsg, setEmailMsg] = useState("");
@@ -752,7 +748,7 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
           </div>
 
           <div className="space-y-5 text-sm" aria-live="polite">
-            {/* Pharmacy Info */}
+          
             <div className="rounded-xl border bg-white p-4">
               <div
                 className="text-base font-semibold mb-2"
@@ -1026,7 +1022,7 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
               </div>
             </div>
 
-            {/* Password (only if email exists) */}
+            
             {hasEmail && (
               <PasswordResetSection
                 pharmacyDocId={pharmacyDocId}
@@ -1040,7 +1036,7 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
   );
 }
 
-/* Password Reset */
+
 function PasswordResetSection({ pharmacyDocId, onSaved }) {
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);

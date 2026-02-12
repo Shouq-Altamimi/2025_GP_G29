@@ -119,7 +119,7 @@ function RowItem({ icon, label, value }) {
 }
 
 export default function PharmacyHistory() {
-  const [filter, setFilter] = useState("all"); // all | sensitive | nonsensitive
+  const [filter, setFilter] = useState("all"); 
   const [expanded, setExpanded] = useState(() => new Set());
 
   const [qText, setQText] = useState("");

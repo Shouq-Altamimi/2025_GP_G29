@@ -172,7 +172,6 @@ export default function PendingOrders({ pharmacyId }) {
     return () => (mounted = false);
   }, [pharmacyId, setPageError]);
 
-  // ✅ GROUPING: اجمع حسب prescriptionId (كرت واحد + زر واحد)
   const groups = React.useMemo(() => {
     const map = new Map();
 
@@ -257,7 +256,6 @@ export default function PendingOrders({ pharmacyId }) {
         signer
       );
 
-      // ✅ on-chain: نفّذ receive لكل onchainId داخل المجموعة
       let lastTxHash = null;
       const txHashes = [];
       for (const idStr of g.onchainIds) {
@@ -383,7 +381,6 @@ export default function PendingOrders({ pharmacyId }) {
 
               const isProcessing = processingId === String(g.prescriptionId);
 
-              // ✅ Dosage summary (أول 2 + عدد الباقي)
               const dosageSummary = (g.meds || []).slice(0, 2).map((m) => {
                 const dose = m.dose || "-";
                 const freq = m.frequency || "-";
@@ -444,7 +441,6 @@ export default function PendingOrders({ pharmacyId }) {
                         {prescriber} {facility}
                       </span>
                     </div>
-{/* ✅ Dosage per medicine with label */}
 <div className="mt-1 space-y-1">
   {(g.meds || []).slice(0, 2).map((m, idx) => {
     const dose = m.dose || "-";
@@ -472,7 +468,6 @@ export default function PendingOrders({ pharmacyId }) {
 </div>
 
 
-                    {/* لو أكثر من 2 نوضح أنه فيه زيادة */}
                     {(g.meds || []).length > 2 && (
                       <div className="text-xs text-gray-500 mt-1">
                         +{g.meds.length - 2} more dosages

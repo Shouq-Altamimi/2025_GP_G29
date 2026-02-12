@@ -53,7 +53,6 @@ function formatFsTimestamp(v) {
   return String(v);
 }
 
-// ===== Date/Time Filter (same as Logistics) =====
 function parseDTLocal(v) {
   if (!v || typeof v !== "string") return null;
   const cleaned = v.trim().replace("T", " ");
@@ -405,7 +404,6 @@ export default function DeliveryOrders({ pharmacyId }) {
 
       await Promise.all(valid.map(({ ref }) => updateDoc(ref, updatePayload)));
 
-      // نشيل كل كروت المجموعة من الستيت
       const docIds = new Set(g.meds.map((x) => x._docId));
       setRows((arr) => arr.filter((x) => !docIds.has(x._docId)));
 
@@ -499,7 +497,6 @@ export default function DeliveryOrders({ pharmacyId }) {
           </div>
         )}
 
-        {/* Date/Time Filter Bar */}
         <div className="sticky top-0 z-30 mb-6">
           <div className="bg-white/95 backdrop-blur border rounded-2xl shadow-sm p-4">
             <div className="flex flex-col lg:flex-row lg:items-center gap-4">
