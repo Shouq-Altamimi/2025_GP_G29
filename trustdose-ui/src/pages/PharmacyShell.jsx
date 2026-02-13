@@ -481,7 +481,7 @@ const isHistActive = location.pathname.startsWith("/pharmacy/history");
                 <span>Pending Orders</span>
               </DrawerItem>
 
-              {/* ✅ Added Notifications in sidebar */}
+
               <DrawerItem
                 active={isNotifActive}
                 onClick={() => {

@@ -62,10 +62,6 @@ function isValidDT(v) {
   return true;
 }
 
-
-
-/////////
-
 export default function PrescriptionsPage({ role = "doctor", onDispense, dispensingId }) {
   const location = useLocation();
   const state = location.state;
@@ -133,7 +129,6 @@ const setQuickFilter = (hours) => {
     })();
   }, [location.search]);
 
-  /*Fetch prescriptions */
   useEffect(() => {
     if (!natHash) return;
     (async () => {
@@ -167,7 +162,6 @@ const setQuickFilter = (hours) => {
     })();
   }, [natHash]);
 
-  /////////////////////////////neww//////////
   const filtered = useMemo(() => {
   let rows = list;
 let from = parseDTLocal(fromDT);
@@ -207,7 +201,7 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-3 md:px-5 pt-5 pb-10 min-h-[90vh] flex flex-col">
-      {/* Back button in header area */}
+   
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold" style={{ color: C.ink }}>
@@ -247,7 +241,7 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
         />
       </div>
 
-      {/* Dynamic Top Filter Bar */}
+   
 <div className="sticky top-0 z-30 mb-6">
   <div className="bg-white/95 backdrop-blur border rounded-2xl shadow-sm p-4">
     <div className="flex flex-col lg:flex-row lg:items-center gap-4">
@@ -281,10 +275,10 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
 
       <div className="h-8 w-[1px] bg-gray-200 hidden lg:block"></div>
 
-      {/* Date Inputs */}
+    
       <div className="flex flex-1 flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[180px]">
-          {/* حقل From */}
+        
 <input
   type="datetime-local"
   max="9999-12-31T23:59"
@@ -437,7 +431,6 @@ if (to) rows = rows.filter((r) => r.createdAtTS && r.createdAtTS <= to);
         )}
       </div>
 
-      {/* Pagination */}
       <div className="mt-auto pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-gray-100">
         <div className="text-sm text-gray-700">Showing {end} out of {total} prescriptions</div>
 
