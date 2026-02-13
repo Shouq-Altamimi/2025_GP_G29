@@ -16,6 +16,7 @@ import {
   updateDoc,
   deleteField,
   serverTimestamp,
+    onSnapshot,
 } from "firebase/firestore";
 import {
   getAuth,
@@ -241,6 +242,9 @@ export default function PShell() {
   const [showProfile, setShowProfile] = useState(false);
   const [patient, setPatient] = useState(null);
   const [patientDocId, setPatientDocId] = useState(null);
+  const isPatientHome = location.pathname === "/patient";
+const [unreadCount, setUnreadCount] = useState(0);
+
 
   useEffect(() => {
     (async () => {
@@ -285,6 +289,24 @@ export default function PShell() {
   }, []);
 
   useEffect(() => {
+  if (!patientDocId) return;
+
+  const qy = query(
+    collection(db, "notifications"),
+    where("toRole", "==", "patient"),
+    where("toPatientDocId", "==", String(patientDocId)),
+    where("read", "==", false)
+  );
+
+  const unsub = onSnapshot(qy, (snap) => {
+    setUnreadCount(snap.size);
+  });
+
+  return () => unsub();
+}, [patientDocId]);
+
+
+  useEffect(() => {
     const openProfile = () => setShowProfile(true);
     window.addEventListener("openPatientProfile", openProfile);
     return () => window.removeEventListener("openPatientProfile", openProfile);
@@ -299,12 +321,30 @@ export default function PShell() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header
-        hideMenu={false}
-        onMenuClick={() => {
-          if (isPatientPage && patientDocId) setOpen(true);
-        }}
-      />
+     <Header
+  hideMenu={false}
+  onMenuClick={() => {
+    if (isPatientPage && patientDocId) setOpen(true);
+  }}
+  rightNode={
+    isPatientHome ? (
+      <button
+        type="button"
+        onClick={() => navigate("/patient/notifications")}
+        className="relative h-10 w-10 grid place-items-center rounded-lg hover:bg-black/[0.03]"
+        aria-label="Notifications"
+      >
+        <Bell size={20} style={{ color: C.ink }} />
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[11px] font-bold rounded-full bg-red-500 text-white">
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        )}
+      </button>
+    ) : null
+  }
+/>
+
 
       <div className="flex-1">
         <Outlet />
