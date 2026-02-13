@@ -172,6 +172,7 @@ export default function PendingOrders({ pharmacyId }) {
     return () => (mounted = false);
   }, [pharmacyId, setPageError]);
 
+ 
   const groups = React.useMemo(() => {
     const map = new Map();
 
@@ -256,6 +257,7 @@ export default function PendingOrders({ pharmacyId }) {
         signer
       );
 
+     
       let lastTxHash = null;
       const txHashes = [];
       for (const idStr of g.onchainIds) {
@@ -266,7 +268,7 @@ export default function PendingOrders({ pharmacyId }) {
         txHashes.push(txHash);
       }
 
-      // ✅ Firestore: حدّث كل docs داخل المجموعة
+     
       await Promise.all(
         g.meds.map((r) =>
           updateDoc(doc(db, "prescriptions", r._docId), {
@@ -274,8 +276,8 @@ export default function PendingOrders({ pharmacyId }) {
             dispensedAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
             logisticsReceivedBy: logisticsAddr,
-            logisticsReceiveTx: lastTxHash, // نفس حقل الكود الأصلي
-            // إذا تبين تحفظين كل التراكنز: logisticsReceiveTxs: txHashes
+            logisticsReceiveTx: lastTxHash, 
+          
           })
         )
       );
@@ -283,7 +285,7 @@ export default function PendingOrders({ pharmacyId }) {
       const docIds = new Set(g.meds.map((x) => x._docId));
       setRows((old) => old.filter((x) => !docIds.has(x._docId)));
 
-      // ✅ نفس عنوان/رسالة البوب-أب
+     
       setSuccessModal({
         title: "Prescription dispensed successfully",
         message: "The prescription has been dispensed and handed over to logistics.",
@@ -381,6 +383,7 @@ export default function PendingOrders({ pharmacyId }) {
 
               const isProcessing = processingId === String(g.prescriptionId);
 
+          
               const dosageSummary = (g.meds || []).slice(0, 2).map((m) => {
                 const dose = m.dose || "-";
                 const freq = m.frequency || "-";
@@ -441,6 +444,7 @@ export default function PendingOrders({ pharmacyId }) {
                         {prescriber} {facility}
                       </span>
                     </div>
+
 <div className="mt-1 space-y-1">
   {(g.meds || []).slice(0, 2).map((m, idx) => {
     const dose = m.dose || "-";
@@ -468,6 +472,7 @@ export default function PendingOrders({ pharmacyId }) {
 </div>
 
 
+                    
                     {(g.meds || []).length > 2 && (
                       <div className="text-xs text-gray-500 mt-1">
                         +{g.meds.length - 2} more dosages

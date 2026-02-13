@@ -1,3 +1,4 @@
+// src/pages/LogisticsNotifications.jsx
 "use client";
 
 import React from "react";
@@ -11,7 +12,10 @@ import {
   getDocs,
   doc,
   getDoc,
+  setDoc,
   updateDoc,
+  serverTimestamp,
+  limit,
 } from "firebase/firestore";
 
 import { Loader2, Bell, Clock, CheckCircle2, AlertCircle } from "lucide-react";
@@ -59,11 +63,11 @@ async function resolveLogisticsDocId() {
 
   if (!lgId) return null;
 
-  
+  // 1) Try by document ID
   const byId = await getDoc(doc(db, "logistics", String(lgId)));
   if (byId.exists()) return String(lgId);
 
- 
+  // 2) Try by LogisticsID field
   const col = collection(db, "logistics");
   const qs = await getDocs(query(col, where("LogisticsID", "==", String(lgId))));
   if (!qs.empty) return qs.docs[0].id;
@@ -78,26 +82,10 @@ export default function LogisticsNotifications() {
 
   const [listenErr, setListenErr] = React.useState("");
 
-  
-  const [virtualItems, setVirtualItems] = React.useState([]);
+  // ✅ إشعارات حقيقية من Firestore
+  const [items, setItems] = React.useState([]);
 
- 
-  const [virtualReadSet, setVirtualReadSet] = React.useState(() => {
-    try {
-      const raw = localStorage.getItem("lg_virtual_read") || "[]";
-      return new Set(JSON.parse(raw));
-    } catch {
-      return new Set();
-    }
-  });
-
-  const persistVirtualRead = React.useCallback((setObj) => {
-    try {
-      localStorage.setItem("lg_virtual_read", JSON.stringify(Array.from(setObj)));
-    } catch {}
-  }, []);
-
- 
+  // Resolve logistics doc id + header
   React.useEffect(() => {
     let mounted = true;
 
@@ -125,136 +113,164 @@ export default function LogisticsNotifications() {
     return () => (mounted = false);
   }, []);
 
+  // =========================
+  // A) ✅ توليد إشعارات 24h وتخزينها في notifications
+  // =========================
+  React.useEffect(() => {
+    if (!logisticsDocId) return;
 
-React.useEffect(() => {
-  if (!logisticsDocId) return;
+    let unsub = null;
+    let canceled = false;
 
-  setListenErr("");
-  setLoading(true);
+    const qRx = query(
+      collection(db, "prescriptions"),
+      where("deliveryConfirmed", "==", false)
+    );
 
-  let unsub = null;
-  let canceled = false;
-
-  const computeVirtual = (snap) => {
-    const now = Date.now();
-    const cutoff24 = now - 24 * 60 * 60 * 1000;
-
-    const v = [];
-
-    snap.forEach((d) => {
-      const rx = d.data() || {};
-      const docId = d.id;
-
-      if (rx.deliveryConfirmed === true) return;
-      if (rx.logisticsAccepted !== true) return;
-
-      const acceptedMs = toMs(rx.logisticsAcceptedAt);
-      if (!acceptedMs) return;
-
-      if (acceptedMs > cutoff24) return;
-
-      const prescriptionId =
-        rx.prescriptionID ||
-        rx.prescriptionId ||
-        rx.prescriptionNum ||
-        rx.prescriptionNumber ||
-        docId;
-
-      const vid = `v24_${docId}`;
-      const isReadVirtual = virtualReadSet.has(vid);
-
-      v.push({
-        __virtual: true,
-        id: vid,
-        type: "DELIVERY_OVERDUE_24H",
-        orderId: docId,
-        prescriptionID: prescriptionId,
-        createdAt: rx.logisticsAcceptedAt,
-        read: isReadVirtual ? true : false,
-        title: "Delivery overdue (24h)",
-        message: `Prescription ${prescriptionId} has not been completed within 24 hours.`,
-      });
-    });
-
-   
-    v.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
-    setVirtualItems(v);
-    setLoading(false);
-  };
-
-  const attach = (qq, label) => {
     unsub = onSnapshot(
-      qq,
-      (snap) => {
+      qRx,
+      async (snap) => {
         if (canceled) return;
-        computeVirtual(snap);
-        setListenErr("");
+
+        const now = Date.now();
+        const cutoff24 = now - 24 * 60 * 60 * 1000;
+
+        const tasks = [];
+
+        snap.forEach((d) => {
+          const rx = d.data() || {};
+          const orderId = d.id;
+
+          if (rx.deliveryConfirmed === true) return;
+          if (rx.logisticsAccepted !== true) return;
+
+          const acceptedMs = toMs(rx.logisticsAcceptedAt);
+          if (!acceptedMs) return;
+          if (acceptedMs > cutoff24) return; // 아직 ما تعدّت 24h
+
+          const prescriptionId =
+            rx.prescriptionID ||
+            rx.prescriptionId ||
+            rx.prescriptionNum ||
+            rx.prescriptionNumber ||
+            orderId;
+
+          // ✅ ID ثابت عشان ما تتكرر (ويكون لكل وصفة إشعار واحد)
+          const notifId = `lg24_${logisticsDocId}_${orderId}`;
+          const notifRef = doc(db, "notifications", notifId);
+
+          tasks.push(
+            (async () => {
+              try {
+                const existsSnap = await getDoc(notifRef);
+                if (existsSnap.exists()) return;
+
+                await setDoc(notifRef, {
+                  toRole: "logistics",
+                  toLogisticsDocId: logisticsDocId,
+
+                  type: "DELIVERY_OVERDUE_24H",
+                  title: "Delivery overdue (24h)",
+                  message: `Prescription ${prescriptionId} has not been completed within 24 hours.`,
+
+                  orderId,
+                  prescriptionID: String(prescriptionId),
+
+                  read: false,
+                  createdAt: serverTimestamp(),
+                });
+              } catch (e) {
+                console.error("Create logistics 24h notification failed:", e);
+              }
+            })()
+          );
+        });
+
+        if (tasks.length) await Promise.all(tasks);
       },
       (err) => {
-        console.error(`prescriptions listen error (${label}):`, err);
-
-        const msg = String(err?.message || "").toLowerCase();
-        const isIndex =
-          err?.code === "failed-precondition" ||
-          msg.includes("requires an index") ||
-          msg.includes("index");
-
-       
-        if (isIndex && label === "ordered") {
-          try {
-            if (unsub) unsub();
-          } catch {}
-          attach(plainQ, "plain");
-          return;
-        }
-
-    
-        setLoading(false);
-        setVirtualItems([]);
+        console.error("prescriptions listen error (24h writer):", err);
+        // ما نوقف الصفحة، بس نوضح
         setListenErr("Missing or insufficient permissions (rules).");
       }
     );
-  };
 
-  
-  const orderedQ = query(
-    collection(db, "prescriptions"),
-    where("deliveryConfirmed", "==", false),
-    orderBy("updatedAt", "desc")
-  );
+    return () => {
+      canceled = true;
+      try {
+        if (unsub) unsub();
+      } catch {}
+    };
+  }, [logisticsDocId]);
 
- 
-  const plainQ = query(
-    collection(db, "prescriptions"),
-    where("deliveryConfirmed", "==", false)
-  );
+  // =========================
+  // B) ✅ قراءة إشعارات اللوجستك من notifications
+  // =========================
+  React.useEffect(() => {
+    if (!logisticsDocId) return;
 
-  attach(orderedQ, "ordered");
+    setListenErr("");
+    setLoading(true);
 
-  return () => {
-    canceled = true;
-    try {
-      if (unsub) unsub();
-    } catch {}
-  };
-}, [logisticsDocId, virtualReadSet]);
+    let unsub = null;
 
+    const base = [
+      where("toRole", "==", "logistics"),
+      where("toLogisticsDocId", "==", logisticsDocId),
+    ];
 
-  const allItems = virtualItems;
+    const orderedQ = query(
+      collection(db, "notifications"),
+      ...base,
+      orderBy("createdAt", "desc")
+    );
 
-  const unreadCount = allItems.filter((n) => !(n.read === true || n.read === "true")).length;
+    const plainQ = query(collection(db, "notifications"), ...base);
+
+    const attach = (qq, label) => {
+      unsub = onSnapshot(
+        qq,
+        (snap) => {
+          setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+          setLoading(false);
+          setListenErr("");
+        },
+        (err) => {
+          console.error(`notifications listen error (${label}):`, err);
+
+          const msg = String(err?.message || "").toLowerCase();
+          const isIndex =
+            err?.code === "failed-precondition" ||
+            msg.includes("requires an index") ||
+            msg.includes("index");
+
+          if (isIndex && label === "ordered") {
+            try {
+              if (unsub) unsub();
+            } catch {}
+            attach(plainQ, "plain");
+            return;
+          }
+
+          setLoading(false);
+          setItems([]);
+          setListenErr("Missing or insufficient permissions (rules).");
+        }
+      );
+    };
+
+    attach(orderedQ, "ordered");
+
+    return () => {
+      try {
+        if (unsub) unsub();
+      } catch {}
+    };
+  }, [logisticsDocId]);
+
+  const unreadCount = items.filter((n) => !(n.read === true || n.read === "true")).length;
 
   async function markAsRead(n) {
-    
-    if (n?.__virtual) {
-      const next = new Set(virtualReadSet);
-      next.add(n.id);
-      setVirtualReadSet(next);
-      persistVirtualRead(next);
-      return;
-    }
-
-
     await updateDoc(doc(db, "notifications", n.id), { read: true });
   }
 
@@ -280,7 +296,7 @@ React.useEffect(() => {
           </div>
         )}
 
-     
+        {/* HEADER (بدون كبسولة) */}
         <div className="mb-6 flex items-center">
           <div className="w-full">
             <div className="flex items-start justify-between gap-3">
@@ -300,8 +316,10 @@ React.useEffect(() => {
                 className="px-3 py-1 rounded-full text-sm font-semibold border"
                 style={{
                   color: unreadCount > 0 ? "#DC2626" : C.ink,
-                  borderColor: unreadCount > 0 ? "rgba(220,38,38,0.35)" : "rgba(176,140,193,0.35)",
-                  backgroundColor: unreadCount > 0 ? "rgba(220,38,38,0.08)" : "rgba(176,140,193,0.08)",
+                  borderColor:
+                    unreadCount > 0 ? "rgba(220,38,38,0.35)" : "rgba(176,140,193,0.35)",
+                  backgroundColor:
+                    unreadCount > 0 ? "rgba(220,38,38,0.08)" : "rgba(176,140,193,0.08)",
                 }}
               >
                 Unread: {unreadCount}
@@ -310,8 +328,8 @@ React.useEffect(() => {
           </div>
         </div>
 
-       
-        {allItems.length === 0 && (
+        {/* EMPTY */}
+        {items.length === 0 && (
           <div className="p-8 border rounded-2xl bg-white shadow-sm text-center">
             <div
               className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
@@ -330,9 +348,9 @@ React.useEffect(() => {
         )}
 
         {/* LIST */}
-        {allItems.length > 0 && (
+        {items.length > 0 && (
           <section className="grid grid-cols-1 gap-4 mt-4">
-            {allItems.map((n) => {
+            {items.map((n) => {
               const isOverdue24 = n.type === "DELIVERY_OVERDUE_24H";
               const isUnread = !(n.read === true || n.read === "true");
 
@@ -350,7 +368,9 @@ React.useEffect(() => {
                     <div
                       className="h-11 w-11 rounded-2xl flex items-center justify-center"
                       style={{
-                        backgroundColor: isOverdue24 ? "rgba(220,38,38,0.10)" : "rgba(176,140,193,0.15)",
+                        backgroundColor: isOverdue24
+                          ? "rgba(220,38,38,0.10)"
+                          : "rgba(176,140,193,0.15)",
                       }}
                     >
                       {isOverdue24 ? (

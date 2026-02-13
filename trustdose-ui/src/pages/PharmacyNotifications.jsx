@@ -55,7 +55,9 @@ function toMs(ts) {
   return isNaN(d.getTime()) ? null : d.getTime();
 }
 
+
 function dedupeByRx(notifs) {
+  const map = new Map(); 
   const map = new Map(); 
 
   for (const n of notifs) {
@@ -69,6 +71,7 @@ function dedupeByRx(notifs) {
       map.set(key, {
         ...n,
         id: key, 
+        id: key, 
         __realIds: [],
         __virtualIds: [],
         __anyUnread: isUnread,
@@ -77,12 +80,13 @@ function dedupeByRx(notifs) {
     } else {
       const cur = map.get(key);
 
-   
+    
       if (created > (cur.__maxCreatedAt || 0)) {
         cur.__maxCreatedAt = created;
         cur.createdAt = n.createdAt;
       }
 
+     
       cur.__anyUnread = cur.__anyUnread || isUnread;
     }
 
@@ -318,9 +322,11 @@ export default function PharmacyNotifications() {
     })();
   }, [items]);
 
+
 React.useEffect(() => {
   let unsub = null;
   let canceled = false;
+
 
   const resetOnceRef = new Set();
 
@@ -340,6 +346,7 @@ React.useEffect(() => {
             const rx = d.data() || {};
             const docId = d.id;
 
+      
           if (rx.deliveryConfirmed === true) return;
 
             const prescriptionId =
@@ -361,7 +368,7 @@ React.useEffect(() => {
               type: "DELIVERY_OVERDUE_48H",
               orderId: docId,
               prescriptionID: prescriptionId,
-              // ✅ نستخدم overdue48BaseAt (أو handledAt) بدل logisticsAcceptedAt
+            
               createdAt: rx.overdue48BaseAt || rx.overdue48HandledAt,
               read: isReadVirtual ? true : false,
               title: "Delivery Overdue (48h)",
@@ -370,10 +377,12 @@ React.useEffect(() => {
             return;
           }
 
+          
           const tsMs = toMs(rx.logisticsAcceptedAt);
           if (!tsMs) return;
           if (tsMs > cutoff48) return;
 
+       
           const fixedMessage48 = `Prescription ${prescriptionId} not completed within 48 hours and has been returned to the Delivery Orders list for redispensing.`;
 
             v.push({
@@ -388,25 +397,30 @@ React.useEffect(() => {
               message: fixedMessage48,
             });
 
+        
           if (!resetOnceRef.has(docId)) {
             resetOnceRef.add(docId);
             toReset.push({ docId, baseAt: rx.logisticsAcceptedAt });
           }
         });
 
+
         v.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
         setVirtualItems(v);
 
+       
         if (toReset.length > 0) {
           await Promise.all(
             toReset.map(async ({ docId, baseAt }) => {
               
               try {
+            
   const rxSnap = await getDoc(doc(db, "prescriptions", docId));
   const rxData = rxSnap.exists() ? (rxSnap.data() || {}) : {};
 
   const nid = String(rxData.nationalID || rxData.nationalId || "");
   const patientDocId = String(rxData.patientDocId || "");
+
 
 
                   const pid = String(
@@ -425,12 +439,14 @@ React.useEffect(() => {
                     acceptDeliveryAt: deleteField(),
                     acceptDeliveryTx: deleteField(),
 
+               
                   overdue48BaseAt: baseAt || serverTimestamp(),
 
                   overdue48HandledAt: serverTimestamp(),
                   overdue48Reason: "DELIVERY_NOT_COMPLETED_48H",
                   updatedAt: serverTimestamp(),
                 });
+             
   if (patientDocId) {
     const dupQ = query(
       collection(db, "notifications"),
@@ -478,6 +494,7 @@ React.useEffect(() => {
       );
     };
 
+ 
   const qRef = query(collection(db, "prescriptions"), where("deliveryConfirmed", "==", false));
   attach(qRef);
 

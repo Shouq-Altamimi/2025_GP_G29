@@ -25,7 +25,7 @@ import {
   ChevronUp,
   Pill,
   PackageCheck,
-  Search, // ✅ ADD: search icon
+  Search, 
 } from "lucide-react";
 
 const C = {
@@ -87,7 +87,7 @@ function RowItem({ icon, label, value }) {
   );
 }
 
-// ✅ ADD: helper للبحث (بدون ما نغير أي شي ثاني)
+
 function normalizeText(x) {
   return String(x ?? "").trim().toLowerCase();
 }
@@ -103,7 +103,7 @@ export default function LogisticsHistory() {
   const [hasMore, setHasMore] = useState(true);
   const [fetchingMore, setFetchingMore] = useState(false);
 
-  // ✅ ADD: search state
+
   const [q, setQ] = useState("");
 
   async function loadPage(initial = false) {
@@ -119,7 +119,7 @@ export default function LogisticsHistory() {
 
       let localCursor = initial ? null : cursor;
 
-      // نجيب أكثر لأننا بنفلتر داخل الكلاينت (لتفادي موضوع الـ indexes)
+
       const COL = collection(db, "prescriptions");
 
       let keepGoing = true;
@@ -183,7 +183,7 @@ export default function LogisticsHistory() {
     return base;
   }, [rows, filter]);
 
-  // ✅ ADD: search فوق نتائج الفلتر
+ 
   const filteredWithSearch = useMemo(() => {
     const t = normalizeText(q);
     if (!t) return filtered;
@@ -290,7 +290,7 @@ export default function LogisticsHistory() {
           </div>
         </div>
 
-        {/* ✅ ADD: Search input */}
+       
         <div className="mt-4">
           <div className="relative w-full sm:w-[520px]">
             <Search

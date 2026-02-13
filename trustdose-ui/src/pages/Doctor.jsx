@@ -370,8 +370,6 @@ export default function Doctor() {
     return hideSecond ? [forms[0]] : forms;
   }
 
-  //  1) وصفتين = نفس prescriptionID
-  //  2) إذا واحد Sensitive = الاثنين Sensitive
   async function confirmAndSave() {
     if (!selectedPatient) return setRxMsg("Please search for a patient first.");
 
@@ -430,7 +428,7 @@ export default function Doctor() {
       );
       const sharedSensitivity = anySensitive ? "Sensitive" : "NonSensitive";
 
-      // ===== ON-CHAIN (✅ batch when 2 prescriptions) =====
+      
       let perItemTxHashes = [];
       let onchainIds = [];
 
@@ -503,7 +501,7 @@ export default function Doctor() {
         }
       }
 
-      // ===== FIRESTORE: وثيقة لكل وصفة =====
+  
       for (let i = 0; i < vf2.length; i++) {
         const f = vf2[i];
 
@@ -528,7 +526,7 @@ export default function Doctor() {
           [F.patientDisplayId]: natId ? natId.slice(-4) : "",
           [F.patientNationalIdHash]: "0x" + natIdHashHex,
 
-          //  helpful fields
+      
           patientDocId: selectedPatient.docId || "",
           patientName: selectedPatient.name || "",
           patientPhone: selectedPatient.phone || "",
@@ -543,7 +541,7 @@ export default function Doctor() {
           [F.prescriptionID]: sharedPrescriptionID,
           [F.sensitivity]: sharedSensitivity,
 
-          // keep flags 
+       
           dispensed: false,
           acceptDelivery: false,
           logisticsAccepted: false,

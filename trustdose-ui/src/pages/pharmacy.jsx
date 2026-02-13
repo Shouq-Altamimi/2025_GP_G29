@@ -217,6 +217,7 @@ function formatFsCreatedAt(v) {
   return base.replace(",", "") + " UTC+3";
 }
 
+
 function parseDTLocal(v) {
   if (!v || typeof v !== "string") return null;
   const cleaned = v.trim().replace("T", " ");
@@ -233,7 +234,7 @@ function formatLocalYYYYMMDD(d) {
 }
 
 function setTodayRange(setFromDT, setToDT) {
-  const d = new Date(); // local time
+  const d = new Date(); 
   const today = formatLocalYYYYMMDD(d);
   setFromDT(`${today} 00:00`);
   setToDT(`${today} 23:59`);
@@ -254,8 +255,10 @@ function setQuickFilterRange(hours, setFromDT, setToDT) {
 }
 
 function rowCreatedDate(row) {
+
   if (row?.createdAtTS instanceof Date && !isNaN(row.createdAtTS)) return row.createdAtTS;
 
+ 
   if (row?.createdAt) {
     const d = new Date(String(row.createdAt));
     if (d instanceof Date && !isNaN(d)) return d;
@@ -346,7 +349,7 @@ const [toDT, setToDT] = useState("");
       notes: data.notes || "",
 
       doctorName: docName,
-      doctorPhone: docPhone,
+      doctorPhone: docPhone, 
       doctorFacility: data.doctorFacility || "",
 
       frequency: freq,
@@ -384,10 +387,12 @@ const [toDT, setToDT] = useState("");
     setError("");
     setInfoMsg("");
     setPage(0); 
+    setPage(0); 
   }
 
+  
   async function enrichWithDoctorPhone(list) {
-    const cache = new Map(); // name -> phone
+    const cache = new Map();
     const out = [];
 
     for (const item of list) {
@@ -452,7 +457,7 @@ const [toDT, setToDT] = useState("");
     try {
       const col = collection(db, "prescriptions");
 
-      // Prescription ID lookup
+     
       if (rxID) {
         const snap = await getDocs(
           query(col, where("prescriptionID", "==", rxID))
@@ -481,7 +486,7 @@ const [toDT, setToDT] = useState("");
         return;
       }
 
-      // National ID lookup
+     
       const tasks = [
         getDocs(
           query(

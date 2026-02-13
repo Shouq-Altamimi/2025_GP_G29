@@ -390,7 +390,7 @@ const [medicinesMap, setMedicinesMap] = useState({});
   })();
 }, []);
 
-    // ✅ دمج الوصفات: نجمع كل الأدوية تحت نفس رقم الوصفة
+  
   const groupedRx = useMemo(() => {
     const map = new Map();
 
@@ -400,7 +400,7 @@ const [medicinesMap, setMedicinesMap] = useState({});
           p.prescriptionId ||
           p.rxNumber ||
           p.prescriptionNumber ||
-          p.id // fallback
+          p.id 
       );
 
     for (const p of rx.items || []) {
@@ -410,14 +410,14 @@ const [medicinesMap, setMedicinesMap] = useState({});
     }
 
     const out = Array.from(map.entries()).map(([key, meds]) => {
-      // ترتيب الأدوية داخل نفس الوصفة (اختياري)
+     
       meds.sort((a, b) =>
         String(a.medicineLabel || a.medicineName || "").localeCompare(
           String(b.medicineLabel || b.medicineName || "")
         )
       );
 
-      // نخلي "base" أحدث سجل داخل المجموعة (علشان التاريخ وغيره يكون منطقي)
+    
       const base =
         meds.reduce((best, cur) => {
           const bt = best?.createdAt?.toMillis?.() || 0;
@@ -425,19 +425,19 @@ const [medicinesMap, setMedicinesMap] = useState({});
           return ct > bt ? cur : best;
         }, meds[0]) || meds[0] || {};
 
-      // حالة الوصفة: إذا أي دواء dispensed نعتبر الوصفة dispensed
+   
       const anyDispensed = meds.some((m) => m?.dispensed);
 
       return {
         ...base,
-        id: key,      // ✅ مهم: نخلي id هو رقم الوصفة علشان toggleOpen يشتغل على المجموعة
-        meds,         // ✅ هنا الأدوية المدموجة
+        id: key,      
+        meds,         
         dispensed: anyDispensed,
         _medCount: meds.length,
       };
     });
 
-    // ترتيب الوصفات من الأحدث
+
     out.sort(
       (a, b) =>
         (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)
@@ -613,7 +613,7 @@ const [medicinesMap, setMedicinesMap] = useState({});
                 const doctor = p._doctorName || "—";
                 const pharmacy = p._pharmacyName || "—";
                 const logistics = p._logisticsName || "—";
-                // ✅ helper: sensitivity from medicinesMap (fallback to rx field)
+               
 const resolveMedSensitivity = (m) => {
   const medKey = String(m.medicineName || m.medicineLabel || "")
     .trim()
@@ -623,7 +623,7 @@ const resolveMedSensitivity = (m) => {
   return normalizeSensitivity(fromDB?.sensitivity || m?.sensitivity) || "Non-Sensitive";
 };
 
-// ✅ rule: if any med in this prescription is Sensitive => whole prescription is Delivery
+
 const groupHasSensitive = (p.meds || [p]).some(
   (mm) => resolveMedSensitivity(mm) === "Sensitive"
 );
@@ -634,8 +634,6 @@ const groupHasSensitive = (p.meds || [p]).some(
 //   p.sensitivity ?? (p.meds || []).find((mm) => mm.sensitivity)?.sensitivity;
 
 // const groupSensitivity = normalizeSensitivity(groupSensitivityRaw);
-
-
 
                 const medTitle =
                   p.medicineLabel || p.micineName || p.medicineName || "Prescription";

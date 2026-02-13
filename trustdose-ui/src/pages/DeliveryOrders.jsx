@@ -404,6 +404,7 @@ export default function DeliveryOrders({ pharmacyId }) {
 
       await Promise.all(valid.map(({ ref }) => updateDoc(ref, updatePayload)));
 
+
       const docIds = new Set(g.meds.map((x) => x._docId));
       setRows((arr) => arr.filter((x) => !docIds.has(x._docId)));
 

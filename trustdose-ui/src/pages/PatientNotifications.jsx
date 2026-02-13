@@ -104,7 +104,7 @@ async function resolvePatientDocId() {
     localStorage.getItem("patientID") ||
     "";
 
-  // ✅ إذا فيه cached: لا تقبله إلا إذا يخص نفس المستخدم الحالي
+  
   if (cached && pid) {
     const byId = await getDoc(doc(db, "patients", String(cached)));
     if (byId.exists()) {
@@ -113,10 +113,10 @@ async function resolvePatientDocId() {
         String(d.nationalID || d.nationalId || d.nid || d.NID || "");
 
       if (nid && String(nid) === String(pid)) {
-        return String(cached); // ✅ نفس الشخص
+        return String(cached); 
       }
 
-      // ❌ cached لشخص ثاني → تجاهله
+     
       localStorage.removeItem("patientDocId");
       localStorage.removeItem("patientDocID");
     }
@@ -124,7 +124,7 @@ async function resolvePatientDocId() {
 
   if (!pid) return null;
 
-  // if doc id matches directly
+
   const byId2 = await getDoc(doc(db, "patients", String(pid)));
   if (byId2.exists()) return String(pid);
 
@@ -153,7 +153,7 @@ export default function PatientNotifications() {
   const [items, setItems] = React.useState([]);
   const [listenErr, setListenErr] = React.useState("");
 
-  // Resolve patient doc id + header
+
   React.useEffect(() => {
     let mounted = true;
 
@@ -184,7 +184,7 @@ export default function PatientNotifications() {
     return () => (mounted = false);
   }, []);
 
-  // Real notifications listener (for this patient)
+
   React.useEffect(() => {
     setListenErr("");
 

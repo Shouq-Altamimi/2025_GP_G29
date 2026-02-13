@@ -1,4 +1,3 @@
-// src/pages/LogisticsHeader.jsx
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
@@ -17,6 +16,7 @@ import {
   updateDoc,
   serverTimestamp,
   deleteField,
+  onSnapshot,
 } from "firebase/firestore";
 import {
   Package,
@@ -30,8 +30,8 @@ import {
   CheckCircle,
   XCircle,
   Circle,
-  Bell, 
-   History,
+  Bell,
+  History,
 } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail, signInAnonymously } from "firebase/auth";
 
@@ -222,14 +222,7 @@ function AlertBanner({ children }) {
   );
 }
 
-
-const ALL_USER_COLLECTIONS = [
-  "doctors",
-  "patients",
-  "pharmacies",
-  "logistics",
-  "admins",
-];
+const ALL_USER_COLLECTIONS = ["doctors", "patients", "pharmacies", "logistics", "admins"];
 
 const COMMON_EMAIL_DOMAINS = [
   "gmail.com",
@@ -267,17 +260,11 @@ async function isEmailTakenGlobally(email, selfCollection, selfDocId) {
   const candidates = [raw, raw.toLowerCase()];
   for (const col of ALL_USER_COLLECTIONS) {
     for (const value of candidates) {
-      const qy = query(
-        collection(db, col),
-        where("email", "==", value),
-        fsLimit(1)
-      );
+      const qy = query(collection(db, col), where("email", "==", value), fsLimit(1));
       const snap = await getDocs(qy);
       if (!snap.empty) {
         const d = snap.docs[0];
-        if (!(col === selfCollection && d.id === selfDocId)) {
-          return true;
-        }
+        if (!(col === selfCollection && d.id === selfDocId)) return true;
       }
     }
   }
@@ -288,24 +275,23 @@ async function ensureAuthReady() {
   const auth = getAuth();
   if (!auth.currentUser) {
     try {
-      await auth.signInAnonymously?.() || await signInAnonymously(auth);
+      await auth.signInAnonymously?.() || (await signInAnonymously(auth));
     } catch (e) {
       console.error("Auth Init Error:", e);
     }
   }
 }
 
-
-
 export default function LogisticsHeader() {
   useEffect(() => {
-  ensureAuthReady();
-}, []);
+    ensureAuthReady();
+  }, []);
 
   const location = useLocation();
   const navigate = useNavigate();
 
   const isLogisticsPage = location.pathname.startsWith("/logistics");
+  const isLogisticsHome = location.pathname === "/logistics";
 
   const [open, setOpen] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
@@ -313,6 +299,7 @@ export default function LogisticsHeader() {
   const [docId, setDocId] = useState(null);
 
   const [showEmailAlert, setShowEmailAlert] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     if (!isLogisticsPage) return;
@@ -346,6 +333,23 @@ export default function LogisticsHeader() {
     })();
   }, [isLogisticsPage, location.pathname]);
 
+  useEffect(() => {
+    if (!docId) return;
+
+    const qy = query(
+      collection(db, "notifications"),
+      where("toRole", "==", "logistics"),
+      where("toLogisticsDocId", "==", String(docId)),
+      where("read", "==", false)
+    );
+
+    const unsub = onSnapshot(qy, (snap) => {
+      setUnreadCount(snap.size);
+    });
+
+    return () => unsub();
+  }, [docId]);
+
   function signOut() {
     localStorage.clear();
     sessionStorage.clear();
@@ -359,6 +363,23 @@ export default function LogisticsHeader() {
         onMenuClick={() => {
           if (isLogisticsPage && docId) setOpen(true);
         }}
+        rightNode={
+          isLogisticsHome ? (
+            <button
+              type="button"
+              onClick={() => navigate("/logistics/notifications")}
+              className="relative h-10 w-10 grid place-items-center rounded-lg hover:bg-black/[0.03]"
+              aria-label="Notifications"
+            >
+              <Bell size={20} style={{ color: C.ink }} />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[11px] font-bold rounded-full bg-red-500 text-white">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
+          ) : null
+        }
       />
 
       {showEmailAlert && (
@@ -397,11 +418,7 @@ export default function LogisticsHeader() {
             }}
           >
             <div className="flex items-center justify-between px-4 py-4">
-              <img
-                src="/Images/TrustDose_logo.png"
-                alt="TrustDose"
-                className="h-7 w-auto"
-              />
+              <img src="/Images/TrustDose_logo.png" alt="TrustDose" className="h-7 w-auto" />
               <button
                 onClick={() => setOpen(false)}
                 className="h-9 w-9 grid place-items-center rounded-lg hover:bg-white/20 text-white"
@@ -432,26 +449,29 @@ export default function LogisticsHeader() {
                 <Clock size={18} />
                 <span>Pending Orders</span>
               </DrawerItem>
+
               <DrawerItem
                 active={location.pathname === "/logistics/notifications"}
                 onClick={() => {
                   navigate("/logistics/notifications");
                   setOpen(false);
                 }}
-                >
+              >
                 <Bell size={18} />
                 <span>Notifications</span>
               </DrawerItem>
+
               <DrawerItem
-    active={location.pathname.startsWith("/logistics/history")}
-    onClick={() => {
-      navigate("/logistics/history");
-      setOpen(false);
-    }}
-  >
-    <History size={18} />
-    <span>History</span>
-  </DrawerItem>
+                active={location.pathname.startsWith("/logistics/history")}
+                onClick={() => {
+                  navigate("/logistics/history");
+                  setOpen(false);
+                }}
+              >
+                <History size={18} />
+                <span>History</span>
+              </DrawerItem>
+
               <DrawerItem
                 onClick={() => {
                   setShowAccount(true);
@@ -486,7 +506,6 @@ export default function LogisticsHeader() {
   );
 }
 
-
 function DrawerItem({ children, onClick, active = false, variant = "solid" }) {
   const base =
     "w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium transition-colors";
@@ -506,14 +525,10 @@ function Row({ label, value }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-gray-500 font-medium">{label}</span>
-      <span className="font-medium text-gray-800 text-right">
-        {value || "—"}
-      </span>
+      <span className="font-medium text-gray-800 text-right">{value || "—"}</span>
     </div>
   );
 }
-
-
 
 function AccountModal({ user, docId, onClose, onSaved }) {
   const [phone, setPhone] = useState(user?.phone || "");
@@ -543,31 +558,21 @@ function AccountModal({ user, docId, onClose, onSaved }) {
   }, [user?.phone]);
 
   const canSavePhone =
-    editingPhone &&
-    !saving &&
-    hasTypedPhone &&
-    phone.length === 13 &&
-    phoneInfo.ok &&
-    !phoneError;
+    editingPhone && !saving && hasTypedPhone && phone.length === 13 && phoneInfo.ok && !phoneError;
 
   async function savePhone() {
     const info = validateAndNormalizePhone(phone);
 
     if (!info.ok) {
       setPhoneError(
-        info.reason ||
-          "The phone number you entered isn’t valid. Please check and try again."
+        info.reason || "The phone number you entered isn’t valid. Please check and try again."
       );
       setPhone("+966");
     } else if (!docId) {
-      setPhoneError(
-        "We couldn’t find your logistics record. Please try again."
-      );
+      setPhoneError("We couldn’t find your logistics record. Please try again.");
       setPhone("+966");
     } else if (info.normalized === initialPhone) {
-      setPhoneError(
-        "The phone number you entered is already saved on your profile."
-      );
+      setPhoneError("The phone number you entered is already saved on your profile.");
       setPhone("+966");
     } else {
       try {
@@ -594,9 +599,7 @@ function AccountModal({ user, docId, onClose, onSaved }) {
         }, 1500);
       } catch (e) {
         console.error(e);
-        setPhoneError(
-          "Something went wrong while saving your phone number. Please try again."
-        );
+        setPhoneError("Something went wrong while saving your phone number. Please try again.");
         setPhone("+966");
       } finally {
         setSaving(false);
@@ -609,69 +612,59 @@ function AccountModal({ user, docId, onClose, onSaved }) {
   const [emailLoading, setEmailLoading] = useState(false);
   const hasEmail = !!user?.email;
 
- async function sendVerifyLink() {
-  try {
-    setEmailMsg("");
+  async function sendVerifyLink() {
+    try {
+      setEmailMsg("");
 
-    const v = validateTrustDoseEmail(emailInput);
-    if (!v.ok) {
-      setEmailMsg(v.reason || "Please enter a valid email.");
-      return;
+      const v = validateTrustDoseEmail(emailInput);
+      if (!v.ok) {
+        setEmailMsg(v.reason || "Please enter a valid email.");
+        return;
+      }
+      const email = v.email;
+
+      const taken = await isEmailTakenGlobally(email, "logistics", docId);
+      if (taken) {
+        setEmailMsg("This email is already used in another account. Please use a different email.");
+        return;
+      }
+
+      const BASE = window.location.origin;
+      const params = new URLSearchParams({
+        col: "logistics",
+        doc: String(docId || ""),
+        e: email,
+        redirect: "/logistics",
+      });
+
+      const settings = {
+        url: `${BASE}/auth-email?${params.toString()}`,
+        handleCodeInApp: true,
+      };
+
+      setEmailLoading(true);
+      await sendSignInLinkToEmail(getAuth(), email, settings);
+
+      await updateDoc(doc(db, "logistics", docId), {
+        email: email,
+        updatedAt: serverTimestamp(),
+      });
+
+      localStorage.setItem("td_email_pending", JSON.stringify({ email, ts: Date.now() }));
+
+      setEmailMsg("A verification link has been sent to your email. Open it, then return to the app.");
+    } catch (e) {
+      if (e?.code === "auth/too-many-requests" || e?.code === "auth/quota-exceeded") {
+        setEmailMsg("Too many verification emails were requested. Please try again later.");
+      } else if (e?.code === "auth/invalid-email") {
+        setEmailMsg("Please enter a valid email.");
+      } else {
+        setEmailMsg(`Firebase: ${e?.code || e?.message || "Unable to send verification link."}`);
+      }
+    } finally {
+      setEmailLoading(false);
     }
-    const email = v.email;
-
-    const taken = await isEmailTakenGlobally(email, "logistics", docId);
-    if (taken) {
-      setEmailMsg(
-        "This email is already used in another account. Please use a different email."
-      );
-      return;
-    }
-
-    const BASE = window.location.origin;
-    const params = new URLSearchParams({
-      col: "logistics",
-      doc: String(docId || ""),
-      e: email,
-      redirect: "/logistics",
-    });
-
-    const settings = {
-      url: `${BASE}/auth-email?${params.toString()}`,
-      handleCodeInApp: true,
-    };
-
-    setEmailLoading(true);
-    await sendSignInLinkToEmail(getAuth(), email, settings);
-
-    await updateDoc(doc(db, "logistics", docId), {
-      email: email,
-      updatedAt: serverTimestamp(),
-    });
-
-    localStorage.setItem(
-      "td_email_pending",
-      JSON.stringify({ email, ts: Date.now() })
-    );
-
-    setEmailMsg(
-      "A verification link has been sent to your email. Open it, then return to the app."
-    );
-  } catch (e) {
-    if (e?.code === "auth/too-many-requests" || e?.code === "auth/quota-exceeded") {
-      setEmailMsg("Too many verification emails were requested. Please try again later.");
-    } else if (e?.code === "auth/invalid-email") {
-      setEmailMsg("Please enter a valid email.");
-    } else {
-      setEmailMsg(
-        `Firebase: ${e?.code || e?.message || "Unable to send verification link."}`
-      );
-    }
-  } finally {
-    setEmailLoading(false);
   }
-}
-
 
   return (
     <>
@@ -693,10 +686,7 @@ function AccountModal({ user, docId, onClose, onSaved }) {
 
           <div className="space-y-5 text-sm" aria-live="polite">
             <div className="rounded-xl border bg-white p-4">
-              <div
-                className="text-base font-semibold mb-2"
-                style={{ color: C.ink }}
-              >
+              <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
                 Logistics Provider Info
               </div>
               <div className="space-y-2">
@@ -707,10 +697,7 @@ function AccountModal({ user, docId, onClose, onSaved }) {
             </div>
 
             <div className="rounded-xl border bg-white p-4">
-              <div
-                className="text-base font-semibold mb-2"
-                style={{ color: C.ink }}
-              >
+              <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
                 Contact Info
               </div>
 
@@ -735,9 +722,7 @@ function AccountModal({ user, docId, onClose, onSaved }) {
                 </div>
 
                 {!editingPhone ? (
-                  <div className="font-medium text-gray-900">
-                    {initialPhone || "—"}
-                  </div>
+                  <div className="font-medium text-gray-900">{initialPhone || "—"}</div>
                 ) : (
                   <>
                     <div className="flex items-center gap-2">
@@ -746,22 +731,14 @@ function AccountModal({ user, docId, onClose, onSaved }) {
                         value={phone}
                         onChange={(e) => {
                           let val = e.target.value;
-
                           if (hasArabic(val)) return;
-
                           val = val.replace(/\s/g, "");
-
                           if (!val.startsWith("+966")) {
                             val = "+966" + val.replace(/^\+?966?/, "");
                           }
-
                           const afterPrefix = val.slice(4);
-
-                          if (afterPrefix && !/^[0-9]*$/.test(afterPrefix))
-                            return;
-
+                          if (afterPrefix && !/^[0-9]*$/.test(afterPrefix)) return;
                           if (afterPrefix.length > 9) return;
-
                           setPhone(val);
                           setMsg("");
                           setMsgType("");
@@ -771,27 +748,14 @@ function AccountModal({ user, docId, onClose, onSaved }) {
                           e.preventDefault();
                           let paste = e.clipboardData.getData("text").trim();
                           if (hasArabic(paste)) return;
-
                           paste = paste.replace(/\s/g, "");
-
                           let local = paste;
-
-                          if (local.startsWith("+966")) {
-                            local = local.slice(4);
-                          } else if (local.startsWith("966")) {
-                            local = local.slice(3);
-                          } else if (local.startsWith("05")) {
-                            local = local.slice(1);
-                          }
-
+                          if (local.startsWith("+966")) local = local.slice(4);
+                          else if (local.startsWith("966")) local = local.slice(3);
+                          else if (local.startsWith("05")) local = local.slice(1);
                           local = local.replace(/\D/g, "");
-
-                          if (!local.startsWith("5")) {
-                            local = "5" + local.replace(/^5*/, "");
-                          }
-
+                          if (!local.startsWith("5")) local = "5" + local.replace(/^5*/, "");
                           local = local.slice(0, 9);
-
                           const finalVal = "+966" + local;
                           setPhone(finalVal);
                           setMsg("");
@@ -804,14 +768,10 @@ function AccountModal({ user, docId, onClose, onSaved }) {
                         className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
                         style={{ outlineColor: C.primary }}
                         onFocus={() => {
-                          if (!phone || phone === "") {
-                            setPhone("+966");
-                          }
+                          if (!phone || phone === "") setPhone("+966");
                         }}
                         onBlur={() => {
-                          if (phone === "+966") {
-                            setPhone("");
-                          }
+                          if (phone === "+966") setPhone("");
                         }}
                         onKeyDown={(e) => {
                           const allowedControl = [
@@ -823,35 +783,26 @@ function AccountModal({ user, docId, onClose, onSaved }) {
                             "Home",
                             "End",
                           ];
-
                           if (e.key === " ") {
                             e.preventDefault();
                             return;
                           }
-
                           if (allowedControl.includes(e.key)) {
-                            if (
-                              (e.key === "Backspace" || e.key === "Delete") &&
-                              phone.length <= 4
-                            ) {
+                            if ((e.key === "Backspace" || e.key === "Delete") && phone.length <= 4) {
                               e.preventDefault();
                               return;
                             }
                             return;
                           }
-
                           if (!/^[0-9]$/.test(e.key)) {
                             e.preventDefault();
                             return;
                           }
-
                           if (phone === "+966" && e.key !== "5") {
                             e.preventDefault();
                             return;
                           }
-
                           const afterPrefix = phone.slice(4);
-
                           if (afterPrefix.length >= 9) {
                             e.preventDefault();
                             return;
@@ -877,31 +828,20 @@ function AccountModal({ user, docId, onClose, onSaved }) {
 
                       {hasTypedPhone && !phoneInfo.ok && (
                         <span className="text-rose-600">
-                          {phoneInfo.reason ||
-                            "The phone number you entered isn’t valid yet."}
+                          {phoneInfo.reason || "The phone number you entered isn’t valid yet."}
                         </span>
                       )}
 
                       {hasTypedPhone && phoneInfo.ok && !phoneError && (
-                        <span className="text-emerald-700">
-                          ✓ Valid phone number
-                        </span>
+                        <span className="text-emerald-700">✓ Valid phone number</span>
                       )}
                     </div>
 
-                    {phoneError && (
-                      <div className="mt-1 text-xs text-rose-600">
-                        {phoneError}
-                      </div>
-                    )}
+                    {phoneError && <div className="mt-1 text-xs text-rose-600">{phoneError}</div>}
                   </>
                 )}
 
-                {msgType === "success" && !!msg && (
-                  <div className="text-green-700 font-medium mt-2">
-                    {msg}
-                  </div>
-                )}
+                {msgType === "success" && !!msg && <div className="text-green-700 font-medium mt-2">{msg}</div>}
               </div>
 
               <div>
@@ -909,9 +849,7 @@ function AccountModal({ user, docId, onClose, onSaved }) {
 
                 {hasEmail ? (
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-gray-800">
-                      {user.email}
-                    </span>
+                    <span className="font-medium text-gray-800">{user.email}</span>
                     <span
                       className="text-[12px] px-2 py-0.5 rounded-full border"
                       style={{
@@ -964,21 +902,13 @@ function AccountModal({ user, docId, onClose, onSaved }) {
               </div>
             </div>
 
-            {hasEmail && (
-              <PasswordResetSection
-                user={user}
-                docId={docId}
-                onSaved={onSaved}
-              />
-            )}
+            {hasEmail && <PasswordResetSection user={user} docId={docId} onSaved={onSaved} />}
           </div>
         </div>
       </div>
     </>
   );
 }
-
-
 
 function PasswordResetSection({ user, docId, onSaved }) {
   const [showOld, setShowOld] = useState(false);
@@ -1043,14 +973,8 @@ function PasswordResetSection({ user, docId, onSaved }) {
   function Req({ ok, label }) {
     return (
       <div className="flex items-center gap-2 text-sm leading-6">
-        {ok ? (
-          <CheckCircle size={18} className="text-green-600" />
-        ) : (
-          <Circle size={18} className="text-gray-400" />
-        )}
-        <span className={ok ? "text-green-700" : "text-gray-700"}>
-          {label}
-        </span>
+        {ok ? <CheckCircle size={18} className="text-green-600" /> : <Circle size={18} className="text-gray-400" />}
+        <span className={ok ? "text-green-700" : "text-gray-700"}>{label}</span>
       </div>
     );
   }
@@ -1197,20 +1121,12 @@ function PasswordResetSection({ user, docId, onSaved }) {
 
               <div className="mt-3">
                 <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
-                  <div
-                    className="h-2 rounded-full transition-all"
-                    style={{ width: `${st.width}%`, background: st.color }}
-                  />
+                  <div className="h-2 rounded-full transition-all" style={{ width: `${st.width}%`, background: st.color }} />
                 </div>
                 <div className="mt-2 text-sm">
                   Strength:{" "}
-                  <span style={{ color: st.color, fontWeight: 700 }}>
-                    {st.label}
-                  </span>
-                  <span className="text-gray-600">
-                    {" "}
-                    &nbsp; (min 8 chars, include a–z, A–Z, 0–9)
-                  </span>
+                  <span style={{ color: st.color, fontWeight: 700 }}>{st.label}</span>
+                  <span className="text-gray-600">&nbsp; (min 8 chars, include a–z, A–Z, 0–9)</span>
                 </div>
               </div>
             </>
