@@ -58,8 +58,6 @@ function toMs(ts) {
 
 function dedupeByRx(notifs) {
   const map = new Map(); 
-  const map = new Map(); 
-
   for (const n of notifs) {
     const pid = String(n.prescriptionID || n.orderId || "");
     const key = `${String(n.type || "GEN")}__${pid}`;
