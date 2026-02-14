@@ -15,7 +15,7 @@ import {
   setDoc,
   updateDoc,
   serverTimestamp,
-  limit,
+  writeBatch,
 } from "firebase/firestore";
 
 import { Loader2, Bell, Clock, CheckCircle2, AlertCircle } from "lucide-react";
@@ -52,6 +52,10 @@ function toMs(ts) {
   if (typeof ts === "number") return ts;
   const d = new Date(ts);
   return isNaN(d.getTime()) ? null : d.getTime();
+}
+
+function isReadVal(v) {
+  return v === true || v === "true";
 }
 
 async function resolveLogisticsDocId() {
@@ -115,6 +119,7 @@ export default function LogisticsNotifications() {
 
   // =========================
   // A) ✅ توليد إشعارات 24h وتخزينها في notifications
+  //    ✅ إشعار واحد لكل prescriptionID حتى لو فيه علاجين
   // =========================
   React.useEffect(() => {
     if (!logisticsDocId) return;
@@ -137,6 +142,9 @@ export default function LogisticsNotifications() {
 
         const tasks = [];
 
+        // ✅ يمنع التكرار داخل نفس الـ snapshot (لو فيه سجلين لنفس prescriptionID)
+        const seenPrescriptionIds = new Set();
+
         snap.forEach((d) => {
           const rx = d.data() || {};
           const orderId = d.id;
@@ -146,7 +154,7 @@ export default function LogisticsNotifications() {
 
           const acceptedMs = toMs(rx.logisticsAcceptedAt);
           if (!acceptedMs) return;
-          if (acceptedMs > cutoff24) return; // 아직 ما تعدّت 24h
+          if (acceptedMs > cutoff24) return; // ما تعدّت 24h
 
           const prescriptionId =
             rx.prescriptionID ||
@@ -155,8 +163,14 @@ export default function LogisticsNotifications() {
             rx.prescriptionNumber ||
             orderId;
 
-          // ✅ ID ثابت عشان ما تتكرر (ويكون لكل وصفة إشعار واحد)
-          const notifId = `lg24_${logisticsDocId}_${orderId}`;
+          const pid = String(prescriptionId);
+
+          // ✅ لو نفس الوصفة تكررت بسبب علاجين → تجاهلي الثاني
+          if (seenPrescriptionIds.has(pid)) return;
+          seenPrescriptionIds.add(pid);
+
+          // ✅ ID ثابت لكل prescriptionID (مو orderId) عشان إشعار واحد فقط
+          const notifId = `lg24_${logisticsDocId}_${pid}`;
           const notifRef = doc(db, "notifications", notifId);
 
           tasks.push(
@@ -171,10 +185,11 @@ export default function LogisticsNotifications() {
 
                   type: "DELIVERY_OVERDUE_24H",
                   title: "Delivery overdue (24h)",
-                  message: `Prescription ${prescriptionId} has not been completed within 24 hours.`,
+                  message: `Prescription ${pid} has not been completed within 24 hours.`,
 
+                  // نخلي orderId مرجعي (أول واحد لقيناه)
                   orderId,
-                  prescriptionID: String(prescriptionId),
+                  prescriptionID: pid,
 
                   read: false,
                   createdAt: serverTimestamp(),
@@ -190,7 +205,6 @@ export default function LogisticsNotifications() {
       },
       (err) => {
         console.error("prescriptions listen error (24h writer):", err);
-        // ما نوقف الصفحة، بس نوضح
         setListenErr("Missing or insufficient permissions (rules).");
       }
     );
@@ -205,6 +219,7 @@ export default function LogisticsNotifications() {
 
   // =========================
   // B) ✅ قراءة إشعارات اللوجستك من notifications
+  //    ✅ Dedup في العرض (للتكرارات القديمة)
   // =========================
   React.useEffect(() => {
     if (!logisticsDocId) return;
@@ -227,11 +242,43 @@ export default function LogisticsNotifications() {
 
     const plainQ = query(collection(db, "notifications"), ...base);
 
+    const dedupNotifications = (arr) => {
+      // نجمع حسب (type + prescriptionID) عشان ما يطلع مرتين
+      const m = new Map();
+
+      for (const n of arr) {
+        const pid = String(n.prescriptionID || n.orderId || n.id || "");
+        const key = `${String(n.type || "")}__${pid}`;
+
+        const prev = m.get(key);
+        if (!prev) {
+          m.set(key, n);
+          continue;
+        }
+
+        // خذي الأحدث createdAt
+        const prevMs = toMs(prev.createdAt) ?? 0;
+        const curMs = toMs(n.createdAt) ?? 0;
+
+        const latest = curMs >= prevMs ? n : prev;
+
+        // read: إذا أي واحد unread نخليه unread
+        const mergedRead = isReadVal(prev.read) && isReadVal(n.read);
+
+        m.set(key, { ...latest, read: mergedRead });
+      }
+
+      return Array.from(m.values()).sort(
+        (a, b) => (toMs(b.createdAt) ?? 0) - (toMs(a.createdAt) ?? 0)
+      );
+    };
+
     const attach = (qq, label) => {
       unsub = onSnapshot(
         qq,
         (snap) => {
-          setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+          const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          setItems(dedupNotifications(raw));
           setLoading(false);
           setListenErr("");
         },
@@ -268,10 +315,47 @@ export default function LogisticsNotifications() {
     };
   }, [logisticsDocId]);
 
-  const unreadCount = items.filter((n) => !(n.read === true || n.read === "true")).length;
+  const unreadCount = items.filter((n) => !isReadVal(n.read)).length;
 
+  // =========================
+  // ✅ Mark as read (يعلّم كل إشعارات نفس الوصفة + نفس النوع)
+  // =========================
   async function markAsRead(n) {
-    await updateDoc(doc(db, "notifications", n.id), { read: true });
+    try {
+      setListenErr("");
+
+      const pid = String(n.prescriptionID || n.orderId || "");
+      const typ = String(n.type || "");
+      if (!pid || !typ || !logisticsDocId) return;
+
+      // ✅ تحديث واجهة مباشرة لكل نفس الوصفة/النوع
+      setItems((prev) =>
+        prev.map((x) => {
+          const xPid = String(x.prescriptionID || x.orderId || "");
+          const xTyp = String(x.type || "");
+          if (xPid === pid && xTyp === typ) return { ...x, read: true };
+          return x;
+        })
+      );
+
+      // ✅ تحديث Firestore: كل الوثائق المطابقة (حتى القديمة)
+      const qAll = query(
+        collection(db, "notifications"),
+        where("toRole", "==", "logistics"),
+        where("toLogisticsDocId", "==", logisticsDocId),
+        where("type", "==", typ),
+        where("prescriptionID", "==", pid)
+      );
+
+      const snap = await getDocs(qAll);
+
+      const batch = writeBatch(db);
+      snap.docs.forEach((d) => batch.update(d.ref, { read: true }));
+      await batch.commit();
+    } catch (e) {
+      console.error("markAsRead failed:", e);
+      setListenErr("Could not mark as read (permissions/rules). Check console.");
+    }
   }
 
   if (loading) {
@@ -352,7 +436,7 @@ export default function LogisticsNotifications() {
           <section className="grid grid-cols-1 gap-4 mt-4">
             {items.map((n) => {
               const isOverdue24 = n.type === "DELIVERY_OVERDUE_24H";
-              const isUnread = !(n.read === true || n.read === "true");
+              const isUnread = !isReadVal(n.read);
 
               const prescriptionId = n.prescriptionID || n.orderId || "—";
 
@@ -424,6 +508,7 @@ export default function LogisticsNotifications() {
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => markAsRead(n)}
                     disabled={!isUnread}
                     className="w-max px-4 py-2 text-sm rounded-xl transition-colors font-medium shadow-sm text-white disabled:opacity-60"
