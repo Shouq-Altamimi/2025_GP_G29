@@ -13,6 +13,7 @@ import {
   doc,
   updateDoc,
   getDoc,
+   writeBatch,
 } from "firebase/firestore";
 
 import { Loader2, Bell, CheckCircle2, AlertCircle } from "lucide-react";
@@ -246,16 +247,65 @@ export default function PatientNotifications() {
     };
   }, [patientDocId]);
 
-  async function markAsRead(n) {
+  /*async function markAsRead(n) {
     await updateDoc(doc(db, "notifications", n.id), { read: true });
+  }*/
+ async function markAsRead(n) {
+  const ids = Array.isArray(n._allIds) ? n._allIds : [n.id];
+
+  const batch = writeBatch(db);
+  for (const id of ids) {
+    batch.update(doc(db, "notifications", id), { read: true });
   }
-const sortedItems = React.useMemo(() => {
+  await batch.commit();
+}
+
+/*const sortedItems = React.useMemo(() => {
   const arr = [...items];
+  arr.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
+  return arr;
+}, [items]);*/
+
+const groupedItems = React.useMemo(() => {
+  const pickPid = (n) =>
+    String(n.prescriptionID || n.prescriptionId || n.orderId || "").trim();
+
+  const pickType = (n) =>
+    String(n.type || n.notifType || n.title || "Notification").trim();
+
+  const bestByKey = new Map(); // key -> { ...notif, _allIds:[], _count }
+  for (const n of items) {
+    const pid = pickPid(n) || "—";
+    const type = pickType(n);
+    const key = `${type}__${pid}`;
+
+    const cur = bestByKey.get(key);
+    if (!cur) {
+      bestByKey.set(key, { ...n, _allIds: [n.id], _count: 1 });
+    } else {
+      cur._allIds.push(n.id);
+      cur._count += 1;
+
+      const curMs = toMs(cur.createdAt);
+      const nMs = toMs(n.createdAt);
+      if (nMs > curMs) {
+        bestByKey.set(key, { ...n, _allIds: cur._allIds, _count: cur._count });
+      } else {
+        bestByKey.set(key, cur);
+      }
+    }
+  }
+
+  const arr = Array.from(bestByKey.values());
   arr.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
   return arr;
 }, [items]);
 
-  const unreadCount = items.filter((n) => !(n.read === true || n.read === "true")).length;
+
+  //const unreadCount = items.filter((n) => !(n.read === true || n.read === "true")).length;
+const unreadCount = groupedItems.filter(
+  (n) => !(n.read === true || n.read === "true")
+).length;
 
   if (loading) {
     return (
@@ -325,7 +375,7 @@ const sortedItems = React.useMemo(() => {
         </div>
 
         {/* EMPTY */}
-        {items.length === 0 && (
+        {groupedItems.length === 0 && (
           <div className="p-8 border rounded-2xl bg-white shadow-sm text-center">
             <div
               className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
@@ -344,9 +394,9 @@ const sortedItems = React.useMemo(() => {
         )}
 
         {/* LIST */}
-        {items.length > 0 && (
+        {groupedItems.length > 0 && (
           <section className="grid grid-cols-1 gap-4 mt-4">
-            {sortedItems.map((n) => {
+            {groupedItems.map((n) => {
               const isUnread = !(n.read === true || n.read === "true");
               const prescriptionId =
                 n.prescriptionID || n.prescriptionId || n.orderId || "—";
