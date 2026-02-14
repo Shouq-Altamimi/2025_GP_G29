@@ -38,7 +38,6 @@ const C = {
 
 const PAGE_SIZE = 10;
 
-
 const LOGISTICS_NAME = "Dr. Sulaiman Al Habib Logistics";
 
 function pillStyle(active) {
@@ -70,7 +69,6 @@ function isSensitive(rx) {
   return s === "sensitive" || rx?.isSensitive === true;
 }
 
-
 const ARABIC_RE =
   /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0660-\u0669\u06F0-\u06F9\u060C\u061B\u061F]/g;
 
@@ -80,11 +78,9 @@ function stripArabic(text) {
 
 function isArabicCharInput(e) {
   const k = e.key || "";
-
   if (k.length !== 1) return false;
   return ARABIC_RE.test(k);
 }
-
 
 function deliveryStatus(rx) {
   const delivered = rx?.deliveryConfirmed === true || rx?.deliveryConfirmedAt;
@@ -127,12 +123,11 @@ export default function PharmacyHistory() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
 
-
-  const [cursor, setCursor] = useState(null);  
+  const [cursor, setCursor] = useState(null);     
   const [hasMore, setHasMore] = useState(true);
   const [fetchingMore, setFetchingMore] = useState(false);
 
-
+ 
   async function loadPage(initial = false) {
     try {
       if (initial) {
@@ -145,7 +140,6 @@ export default function PharmacyHistory() {
       }
 
       let localCursor = initial ? null : cursor;
-
 
       const COL = collection(db, "prescriptions");
 
@@ -168,36 +162,29 @@ export default function PharmacyHistory() {
           break;
         }
 
-      
         tempCursor = snap.docs[snap.docs.length - 1];
 
         const page = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-       
         const dispensedOnly = page.filter((p) => p?.dispensed === true || p?.dispensedAt);
 
         collected = collected.concat(dispensedOnly);
 
-      
         if (snap.docs.length < 25) keepGoing = false;
       }
 
-     
       const nextBatch = collected.slice(0, PAGE_SIZE);
 
       setRows((prev) => (initial ? nextBatch : prev.concat(nextBatch)));
       setCursor(tempCursor);
 
-    
       if (!tempCursor || nextBatch.length === 0) {
         setHasMore(false);
       } else {
-
         if (nextBatch.length < PAGE_SIZE) setHasMore(false);
       }
     } catch (e) {
       console.error("PharmacyHistory load error:", e);
-      
       setHasMore(false);
     } finally {
       setLoading(false);
@@ -207,7 +194,6 @@ export default function PharmacyHistory() {
 
   useEffect(() => {
     loadPage(true);
-   
   }, []);
 
   const filtered = useMemo(() => {
@@ -261,7 +247,7 @@ export default function PharmacyHistory() {
   return (
     <div style={{ background: C.bg }}>
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6 py-6">
-     
+        {/* Card header */}
         <div
           className="rounded-3xl border bg-white p-5 shadow-sm"
           style={{ borderColor: C.line }}
@@ -285,7 +271,7 @@ export default function PharmacyHistory() {
               </div>
             </div>
 
-         
+            {/* Filter pills */}
             <div className="flex items-center gap-2">
               <button
                 className="px-4 py-2 rounded-xl text-sm font-semibold border transition"
@@ -311,7 +297,7 @@ export default function PharmacyHistory() {
             </div>
           </div>
 
-        
+          {}
           <div className="mt-4 relative w-full sm:w-[520px]">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2"
@@ -344,7 +330,7 @@ export default function PharmacyHistory() {
           </div>
         </div>
 
-     
+        {/* List */}
         <div className="mt-5 space-y-4">
           {loading ? (
             <div
@@ -369,11 +355,9 @@ export default function PharmacyHistory() {
               const status = deliveryStatus(rx);
               const tb = toneBadge(status.tone);
 
-              
               const med = rx?.medicineName || rx?.medicineLabel || "Prescription";
               const date = rx?.dispensedAt || rx?.updatedAt || rx?.createdAt;
 
-           
               const patient = rx?.patientDisplayId || rx?.patientId || rx?.nationalID || "-";
               const doctor = rx?.doctorName || "-";
               const facility = rx?.doctorFacility || "-";
@@ -384,7 +368,7 @@ export default function PharmacyHistory() {
                   className="rounded-3xl border bg-white shadow-sm overflow-hidden"
                   style={{ borderColor: C.line }}
                 >
-          
+                  {/* Top row */}
                   <div className="p-4 md:p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
@@ -393,7 +377,7 @@ export default function PharmacyHistory() {
                             {med}
                           </div>
 
-               
+                          {/* Sensitive badge */}
                           <span
                             className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full border"
                             style={{
@@ -406,6 +390,7 @@ export default function PharmacyHistory() {
                             {sensitive ? "Sensitive" : "Non-sensitive"}
                           </span>
 
+                          {/* Date badge */}
                           <span
                             className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full border"
                             style={{
@@ -418,7 +403,7 @@ export default function PharmacyHistory() {
                             {fmtDate(date)}
                           </span>
 
-                        
+                          {/* Delivery badge */}
                           <span
                             className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full border"
                             style={{
@@ -439,7 +424,7 @@ export default function PharmacyHistory() {
                         </div>
                       </div>
 
-                  
+                      {/* Expand */}
                       <button
                         onClick={() => toggleExpand(rx.id)}
                         className="shrink-0 px-4 py-2 rounded-xl border text-sm font-semibold hover:bg-slate-50"
@@ -458,7 +443,7 @@ export default function PharmacyHistory() {
                     </div>
                   </div>
 
-               
+                  {/* Details */}
                   {expandedNow && (
                     <div className="border-t" style={{ borderColor: C.line }}>
                       <div className="p-4 md:p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -488,6 +473,7 @@ export default function PharmacyHistory() {
             })
           )}
 
+          {/* More */}
           {!loading && filtered.length > 0 && (
             <div className="pt-2">
               {hasMore ? (

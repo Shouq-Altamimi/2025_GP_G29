@@ -40,19 +40,15 @@ function pillStyle(active) {
     color: C.ink,
   };
 }
-
 const ARABIC_RE =
   /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0660-\u0669\u06F0-\u06F9\u060C\u061B\u061F]/g;
-
 
 function stripArabic(text) {
   return String(text || "").replace(ARABIC_RE, "");
 }
 
-
 function isArabicCharInput(e) {
   const k = e.key || "";
- 
   if (k.length !== 1) return false;
   return ARABIC_RE.test(k);
 }
@@ -72,7 +68,6 @@ function safeStr(v) {
   if (v == null) return "";
   return String(v);
 }
-
 
 function isSensitiveRx(r) {
   const s = String(r?.sensitivity ?? "").trim().toLowerCase();
@@ -171,7 +166,6 @@ export default function DoctorHistory() {
           return;
         }
 
-        
         const doctorSnap = await getDocs(
           query(
             collection(db, "doctors"),
@@ -270,7 +264,7 @@ export default function DoctorHistory() {
   return (
     <div style={{ background: C.bg }}>
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6 py-6">
-       
+        {}
         <div
           className="rounded-3xl border bg-white p-5 shadow-sm"
           style={{ borderColor: C.line }}
@@ -294,7 +288,7 @@ export default function DoctorHistory() {
               </div>
             </div>
 
-        
+            {/* Filter pills (نفس pills) */}
             <div className="flex items-center gap-2">
               <button
                 className="px-4 py-2 rounded-xl text-sm font-semibold border transition"
@@ -320,6 +314,7 @@ export default function DoctorHistory() {
             </div>
           </div>
 
+          {}
           <div className="mt-4 relative w-full sm:w-[520px]">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2"
@@ -337,7 +332,7 @@ export default function DoctorHistory() {
     const cleaned = stripArabic(paste);
     if (cleaned !== paste) {
       e.preventDefault();
-      setQText((prev) => (prev + cleaned).slice(0, 200)); 
+      setQText((prev) => (prev + cleaned).slice(0, 200));
     }
   }}
   placeholder="Search (name/rx...etc)"
@@ -348,6 +343,7 @@ export default function DoctorHistory() {
           </div>
         </div>
 
+        {/* Error */}
         {err && (
           <div
             className="mt-5 rounded-2xl border p-4 text-sm"
@@ -361,7 +357,7 @@ export default function DoctorHistory() {
           </div>
         )}
 
-      
+        {/* List */}
         <div className="mt-5 space-y-4">
           {loading ? (
             <div
@@ -399,7 +395,7 @@ export default function DoctorHistory() {
                   className="rounded-3xl border bg-white shadow-sm overflow-hidden"
                   style={{ borderColor: C.line }}
                 >
-             
+                  {/* Top row */}
                   <div className="p-4 md:p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0 w-full">
@@ -410,7 +406,7 @@ export default function DoctorHistory() {
 
                           <SensitiveBadge sensitive={sensitive} />
 
-                    
+                          {}
                           <span
                             className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full border"
                             style={{
@@ -424,7 +420,7 @@ export default function DoctorHistory() {
                           </span>
                         </div>
 
-                       
+                        {}
                         <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <RowItem
                             icon={<User size={16} />}
@@ -443,7 +439,7 @@ export default function DoctorHistory() {
                         </div>
                       </div>
 
-                   
+                      {/* Expand */}
                       <button
                         onClick={() => setOpenId(show ? null : r.id)}
                         className="shrink-0 px-4 py-2 rounded-xl border text-sm font-semibold hover:bg-slate-50"
@@ -462,7 +458,7 @@ export default function DoctorHistory() {
                     </div>
                   </div>
 
-            
+                  {/* Details */}
                   {show && (
                     <div className="border-t" style={{ borderColor: C.line }}>
                       <div className="p-4 md:p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
