@@ -1,8 +1,6 @@
-// src/pages/PharmacyShell.jsx
-// @ts-nocheck
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
@@ -18,6 +16,8 @@ import {
   updateDoc,
   deleteField,
   serverTimestamp,
+  onSnapshot,
+  orderBy,
 } from "firebase/firestore";
 import {
   ClipboardList,
@@ -29,12 +29,10 @@ import {
   Eye,
   EyeOff,
   Lock,
-  CheckCircle,
   XCircle,
-  Circle,
   AlertCircle,
-  Bell, // ✅ Added
-    History, 
+  Bell,
+  History,
 } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 
@@ -55,6 +53,7 @@ async function sha256Hex(str) {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
 async function pbkdf2Hex(password, saltB64, iter = 100000) {
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
@@ -74,11 +73,13 @@ async function pbkdf2Hex(password, saltB64, iter = 100000) {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
 function randomSaltB64(len = 16) {
   const buf = new Uint8Array(len);
   crypto.getRandomValues(buf);
   return btoa(String.fromCharCode(...buf));
 }
+
 const isHex64 = (s) => typeof s === "string" && /^[a-f0-9]{64}$/i.test(s);
 
 async function verifyCurrentPassword(docData, inputPwd) {
@@ -253,16 +254,13 @@ function normalizePharmacy(raw) {
   return {
     name: pickStr(raw, ["name"]),
     pharmacyName: pickStr(raw, ["pharmacyName", "name"]),
-
     PharmacyID: pickStr(raw, ["PharmacyID"]),
     BranchID: pickStr(raw, ["BranchID"]),
     address: pickStr(raw, ["address"]),
     phone: pickStr(raw, ["phone"]),
     email: pickStr(raw, ["email"]),
-
     requirePasswordChange: raw?.requirePasswordChange ?? false,
     passwordUpdatedAt: raw?.passwordUpdatedAt ?? null,
-
     password: raw?.password || "",
     passwordHash: raw?.passwordHash || "",
     passwordSalt: raw?.passwordSalt || "",
@@ -286,6 +284,9 @@ export default function PharmacyShell() {
   const [showResetAlert, setShowResetAlert] = useState(false);
 
   const [pageError, setPageError] = useState("");
+
+  // ✅ DB-only notifications for the bell
+  const [notifItems, setNotifItems] = useState([]);
 
   useEffect(() => {
     if (!isPharmacyPage) return;
@@ -330,21 +331,98 @@ export default function PharmacyShell() {
     location.pathname === "/pharmacy" || location.pathname.startsWith("/pharmacy/pickup");
   const isDelivActive = location.pathname.startsWith("/pharmacy/delivery");
   const isPendActive = location.pathname.startsWith("/pharmacy/pending");
-
-  // ✅ Added active state for notifications
   const isNotifActive = location.pathname.startsWith("/pharmacy/notifications");
-const isHistActive = location.pathname.startsWith("/pharmacy/history"); 
+  const isHistActive = location.pathname.startsWith("/pharmacy/history");
 
   let subtitleText = "";
-  if (isPickActive) {
-    subtitleText = "Pick-up orders awaiting patient arrival";
-  } else if (isDelivActive) {
-    subtitleText = "Delivery requests awaiting your acceptance";
-  } else if (isPendActive) {
-    subtitleText = "Pending delivery prescriptions awaiting dispensing";
-  } else if (isNotifActive) {
-    subtitleText = "Reminder alerts";
-  }
+  if (isPickActive) subtitleText = "Pick-up orders awaiting patient arrival";
+  else if (isDelivActive) subtitleText = "Delivery requests awaiting your acceptance";
+  else if (isPendActive) subtitleText = "Pending delivery prescriptions awaiting dispensing";
+  else if (isNotifActive) subtitleText = "Reminder alerts";
+
+  // ✅ Listen to notifications collection ONLY (DB is source of truth)
+  useEffect(() => {
+    if (!isPharmacyPage) return;
+
+    const base = [where("toRole", "==", "pharmacy")];
+
+    const orderedQ = query(
+      collection(db, "notifications"),
+      ...base,
+      orderBy("createdAt", "desc")
+    );
+    const plainQ = query(collection(db, "notifications"), ...base);
+
+    let unsub = null;
+
+    const attach = (qq, label) => {
+      unsub = onSnapshot(
+        qq,
+        (snap) => {
+          setNotifItems(
+            snap.docs.map((d) => ({
+              __docId: d.id,
+              id: d.id,
+              ...d.data(),
+            }))
+          );
+        },
+        (err) => {
+          const msg = String(err?.message || "");
+          const isIndex =
+            err?.code === "failed-precondition" ||
+            msg.toLowerCase().includes("index") ||
+            msg.toLowerCase().includes("requires an index");
+
+          if (isIndex && label === "ordered") {
+            try {
+              if (unsub) unsub();
+            } catch {}
+            attach(plainQ, "plain");
+            return;
+          }
+
+          setNotifItems([]);
+        }
+      );
+    };
+
+    attach(orderedQ, "ordered");
+
+    return () => {
+      try {
+        if (unsub) unsub();
+      } catch {}
+    };
+  }, [isPharmacyPage]);
+
+  // ✅ unread count يعتمد فقط على read field في Firestore
+  const unreadCount = useMemo(() => {
+    return (notifItems || []).filter((n) => !(n.read === true || n.read === "true")).length;
+  }, [notifItems]);
+
+  // زر الجرس مع العداد
+  const bellRightNode = isPharmacyPage ? (
+    <button
+      type="button"
+      onClick={() => navigate("/pharmacy/notifications")}
+      className="h-10 w-10 grid place-items-center rounded-xl hover:bg-black/[0.04] transition"
+      aria-label="Notifications"
+      style={{ color: C.ink }}
+    >
+      <div className="relative">
+        <Bell size={20} />
+        {unreadCount > 0 && (
+          <span
+            className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-bold grid place-items-center"
+            style={{ background: "#DC2626", color: "#fff", lineHeight: "18px" }}
+          >
+            {unreadCount > 99 ? "99+" : String(unreadCount)}
+          </span>
+        )}
+      </div>
+    </button>
+  ) : null;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -353,9 +431,9 @@ const isHistActive = location.pathname.startsWith("/pharmacy/history");
         onMenuClick={() => {
           if (isPharmacyPage && pharmacyDocId) setOpen(true);
         }}
+        rightNode={bellRightNode}
       />
 
-      {/* Alerts */}
       {showEmailAlert && (
         <AlertBanner>
           ⚠️Please verify your email so you can change your password later.{" "}
@@ -389,28 +467,26 @@ const isHistActive = location.pathname.startsWith("/pharmacy/history");
       )}
 
       {isPharmacyPage && !isNotifActive && (
-  <div className="mx-auto w-full max-w-6xl px-4 md:px-6 mt-4">
-    <div className="mb-6 flex items-center gap-3">
-   
-      <div>
-        <h1 className="font-extrabold text-[24px]" style={{ color: "#334155" }}>
-          {pharmacy?.pharmacyName || pharmacy?.name
-            ? `Welcome, ${pharmacy.pharmacyName || pharmacy.name}`
-            : "Welcome, Pharmacy"}
-        </h1>
+        <div className="mx-auto w-full max-w-6xl px-4 md:px-6 mt-4">
+          <div className="mb-6 flex items-center gap-3">
+            <div>
+              <h1 className="font-extrabold text-[24px]" style={{ color: "#334155" }}>
+                {pharmacy?.pharmacyName || pharmacy?.name
+                  ? `Welcome, ${pharmacy.pharmacyName || pharmacy.name}`
+                  : "Welcome, Pharmacy"}
+              </h1>
 
-        {subtitleText && (
-          <div className="mt-3 pt-3 border-t border-gray-200">
-            <p className="text-[15px] font-medium" style={{ color: "#64748b" }}>
-              {subtitleText}
-            </p>
+              {subtitleText && (
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <p className="text-[15px] font-medium" style={{ color: "#64748b" }}>
+                    {subtitleText}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
-    </div>
-  </div>
-)}
-
+        </div>
+      )}
 
       <div className="flex-1">
         <Outlet context={{ setPageError }} />
@@ -418,7 +494,6 @@ const isHistActive = location.pathname.startsWith("/pharmacy/history");
 
       <Footer />
 
-      {/* Sidebar */}
       {isPharmacyPage && pharmacyDocId && (
         <>
           <div
@@ -481,7 +556,6 @@ const isHistActive = location.pathname.startsWith("/pharmacy/history");
                 <span>Pending Orders</span>
               </DrawerItem>
 
-
               <DrawerItem
                 active={isNotifActive}
                 onClick={() => {
@@ -492,16 +566,17 @@ const isHistActive = location.pathname.startsWith("/pharmacy/history");
                 <Bell size={18} />
                 <span>Notifications</span>
               </DrawerItem>
-<DrawerItem
-  active={isHistActive}
-  onClick={() => {
-    navigate("/pharmacy/history");
-    setOpen(false);
-  }}
->
-  <History size={18} />
-  <span>History</span>
-</DrawerItem>
+
+              <DrawerItem
+                active={isHistActive}
+                onClick={() => {
+                  navigate("/pharmacy/history");
+                  setOpen(false);
+                }}
+              >
+                <History size={18} />
+                <span>History</span>
+              </DrawerItem>
 
               <DrawerItem
                 onClick={() => {
@@ -530,8 +605,7 @@ const isHistActive = location.pathname.startsWith("/pharmacy/history");
           onSaved={(d) => {
             setPharmacy((p) => ({ ...p, ...d }));
             if (d.email) setShowEmailAlert(false);
-            if (d.requirePasswordChange === false || d.passwordUpdatedAt)
-              setShowResetAlert(false);
+            if (d.requirePasswordChange === false || d.passwordUpdatedAt) setShowResetAlert(false);
           }}
         />
       )}
@@ -564,7 +638,6 @@ function Row({ label, value }) {
 }
 
 function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
-
   const [phone, setPhone] = useState(pharmacy?.phone || "");
   const [initialPhone, setInitialPhone] = useState(pharmacy?.phone || "");
   const [phoneError, setPhoneError] = useState("");
@@ -659,15 +732,12 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
       }, 1500);
     } catch (e) {
       console.error(e);
-      setPhoneError(
-        "Something went wrong while saving your phone number. Please try again."
-      );
+      setPhoneError("Something went wrong while saving your phone number. Please try again.");
       setPhone("+966");
     } finally {
       setSaving(false);
     }
   }
-
 
   const hasEmail = !!pharmacy?.email;
   const [emailInput, setEmailInput] = useState("");
@@ -687,9 +757,7 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
 
       const taken = await isEmailTakenAnyRole(email, String(pharmacyDocId || ""));
       if (taken) {
-        setEmailMsg(
-          "This email is already used by another account. Please use a different email."
-        );
+        setEmailMsg("This email is already used by another account. Please use a different email.");
         return;
       }
 
@@ -707,22 +775,15 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
       setEmailLoading(true);
       await sendSignInLinkToEmail(getAuth(), email, settings);
 
-      localStorage.setItem(
-        "td_email_pending",
-        JSON.stringify({ email, ts: Date.now() })
-      );
-      setEmailMsg(
-        "A verification link has been sent to your email. Open it, then return to the app."
-      );
+      localStorage.setItem("td_email_pending", JSON.stringify({ email, ts: Date.now() }));
+      setEmailMsg("A verification link has been sent to your email. Open it, then return to the app.");
     } catch (e) {
       if (e?.code === "auth/too-many-requests" || e?.code === "auth/quota-exceeded") {
         setEmailMsg("Too many verification emails were requested. Please try again later.");
       } else if (e?.code === "auth/invalid-email") {
         setEmailMsg("Please enter a valid email.");
       } else {
-        setEmailMsg(
-          `Firebase: ${e?.code || e?.message || "Unable to send verification link."}`
-        );
+        setEmailMsg(`Firebase: ${e?.code || e?.message || "Unable to send verification link."}`);
       }
     } finally {
       setEmailLoading(false);
@@ -748,34 +809,22 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
           </div>
 
           <div className="space-y-5 text-sm" aria-live="polite">
-          
             <div className="rounded-xl border bg-white p-4">
-              <div
-                className="text-base font-semibold mb-2"
-                style={{ color: C.ink }}
-              >
+              <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
                 Pharmacy Info
               </div>
               <div className="space-y-2">
-                <Row
-                  label="Pharmacy"
-                  value={pharmacy?.pharmacyName || pharmacy?.name || "—"}
-                />
+                <Row label="Pharmacy" value={pharmacy?.pharmacyName || pharmacy?.name || "—"} />
                 <Row label="Pharmacy ID" value={pharmacy?.BranchID || "—"} />
                 <Row label="Address" value={pharmacy?.address || "—"} />
               </div>
             </div>
 
-            {/* Contact Info */}
             <div className="rounded-xl border bg-white p-4">
-              <div
-                className="text-base font-semibold mb-2"
-                style={{ color: C.ink }}
-              >
+              <div className="text-base font-semibold mb-2" style={{ color: C.ink }}>
                 Contact Info
               </div>
 
-              {/* Phone block */}
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-gray-700 font-medium">Phone</span>
@@ -797,9 +846,7 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                 </div>
 
                 {!editingPhone ? (
-                  <div className="font-medium text-gray-900">
-                    {initialPhone || "—"}
-                  </div>
+                  <div className="font-medium text-gray-900">{initialPhone || "—"}</div>
                 ) : (
                   <>
                     <div className="flex items-center gap-2">
@@ -808,21 +855,14 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                         value={phone}
                         onChange={(e) => {
                           let val = e.target.value;
-
                           if (hasArabic(val)) return;
-
                           val = val.replace(/\s/g, "");
-
                           if (!val.startsWith("+966")) {
                             val = "+966" + val.replace(/^\+?966?/, "");
                           }
-
                           const afterPrefix = val.slice(4);
-
                           if (afterPrefix && !/^[0-9]*$/.test(afterPrefix)) return;
-
                           if (afterPrefix.length > 9) return;
-
                           setPhone(val);
                           setMsg("");
                           setMsgType("");
@@ -832,29 +872,15 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                           e.preventDefault();
                           let paste = e.clipboardData.getData("text").trim();
                           if (hasArabic(paste)) return;
-
                           paste = paste.replace(/\s/g, "");
-
                           let local = paste;
-
-                          if (local.startsWith("+966")) {
-                            local = local.slice(4);
-                          } else if (local.startsWith("966")) {
-                            local = local.slice(3);
-                          } else if (local.startsWith("05")) {
-                            local = local.slice(1);
-                          }
-
+                          if (local.startsWith("+966")) local = local.slice(4);
+                          else if (local.startsWith("966")) local = local.slice(3);
+                          else if (local.startsWith("05")) local = local.slice(1);
                           local = local.replace(/\D/g, "");
-
-                          if (!local.startsWith("5")) {
-                            local = "5" + local.replace(/^5*/, "");
-                          }
-
+                          if (!local.startsWith("5")) local = "5" + local.replace(/^5*/, "");
                           local = local.slice(0, 9);
-
-                          const finalVal = "+966" + local;
-                          setPhone(finalVal);
+                          setPhone("+966" + local);
                           setMsg("");
                           setMsgType("");
                           setPhoneError("");
@@ -865,14 +891,10 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                         className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent"
                         style={{ outlineColor: C.primary }}
                         onFocus={() => {
-                          if (!phone || phone === "") {
-                            setPhone("+966");
-                          }
+                          if (!phone || phone === "") setPhone("+966");
                         }}
                         onBlur={() => {
-                          if (phone === "+966") {
-                            setPhone("");
-                          }
+                          if (phone === "+966") setPhone("");
                         }}
                         onKeyDown={(e) => {
                           const allowedControl = [
@@ -884,12 +906,10 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                             "Home",
                             "End",
                           ];
-
                           if (e.key === " ") {
                             e.preventDefault();
                             return;
                           }
-
                           if (allowedControl.includes(e.key)) {
                             if (
                               (e.key === "Backspace" || e.key === "Delete") &&
@@ -900,23 +920,16 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                             }
                             return;
                           }
-
                           if (!/^[0-9]$/.test(e.key)) {
                             e.preventDefault();
                             return;
                           }
-
                           if (phone === "+966" && e.key !== "5") {
                             e.preventDefault();
                             return;
                           }
-
                           const afterPrefix = phone.slice(4);
-
-                          if (afterPrefix.length >= 9) {
-                            e.preventDefault();
-                            return;
-                          }
+                          if (afterPrefix.length >= 9) e.preventDefault();
                         }}
                       />
                       <button
@@ -935,26 +948,17 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                           Enter phone: +966 5xxxxxxxx (9 digits after +966)
                         </span>
                       )}
-
                       {hasTypedPhone && !phoneInfo.ok && (
                         <span className="text-rose-600">
-                          {phoneInfo.reason ||
-                            "The phone number you entered isn’t valid yet."}
+                          {phoneInfo.reason || "The phone number you entered isn’t valid yet."}
                         </span>
                       )}
-
                       {hasTypedPhone && phoneInfo.ok && !phoneError && (
-                        <span className="text-emerald-700">
-                          ✓ Valid phone number
-                        </span>
+                        <span className="text-emerald-700">✓ Valid phone number</span>
                       )}
                     </div>
 
-                    {phoneError && (
-                      <div className="mt-1 text-xs text-rose-600">
-                        {phoneError}
-                      </div>
-                    )}
+                    {phoneError && <div className="mt-1 text-xs text-rose-600">{phoneError}</div>}
                   </>
                 )}
 
@@ -963,21 +967,14 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
                 )}
               </div>
 
-              {/* Email */}
               <div className="mt-3">
                 <label className="block text-sm text-gray-700 mb-1">Email</label>
                 {hasEmail ? (
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-gray-800">
-                      {pharmacy.email}
-                    </span>
+                    <span className="font-medium text-gray-800">{pharmacy.email}</span>
                     <span
                       className="text-[12px] px-2 py-0.5 rounded-full border"
-                      style={{
-                        background: "#F1F8F5",
-                        color: "#166534",
-                        borderColor: "#BBE5C8",
-                      }}
+                      style={{ background: "#F1F8F5", color: "#166534", borderColor: "#BBE5C8" }}
                     >
                       Verified
                     </span>
@@ -1022,20 +1019,13 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
               </div>
             </div>
 
-            
-            {hasEmail && (
-              <PasswordResetSection
-                pharmacyDocId={pharmacyDocId}
-                onSaved={onSaved}
-              />
-            )}
+            {hasEmail && <PasswordResetSection pharmacyDocId={pharmacyDocId} onSaved={onSaved} />}
           </div>
         </div>
       </div>
     </>
   );
 }
-
 
 function PasswordResetSection({ pharmacyDocId, onSaved }) {
   const [showOld, setShowOld] = useState(false);
@@ -1079,17 +1069,7 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
     }
 
     const width = Math.min(100, Math.round((score / 6) * 100));
-    return {
-      score,
-      label,
-      color,
-      width,
-      hasLower,
-      hasUpper,
-      hasDigit,
-      hasSymbol,
-      len8,
-    };
+    return { score, label, color, width, hasLower, hasUpper, hasDigit, hasSymbol, len8 };
   }
 
   const st = passwordStrength(newPass);
@@ -1152,11 +1132,9 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
         passwordHash: newHash,
         passwordUpdatedAt: serverTimestamp(),
         requirePasswordChange: false,
-
         "tempPassword.valid": false,
         "tempPassword.expiresAtMs": 0,
         "tempPassword.value": deleteField(),
-
         password: deleteField(),
       });
 
@@ -1183,7 +1161,6 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
       </div>
 
       <div className="space-y-3">
-        {/* old */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             Current Password <span className="text-rose-600">*</span>
@@ -1208,7 +1185,6 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
           </div>
         </div>
 
-        {/* new */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             New Password <span className="text-rose-600">*</span>
@@ -1236,41 +1212,23 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
             <>
               <div className="mt-3">
                 <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
-                  <div
-                    className="h-2 rounded-full transition-all"
-                    style={{ width: `${st.width}%`, background: st.color }}
-                  />
+                  <div className="h-2 rounded-full transition-all" style={{ width: `${st.width}%`, background: st.color }} />
                 </div>
                 <div className="mt-2 text-sm">
-                  Strength:{" "}
-                  <span style={{ color: st.color, fontWeight: 700 }}>
-                    {st.label}
-                  </span>
-                  <span className="text-gray-600">
-                    {" "}
-                    &nbsp;(min 8 chars, include a–z, A–Z, 0–9)
-                  </span>
+                  Strength: <span style={{ color: st.color, fontWeight: 700 }}>{st.label}</span>
+                  <span className="text-gray-600"> &nbsp;(min 8 chars, include a–z, A–Z, 0–9)</span>
                 </div>
               </div>
               <div className="text-xs mt-1">
-                <div className={`${st.hasUpper ? "text-green-700" : "text-gray-700"}`}>
-                  • Uppercase (A–Z)
-                </div>
-                <div className={`${st.hasLower ? "text-green-700" : "text-gray-700"}`}>
-                  • Lowercase (a–z)
-                </div>
-                <div className={`${st.hasDigit ? "text-green-700" : "text-gray-700"}`}>
-                  • Digit (0–9)
-                </div>
-                <div className={`${st.len8 ? "text-green-700" : "text-gray-700"}`}>
-                  • Length ≥ 8
-                </div>
+                <div className={`${st.hasUpper ? "text-green-700" : "text-gray-700"}`}>• Uppercase (A–Z)</div>
+                <div className={`${st.hasLower ? "text-green-700" : "text-gray-700"}`}>• Lowercase (a–z)</div>
+                <div className={`${st.hasDigit ? "text-green-700" : "text-gray-700"}`}>• Digit (0–9)</div>
+                <div className={`${st.len8 ? "text-green-700" : "text-gray-700"}`}>• Length ≥ 8</div>
               </div>
             </>
           )}
         </div>
 
-        {/* confirm */}
         <div>
           <label className="block text-sm text-gray-700 mb-1">
             Confirm New Password <span className="text-rose-600">*</span>
@@ -1316,14 +1274,7 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
 
         <button
           onClick={handleResetPassword}
-          disabled={
-            loading ||
-            !oldPass ||
-            !newPass ||
-            !confirmPass ||
-            newPass !== confirmPass ||
-            !passOk
-          }
+          disabled={loading || !oldPass || !newPass || !confirmPass || newPass !== confirmPass || !passOk}
           className="w-full py-2.5 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-[1.02]"
           style={{ background: C.primary }}
         >

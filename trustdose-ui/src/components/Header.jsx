@@ -5,16 +5,20 @@ export default function Header({
   onMenuClick,
   logoSrc = "/Images/TrustDose_logo.png",
   hideMenu = false,
-  logoHeight = 32,   
+  logoHeight = 32,
   iconWidth = 20,
   barThickness = 2.5,
   barGap = 4.5,
   color = "var(--td-primary-ink, #7b5297)",
-  rightNode = null, 
+  rightNode = null,
+  leftNode = null, // ✅ NEW
 }) {
   return (
     <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b">
       <div className="relative h-16 w-full px-4 flex items-center gap-3">
+        {/* ✅ LEFT MOST (Before Menu) */}
+        {leftNode}
+
         {!hideMenu && (
           <button
             type="button"
@@ -32,9 +36,30 @@ export default function Header({
               className="flex flex-col items-center justify-center"
               style={{ rowGap: barGap }}
             >
-              <span className="block rounded-full" style={{ width: iconWidth, height: barThickness, background: "currentColor" }} />
-              <span className="block rounded-full" style={{ width: iconWidth, height: barThickness, background: "currentColor" }} />
-              <span className="block rounded-full" style={{ width: iconWidth, height: barThickness, background: "currentColor" }} />
+              <span
+                className="block rounded-full"
+                style={{
+                  width: iconWidth,
+                  height: barThickness,
+                  background: "currentColor",
+                }}
+              />
+              <span
+                className="block rounded-full"
+                style={{
+                  width: iconWidth,
+                  height: barThickness,
+                  background: "currentColor",
+                }}
+              />
+              <span
+                className="block rounded-full"
+                style={{
+                  width: iconWidth,
+                  height: barThickness,
+                  background: "currentColor",
+                }}
+              />
             </span>
           </button>
         )}
@@ -51,9 +76,7 @@ export default function Header({
           draggable="false"
         />
 
-        <div className="ml-auto flex items-center gap-2">
-          {rightNode}
-        </div>
+        <div className="ml-auto flex items-center gap-2">{rightNode}</div>
       </div>
     </header>
   );
