@@ -12,6 +12,7 @@ import {
   UserPlus,
   LogOut,
   CheckCircle2,
+    Pill,
 } from "lucide-react";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
@@ -97,6 +98,20 @@ function Sidebar({ open, setOpen, onNav, onLogout }) {
             <UserPlus size={18} />
             <span>Add Doctor</span>
           </button>
+          <button
+  onClick={() => {
+    setOpen(false);
+    onNav("/admin/medicines"); 
+  }}
+  className={`w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium ${
+    isActive("/admin/medicines")
+      ? "bg-white text-[#5B3A70]"
+      : "bg-white/25 text-white hover:bg-white/35"
+  }`}
+>
+  <Pill size={18} />
+  <span>Add Medicine</span>
+</button>
           <button
             onClick={() => {
               setOpen(false);

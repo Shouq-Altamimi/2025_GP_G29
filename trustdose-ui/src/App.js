@@ -11,6 +11,7 @@ import PasswordReset from "./pages/PasswordReset";
 import AdminDashboard from "./pages/AdminDashboard";
 import Admin from "./pages/Admin";
 import AdminAnalytics from "./pages/AdminAnalytics";
+import AdminMedicines from "./pages/AdminMedicines.jsx"; 
 
 
 /* Doctor */
@@ -76,6 +77,7 @@ export default function App() {
           }
         />
         <Route path="/admin/analytics" element={<AdminAnalytics />} />
+        <Route path="/admin/medicines" element={<AdminMedicines />} />
 
 
         {/* Doctor Home */}

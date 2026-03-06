@@ -5,7 +5,8 @@ import {
   X,
   LayoutDashboard,
   UserPlus,
-  BarChart3,       
+  BarChart3, 
+   Pill,      
   LogOut,
   AlertCircle,
   CheckCircle2,
@@ -247,6 +248,11 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
             <UserPlus size={18} />
             <span>Add Doctor</span>
           </SidebarItem>
+
+<SidebarItem active={isActive("/admin/medicines")} onClick={() => go("/admin/medicines")}>
+  <Pill size={18} />
+  <span>Add Medicine</span>
+</SidebarItem>
 
           {/* ✅ NEW: Analytics tab */}
           <SidebarItem active={isActive("/admin/analytics")} onClick={() => go("/admin/analytics")}>
