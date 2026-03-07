@@ -1,3 +1,4 @@
+// src/pages/PharmacyNotifications.jsx
 "use client";
 
 import React from "react";
@@ -6,18 +7,27 @@ import {
   collection,
   query,
   where,
-  getDocs,
-  orderBy,
   onSnapshot,
+  orderBy,
+  getDocs,
   doc,
-  updateDoc,
   getDoc,
-  limit,
-  addDoc,
+  setDoc,
+  updateDoc,
   serverTimestamp,
+  writeBatch,
+  limit,
+  deleteField,
 } from "firebase/firestore";
 
-import { Loader2, Bell, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  Loader2,
+  Bell,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  ThermometerSnowflake,
+} from "lucide-react";
 
 const C = {
   primary: "#B08CC1",
@@ -53,49 +63,8 @@ function toMs(ts) {
   return isNaN(d.getTime()) ? null : d.getTime();
 }
 
-/** تجمع إشعارات متعددة لنفس prescription (حسب type + prescriptionID/orderId) */
-function dedupeByRx(notifs) {
-  const map = new Map();
-
-  for (const n of notifs) {
-    const pid = String(n.prescriptionID || n.orderId || "");
-    const key = `${String(n.type || "GEN")}__${pid}`;
-
-    const isUnread = !(n.read === true || n.read === "true");
-    const created = toMs(n.createdAt) || 0;
-
-    if (!map.has(key)) {
-      map.set(key, {
-        ...n,
-        // id للعرض/الدمج (مو docId)
-        id: key,
-        __realIds: [],
-        __anyUnread: isUnread,
-        __maxCreatedAt: created,
-      });
-    } else {
-      const cur = map.get(key);
-      if (created > (cur.__maxCreatedAt || 0)) {
-        cur.__maxCreatedAt = created;
-        cur.createdAt = n.createdAt;
-        cur.title = n.title ?? cur.title;
-        cur.message = n.message ?? cur.message;
-      }
-      cur.__anyUnread = cur.__anyUnread || isUnread;
-    }
-
-    const merged = map.get(key);
-    // نخزن docId الحقيقي داخل __realIds
-    merged.__realIds.push(n.__docId || n.id);
-  }
-
-  const out = Array.from(map.values()).map((x) => ({
-    ...x,
-    read: x.__anyUnread ? false : true,
-  }));
-
-  out.sort((a, b) => (toMs(b.createdAt) || 0) - (toMs(a.createdAt) || 0));
-  return out;
+function isReadVal(v) {
+  return v === true || v === "true";
 }
 
 async function resolvePharmacyDocId() {
@@ -126,18 +95,138 @@ async function resolvePharmacyDocId() {
   return null;
 }
 
+// ✅ UI config for notification types (نفس ستايل اللوجستكس)
+function getTypeUi(type) {
+  const t = String(type || "");
+
+  if (t === "DELIVERY_OVERDUE_48H") {
+    return {
+      iconBg: "rgba(220,38,38,0.10)",
+      icon: <Clock size={20} style={{ color: "#DC2626" }} />,
+      badgeText: "Overdue (48h)",
+      badgeStyle: {
+        color: "#DC2626",
+        borderColor: "rgba(220,38,38,0.35)",
+        backgroundColor: "rgba(220,38,38,0.08)",
+      },
+      titleFallback: "Delivery overdue (48h)",
+    };
+  }
+
+  if (t === "TEMP_OUT_OF_RANGE") {
+    return {
+      iconBg: "rgba(245,158,11,0.14)",
+      icon: <ThermometerSnowflake size={20} style={{ color: "#F59E0B" }} />,
+      badgeText: "Out of range",
+      badgeStyle: {
+        color: "#92400E",
+        borderColor: "rgba(245,158,11,0.35)",
+        backgroundColor: "rgba(245,158,11,0.10)",
+      },
+      titleFallback: "Temperature alert",
+    };
+  }
+
+  return {
+    iconBg: "rgba(176,140,193,0.15)",
+    icon: <Bell size={20} style={{ color: C.ink }} />,
+    badgeText: null,
+    badgeStyle: null,
+    titleFallback: "Notification",
+  };
+}
+
+/** ✅✅ reset للوصفة لما الحرارة Out of range */
+async function resetPrescriptionForOutOfRange(pid) {
+  const p = String(pid || "").trim();
+  if (!p) return false;
+
+  const resetPayload = {
+    acceptDelivery: false,
+    dispensed: false,
+
+    logisticsAccepted: false,
+    deliveryConfirmed: false,
+
+    deliveryOverdue24Notified: false,
+    deliveryOverdue48Notified: false,
+
+    acceptDeliveryAt: deleteField(),
+    acceptDeliveryTx: deleteField(),
+    acceptDeliveryTxs: deleteField(),
+
+    logisticsAcceptedAt: deleteField(),
+    deliveryConfirmedAt: deleteField(),
+
+    dispensedAt: deleteField(),
+    dispensedBy: deleteField(),
+    dispenseTx: deleteField(),
+
+    updatedAt: serverTimestamp(),
+  };
+
+  // 1) docId == pid
+  const byIdRef = doc(db, "prescriptions", p);
+  const byIdSnap = await getDoc(byIdRef);
+  if (byIdSnap.exists()) {
+    await updateDoc(byIdRef, resetPayload);
+    return true;
+  }
+
+  // 2) prescriptionID == pid
+  const s1 = await getDocs(
+    query(collection(db, "prescriptions"), where("prescriptionID", "==", p), limit(20))
+  );
+  if (!s1.empty) {
+    await Promise.all(s1.docs.map((d) => updateDoc(d.ref, resetPayload)));
+    return true;
+  }
+
+  // 3) prescriptionId == pid
+  const s2 = await getDocs(
+    query(collection(db, "prescriptions"), where("prescriptionId", "==", p), limit(20))
+  );
+  if (!s2.empty) {
+    await Promise.all(s2.docs.map((d) => updateDoc(d.ref, resetPayload)));
+    return true;
+  }
+
+  // 4) items.0 / items.1 (Group)
+  const [s3, s4] = await Promise.all([
+    getDocs(query(collection(db, "prescriptions"), where("items.0.prescriptionID", "==", p), limit(20))),
+    getDocs(query(collection(db, "prescriptions"), where("items.1.prescriptionID", "==", p), limit(20))),
+  ]);
+
+  const docs = [];
+  const seen = new Set();
+  for (const snap of [s3, s4]) {
+    snap.forEach((d) => {
+      if (seen.has(d.id)) return;
+      seen.add(d.id);
+      docs.push(d);
+    });
+  }
+
+  if (docs.length) {
+    await Promise.all(docs.map((d) => updateDoc(d.ref, resetPayload)));
+    return true;
+  }
+
+  console.warn("resetPrescriptionForOutOfRange: not found pid:", p);
+  return false;
+}
+
 export default function PharmacyNotifications() {
   const [loading, setLoading] = React.useState(true);
   const [pharmacyDocId, setPharmacyDocId] = React.useState(null);
   const [header, setHeader] = React.useState({ companyName: "" });
 
-  const [items, setItems] = React.useState([]);
   const [listenErr, setListenErr] = React.useState("");
+  const [items, setItems] = React.useState([]);
 
-  const rxIdCacheRef = React.useRef(new Map());
-  const fetchingRef = React.useRef(new Set());
+  // ✅ يمنع تكرار معالجة نفس القراءة داخل نفس الجلسة (زيادة أمان)
+  const processedReadingIdsRef = React.useRef(new Set());
 
-  // header + pharmacy doc id
   React.useEffect(() => {
     let mounted = true;
 
@@ -151,10 +240,8 @@ export default function PharmacyNotifications() {
         if (docId) {
           const snap = await getDoc(doc(db, "pharmacies", docId));
           if (snap.exists()) {
-            const d = snap.data();
-            setHeader({
-              companyName: d.companyName || d.name || d.pharmacyName || "",
-            });
+            const d = snap.data() || {};
+            setHeader({ companyName: d.companyName || d.name || d.pharmacyName || "" });
           }
         }
       } catch (e) {
@@ -167,44 +254,189 @@ export default function PharmacyNotifications() {
     return () => (mounted = false);
   }, []);
 
-  // ✅ 1) LISTEN notifications (DB only)
+  /**
+   * ✅ NEW: iotReadings -> notifications (TEMP_OUT_OF_RANGE) + reset
+   *
+   * شرط الإنشاء:
+   * - outOfRange == true
+   * - prescriptionId موجود (r.prescriptionId أو r.prescriptionID)
+   *
+   * منع التكرار:
+   * - docId ثابت = temp_${pharmacyDocId}_${pid}
+   */
   React.useEffect(() => {
-    setLoading(true);
+    if (!pharmacyDocId) return;
+
     setListenErr("");
 
-    const base = [where("toRole", "==", "pharmacy")];
+    const qOrdered = query(
+      collection(db, "iotReadings"),
+      where("outOfRange", "==", true),
+      orderBy("createdAt", "desc"),
+      limit(10)
+    );
+
+    const qPlain = query(
+      collection(db, "iotReadings"),
+      where("outOfRange", "==", true),
+      limit(10)
+    );
+
+    let unsub = null;
+
+    const handleSnap = async (snap) => {
+      if (snap.empty) return;
+
+      const docs = snap.docs;
+
+      for (const d of docs) {
+        const readingId = d.id;
+
+        if (processedReadingIdsRef.current.has(readingId)) continue;
+        processedReadingIdsRef.current.add(readingId);
+
+        const r = d.data() || {};
+
+        // مهم: ما نستخدم orderId كبديل عشان ما يطلع TEST_ORDER_1
+        const pid = String(r.prescriptionId || r.prescriptionID || "").trim();
+        if (!pid) continue;
+
+        const deviceId = String(r.deviceId || "").trim();
+
+        const notifId = `temp_${pharmacyDocId}_${pid}`;
+        const notifRef = doc(db, "notifications", notifId);
+
+        // إذا فيه إشعار سابق لنفس الوصفة، لا تكرر
+        const existsSnap = await getDoc(notifRef);
+        if (!existsSnap.exists()) {
+          await setDoc(notifRef, {
+            toRole: "pharmacy",
+            toPharmacyDocId: pharmacyDocId,
+            type: "TEMP_OUT_OF_RANGE",
+            title: "Temperature alert",
+            message: `Prescription ${pid} — Invalid (temperature out of range). Redispensing required.`,
+            orderId: pid,
+            prescriptionID: pid,
+            deviceId,
+            read: false,
+            createdAt: serverTimestamp(),
+          });
+        }
+
+        // ✅ بعد الإشعار: reset للوصفة
+        try {
+          await resetPrescriptionForOutOfRange(pid);
+        } catch (e) {
+          console.error("resetPrescriptionForOutOfRange failed:", e);
+        }
+      }
+    };
+
+    const attach = (qq, label) => {
+      unsub = onSnapshot(
+        qq,
+        async (snap) => {
+          try {
+            await handleSnap(snap);
+          } catch (e) {
+            console.error("iotReadings -> pharmacy notif/reset failed:", e);
+          }
+        },
+        (err) => {
+          console.error(`iotReadings listen error (${label}):`, err);
+
+          const msg = String(err?.message || "").toLowerCase();
+          const isIndex =
+            err?.code === "failed-precondition" ||
+            msg.includes("requires an index") ||
+            msg.includes("index");
+
+          if (isIndex && label === "ordered") {
+            try {
+              if (unsub) unsub();
+            } catch {}
+            attach(qPlain, "plain");
+            return;
+          }
+        }
+      );
+    };
+
+    attach(qOrdered, "ordered");
+
+    return () => {
+      try {
+        if (unsub) unsub();
+      } catch {}
+    };
+  }, [pharmacyDocId]);
+
+  // ✅ Reader for pharmacy notifications
+  React.useEffect(() => {
+    if (!pharmacyDocId) return;
+
+    setListenErr("");
+    setLoading(true);
+
+    let unsub = null;
+
+    const base = [
+      where("toRole", "==", "pharmacy"),
+      where("toPharmacyDocId", "==", pharmacyDocId),
+    ];
 
     const orderedQ = query(
       collection(db, "notifications"),
       ...base,
       orderBy("createdAt", "desc")
     );
+
     const plainQ = query(collection(db, "notifications"), ...base);
 
-    let unsub = null;
+    const dedupNotifications = (arr) => {
+      const m = new Map();
+
+      for (const n of arr) {
+        const pid = String(n.prescriptionID || n.orderId || n.id || "");
+        const key = `${String(n.type || "")}__${pid}`;
+
+        const prev = m.get(key);
+        if (!prev) {
+          m.set(key, n);
+          continue;
+        }
+
+        const prevMs = toMs(prev.createdAt) ?? 0;
+        const curMs = toMs(n.createdAt) ?? 0;
+
+        const latest = curMs >= prevMs ? n : prev;
+        const mergedRead = isReadVal(prev.read) && isReadVal(n.read);
+
+        m.set(key, { ...latest, read: mergedRead });
+      }
+
+      return Array.from(m.values()).sort(
+        (a, b) => (toMs(b.createdAt) ?? 0) - (toMs(a.createdAt) ?? 0)
+      );
+    };
 
     const attach = (qq, label) => {
       unsub = onSnapshot(
         qq,
         (snap) => {
-          setItems(
-            snap.docs.map((d) => ({
-              __docId: d.id, // docId الحقيقي
-              id: d.id, // كمان نخليه هنا
-              ...d.data(),
-            }))
-          );
+          const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          setItems(dedupNotifications(raw));
           setLoading(false);
           setListenErr("");
         },
-        async (err) => {
+        (err) => {
           console.error(`notifications listen error (${label}):`, err);
 
-          const msg = String(err?.message || "");
+          const msg = String(err?.message || "").toLowerCase();
           const isIndex =
             err?.code === "failed-precondition" ||
-            msg.toLowerCase().includes("index") ||
-            msg.toLowerCase().includes("requires an index");
+            msg.includes("requires an index") ||
+            msg.includes("index");
 
           if (isIndex && label === "ordered") {
             try {
@@ -215,11 +447,8 @@ export default function PharmacyNotifications() {
           }
 
           setLoading(false);
-          setListenErr(
-            isIndex
-              ? "Firestore index is required for ordered query. Fallback applied."
-              : "Failed to load notifications (check rules / console)."
-          );
+          setItems([]);
+          setListenErr("Missing or insufficient permissions (rules).");
         }
       );
     };
@@ -231,201 +460,43 @@ export default function PharmacyNotifications() {
         if (unsub) unsub();
       } catch {}
     };
-  }, []);
+  }, [pharmacyDocId]);
 
-  // ✅ 2) AUTO-CREATE 48H notifications for pharmacy (writes into DB)
-  React.useEffect(() => {
-    let unsub = null;
-    let canceled = false;
+  const unreadCount = items.filter((n) => !isReadVal(n.read)).length;
 
-    const inFlight = new Set(); // يمنع سبام أثناء نفس الجلسة
+  async function markAsRead(n) {
+    try {
+      setListenErr("");
 
-    const qRx = query(
-      collection(db, "prescriptions"),
-      where("deliveryConfirmed", "==", false)
-    );
+      const pid = String(n.prescriptionID || n.orderId || "");
+      const typ = String(n.type || "");
+      if (!pid || !typ || !pharmacyDocId) return;
 
-    unsub = onSnapshot(
-      qRx,
-      async (snap) => {
-        if (canceled) return;
-
-        const now = Date.now();
-        const cutoff48 = now - 48 * 60 * 60 * 1000;
-
-        const jobs = [];
-
-        snap.forEach((d) => {
-          const rx = d.data() || {};
-          const docId = d.id;
-
-          // لازم logisticsAcceptedAt موجود
-          const acceptedAtMs = toMs(rx.logisticsAcceptedAt);
-          if (!acceptedAtMs) return;
-
-          // ما بعد 48 ساعة => لا شيء
-          if (acceptedAtMs > cutoff48) return;
-
-          // منع تكرار أثناء نفس الجلسة
-          if (inFlight.has(docId)) return;
-          inFlight.add(docId);
-
-          jobs.push(
-            (async () => {
-              try {
-                const pid =
-                  rx.prescriptionID ||
-                  rx.prescriptionId ||
-                  rx.prescriptionNum ||
-                  rx.prescriptionNumber ||
-                  docId;
-
-                // منع تكرار إشعار موجود مسبقاً
-                const dupQ = query(
-                  collection(db, "notifications"),
-                  where("toRole", "==", "pharmacy"),
-                  where("orderId", "==", docId),
-                  where("type", "==", "DELIVERY_OVERDUE_48H"),
-                  limit(1)
-                );
-                const dupSnap = await getDocs(dupQ);
-                if (!dupSnap.empty) return;
-
-                // إنشاء الإشعار
-                await addDoc(collection(db, "notifications"), {
-                  toRole: "pharmacy",
-                  type: "DELIVERY_OVERDUE_48H",
-                  title: "Delivery Overdue (48h)",
-                  message: `Prescription ${pid} was not completed within 48 hours and has been returned to the Delivery Orders list for redispensing.`,
-                  orderId: docId,
-                  prescriptionID: String(pid),
-                  read: false,
-                  createdAt: serverTimestamp(),
-                });
-              } catch (e) {
-                console.error("AUTO CREATE pharmacy 48h notif failed:", docId, e);
-              } finally {
-                // نخليه يقدر يعيد محاولة لاحقًا
-                inFlight.delete(docId);
-              }
-            })()
-          );
-        });
-
-        if (jobs.length) await Promise.all(jobs);
-      },
-      (err) => {
-        console.error("prescriptions listen error (auto-create 48h):", err);
-      }
-    );
-
-    return () => {
-      canceled = true;
-      try {
-        if (unsub) unsub();
-      } catch {}
-    };
-  }, []);
-
-  // (اختياري) لو بعض الإشعارات تجي orderId بدون prescriptionID، نجيبها من prescriptions للعرض فقط
-  React.useEffect(() => {
-    if (!items?.length) return;
-
-    const need = items.filter((n) => {
-      const hasId = Boolean(n?.prescriptionID);
-      const hasOrder = Boolean(n?.orderId);
-      return hasOrder && !hasId;
-    });
-
-    if (need.length === 0) return;
-
-    (async () => {
-      const updatesByNotifDocId = new Map();
-
-      await Promise.all(
-        need.map(async (n) => {
-          const orderId = String(n.orderId);
-
-          if (rxIdCacheRef.current.has(orderId)) {
-            const pid = rxIdCacheRef.current.get(orderId);
-            if (pid) updatesByNotifDocId.set(n.__docId || n.id, pid);
-            return;
-          }
-
-          if (fetchingRef.current.has(orderId)) return;
-          fetchingRef.current.add(orderId);
-
-          try {
-            const snap = await getDoc(doc(db, "prescriptions", orderId));
-            if (!snap.exists()) {
-              rxIdCacheRef.current.set(orderId, null);
-              return;
-            }
-
-            const rx = snap.data() || {};
-            const pid =
-              rx.prescriptionID ||
-              rx.prescriptionId ||
-              rx.prescriptionNum ||
-              rx.prescriptionNumber ||
-              null;
-
-            rxIdCacheRef.current.set(orderId, pid);
-
-            if (pid) updatesByNotifDocId.set(n.__docId || n.id, pid);
-          } catch (e) {
-            console.error("Failed to fetch prescription for orderId:", orderId, e);
-          } finally {
-            fetchingRef.current.delete(orderId);
-          }
+      setItems((prev) =>
+        prev.map((x) => {
+          const xPid = String(x.prescriptionID || x.orderId || "");
+          const xTyp = String(x.type || "");
+          if (xPid === pid && xTyp === typ) return { ...x, read: true };
+          return x;
         })
       );
 
-      if (updatesByNotifDocId.size === 0) return;
-
-      setItems((prev) =>
-        prev.map((n) =>
-          updatesByNotifDocId.has(n.__docId || n.id)
-            ? { ...n, prescriptionID: updatesByNotifDocId.get(n.__docId || n.id) }
-            : n
-        )
-      );
-    })();
-  }, [items]);
-
-  const allItems = React.useMemo(() => {
-    return dedupeByRx([...items]);
-  }, [items]);
-
-  const unreadCount = allItems.filter((n) => !(n.read === true || n.read === "true")).length;
-
-  // ✅ DB only: mark read => update Firestore فقط
-  async function markAsRead(n) {
-    try {
-      const realIds = Array.isArray(n.__realIds) ? n.__realIds : [];
-      const idsToUpdate = realIds.length
-        ? realIds
-        : n.__docId
-        ? [n.__docId]
-        : [];
-
-      if (!idsToUpdate.length) return;
-
-      // Optimistic UI
-      setItems((prev) =>
-        prev.map((x) =>
-          idsToUpdate.includes(x.__docId || x.id) ? { ...x, read: true } : x
-        )
+      const qAll = query(
+        collection(db, "notifications"),
+        where("toRole", "==", "pharmacy"),
+        where("toPharmacyDocId", "==", pharmacyDocId),
+        where("type", "==", typ),
+        where("prescriptionID", "==", pid)
       );
 
-      await Promise.all(
-        idsToUpdate.map((rid) =>
-          updateDoc(doc(db, "notifications", rid), { read: true })
-        )
-      );
+      const snap = await getDocs(qAll);
+
+      const batch = writeBatch(db);
+      snap.docs.forEach((d) => batch.update(d.ref, { read: true }));
+      await batch.commit();
     } catch (e) {
       console.error("markAsRead failed:", e);
-      setListenErr("Failed to mark as read (check rules / permissions).");
+      setListenErr("Could not mark as read (permissions/rules). Check console.");
     }
   }
 
@@ -451,7 +522,7 @@ export default function PharmacyNotifications() {
           </div>
         )}
 
-        <div className="mb-6 flex items-center gap-3">
+        <div className="mb-6 flex items-center">
           <div className="w-full">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -488,7 +559,7 @@ export default function PharmacyNotifications() {
           </div>
         </div>
 
-        {allItems.length === 0 && (
+        {items.length === 0 && (
           <div className="p-8 border rounded-2xl bg-white shadow-sm text-center">
             <div
               className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
@@ -506,35 +577,17 @@ export default function PharmacyNotifications() {
           </div>
         )}
 
-        {allItems.length > 0 && (
+        {items.length > 0 && (
           <section className="grid grid-cols-1 gap-4 mt-4">
-            {allItems.map((n) => {
-              const isOverdue48 = n.type === "DELIVERY_OVERDUE_48H";
-              const isOverdue24 = n.type === "DELIVERY_OVERDUE_24H";
-              const isOverdue = isOverdue24 || isOverdue48;
-
-              const isUnread = !(n.read === true || n.read === "true");
+            {items.map((n) => {
+              const isUnread = !isReadVal(n.read);
               const prescriptionId = n.prescriptionID || n.orderId || "—";
-
-              const cardTitle = isOverdue48
-                ? "Delivery Overdue (48h)"
-                : isOverdue24
-                ? "Delivery Overdue (24h)"
-                : n.title || "Notification";
-
-              const fixedMessage48 = `Prescription ${prescriptionId} was not completed within 48 hours and has been returned to the Delivery Orders list for redispensing`;
-              const fixedMessage24 = `Prescription ${prescriptionId} was not completed within 24 hours and has been returned to the Delivery Orders list for redispensing`;
-
-              const messageToShow = isOverdue48
-                ? fixedMessage48
-                : isOverdue24
-                ? fixedMessage24
-                : n.message || "-";
+              const ui = getTypeUi(n.type);
 
               return (
                 <div
                   key={n.id}
-                  className="relative z-10 p-4 border rounded-2xl bg-white shadow-sm flex items-start justify-between gap-3"
+                  className="p-4 border rounded-2xl bg-white shadow-sm flex items-start justify-between gap-3"
                   style={{
                     borderColor: isUnread
                       ? "rgba(176,140,193,0.55)"
@@ -544,33 +597,23 @@ export default function PharmacyNotifications() {
                   <div className="flex items-start gap-3">
                     <div
                       className="h-11 w-11 rounded-2xl flex items-center justify-center"
-                      style={{
-                        backgroundColor: isOverdue
-                          ? "rgba(220,38,38,0.10)"
-                          : "rgba(176,140,193,0.15)",
-                      }}
+                      style={{ backgroundColor: ui.iconBg }}
                     >
-                      {isOverdue ? (
-                        <Clock size={20} style={{ color: "#DC2626" }} />
-                      ) : (
-                        <Bell size={20} style={{ color: C.ink }} />
-                      )}
+                      {ui.icon}
                     </div>
 
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <div className="text-sm font-bold text-slate-800">{cardTitle}</div>
+                        <div className="text-sm font-bold text-slate-800">
+                          {n.title || ui.titleFallback}
+                        </div>
 
-                        {isOverdue && (
+                        {ui.badgeText && (
                           <span
                             className="px-2.5 py-1 rounded-full text-xs font-semibold border"
-                            style={{
-                              color: "#DC2626",
-                              borderColor: "rgba(220,38,38,0.35)",
-                              backgroundColor: "rgba(220,38,38,0.08)",
-                            }}
+                            style={ui.badgeStyle}
                           >
-                            {isOverdue48 ? "Overdue (48h)" : "Overdue (24h)"}
+                            {ui.badgeText}
                           </span>
                         )}
 
@@ -588,10 +631,11 @@ export default function PharmacyNotifications() {
                         )}
                       </div>
 
-                      <div className="text-sm text-slate-700 mt-1">{messageToShow}</div>
+                      <div className="text-sm text-slate-700 mt-1">{n.message || "-"}</div>
 
                       <div className="mt-3 text-xs text-gray-500">
-                        Prescription ID: <b className="text-slate-800">{prescriptionId}</b>
+                        Prescription ID:{" "}
+                        <b className="text-slate-800">{prescriptionId}</b>
                         <span className="mx-2">•</span>
                         {formatFsTimestamp(n.createdAt)}
                       </div>
@@ -600,13 +644,9 @@ export default function PharmacyNotifications() {
 
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      markAsRead(n);
-                    }}
+                    onClick={() => markAsRead(n)}
                     disabled={!isUnread}
-                    className="relative z-20 w-max px-4 py-2 text-sm rounded-xl transition-colors font-medium shadow-sm text-white disabled:opacity-60"
+                    className="w-max px-4 py-2 text-sm rounded-xl transition-colors font-medium shadow-sm text-white disabled:opacity-60"
                     style={{
                       backgroundColor: C.primary,
                       cursor: !isUnread ? "not-allowed" : "pointer",

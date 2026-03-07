@@ -12,6 +12,8 @@ import {
   doc,
   updateDoc,
   serverTimestamp,
+  setDoc,
+  getDoc,
 } from "firebase/firestore";
 
 import { ethers } from "ethers";
@@ -19,6 +21,9 @@ import LOGISTICS_RECEIVE from "../contracts/LogisticsReceive.json";
 import { Loader2, FileText, CheckCircle2 } from "lucide-react";
 
 const LOGISTICS_RECEIVE_ADDRESS = "0x99aBd40A784fA87542Cd73abFc4edB106a3291C6";
+
+// ✅ IoT device (مؤقتًا ثابت)
+const DEFAULT_IOT_DEVICE_ID = "esp8266_1";
 
 const C = {
   primary: "#B08CC1",
@@ -150,6 +155,9 @@ export default function PendingOrders({ pharmacyId }) {
           acceptDelivery: !!x.acceptDelivery,
           logisticsAccepted: !!x.logisticsAccepted,
           onchainId,
+
+          // ✅✅✅ مهم: نجيب sensitivity عشان نحدد الرينج
+          sensitivity: x.sensitivity || "NonSensitive",
         };
       });
 
@@ -172,7 +180,6 @@ export default function PendingOrders({ pharmacyId }) {
     return () => (mounted = false);
   }, [pharmacyId, setPageError]);
 
- 
   const groups = React.useMemo(() => {
     const map = new Map();
 
@@ -257,7 +264,6 @@ export default function PendingOrders({ pharmacyId }) {
         signer
       );
 
-     
       let lastTxHash = null;
       const txHashes = [];
       for (const idStr of g.onchainIds) {
@@ -268,16 +274,70 @@ export default function PendingOrders({ pharmacyId }) {
         txHashes.push(txHash);
       }
 
-     
+      // ✅✅✅ تحديد الرينج بناء على sensitivity داخل meds
+      const isSensitive = (g.meds || []).some(
+        (m) => String(m?.sensitivity || "").toLowerCase() === "sensitive"
+      );
+
+      const thresholds = isSensitive
+        ? { tempMin: 2, tempMax: 8, humMin: 20, humMax: 80, thresholdProfile: "Sensitive" }
+        : { tempMin: 15, tempMax: 30, humMin: 20, humMax: 80, thresholdProfile: "NonSensitive" };
+
+      // ✅ IoT Link (Override للـ Demo)
+      const deviceId = DEFAULT_IOT_DEVICE_ID;
+      const nowTs = serverTimestamp();
+
+      const deviceRef = doc(db, "iotDevices", deviceId);
+
+      // ✅ بدل ما نرمي Error: نسمح بالاستبدال ونحفظ السابقة (اختياري)
+      const deviceSnap = await getDoc(deviceRef);
+      let previousPrescriptionId = null;
+
+      if (deviceSnap.exists()) {
+        const d = deviceSnap.data() || {};
+        previousPrescriptionId = d.activePrescriptionId
+          ? String(d.activePrescriptionId)
+          : null;
+      }
+
+      await setDoc(
+        deviceRef,
+        {
+          deviceId,
+          status: "active",
+          activePrescriptionId: String(g.prescriptionId),
+          linkedAt: nowTs,
+          linkedByRole: "pharmacy",
+          pharmacyId: pharmacyId || null,
+
+          // ✅ اختياري للـ Demo: نسجل آخر ربط سابق
+          previousPrescriptionId: previousPrescriptionId || null,
+          previousUnlinkedAt:
+            previousPrescriptionId && previousPrescriptionId !== String(g.prescriptionId)
+              ? nowTs
+              : null,
+        },
+        { merge: true }
+      );
+
+      // Update Firestore prescriptions
       await Promise.all(
         g.meds.map((r) =>
           updateDoc(doc(db, "prescriptions", r._docId), {
             dispensed: true,
-            dispensedAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
+            dispensedAt: nowTs,
+            updatedAt: nowTs,
             logisticsReceivedBy: logisticsAddr,
-            logisticsReceiveTx: lastTxHash, 
-          
+            logisticsReceiveTx: lastTxHash,
+
+            // ✅ IoT fields
+            iotDeviceId: deviceId,
+            iotStatus: "active",
+            iotLinkedAt: nowTs,
+            inSmartBox: true,
+
+            // ✅✅✅ ranges (based on sensitivity)
+            ...thresholds,
           })
         )
       );
@@ -285,7 +345,6 @@ export default function PendingOrders({ pharmacyId }) {
       const docIds = new Set(g.meds.map((x) => x._docId));
       setRows((old) => old.filter((x) => !docIds.has(x._docId)));
 
-     
       setSuccessModal({
         title: "Prescription dispensed successfully",
         message: "The prescription has been dispensed and handed over to logistics.",
@@ -383,7 +442,6 @@ export default function PendingOrders({ pharmacyId }) {
 
               const isProcessing = processingId === String(g.prescriptionId);
 
-          
               const dosageSummary = (g.meds || []).slice(0, 2).map((m) => {
                 const dose = m.dose || "-";
                 const freq = m.frequency || "-";
@@ -445,34 +503,32 @@ export default function PendingOrders({ pharmacyId }) {
                       </span>
                     </div>
 
-<div className="mt-1 space-y-1">
-  {(g.meds || []).slice(0, 2).map((m, idx) => {
-    const dose = m.dose || "-";
-    const freq = m.frequency || "-";
-    const dur = m.durationDays || "-";
+                    <div className="mt-1 space-y-1">
+                      {(g.meds || []).slice(0, 2).map((m, idx) => {
+                        const dose = m.dose || "-";
+                        const freq = m.frequency || "-";
+                        const dur = m.durationDays || "-";
 
-    return (
-      <div
-        key={`${g.prescriptionId}-dose-${idx}`}
-        className="text-sm text-slate-700 font-semibold"
-      >
-        Dosage ({m.medicineLabel || "—"}):{" "}
-        <span className="font-normal">
-          {dose} • {freq} • {dur}
-        </span>
-      </div>
-    );
-  })}
+                        return (
+                          <div
+                            key={`${g.prescriptionId}-dose-${idx}`}
+                            className="text-sm text-slate-700 font-semibold"
+                          >
+                            Dosage ({m.medicineLabel || "—"}):{" "}
+                            <span className="font-normal">
+                              {dose} • {freq} • {dur}
+                            </span>
+                          </div>
+                        );
+                      })}
 
-  {(g.meds || []).length > 2 && (
-    <div className="text-xs text-gray-500 mt-1">
-      +{g.meds.length - 2} more dosages
-    </div>
-  )}
-</div>
+                      {(g.meds || []).length > 2 && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          +{g.meds.length - 2} more dosages
+                        </div>
+                      )}
+                    </div>
 
-
-                    
                     {(g.meds || []).length > 2 && (
                       <div className="text-xs text-gray-500 mt-1">
                         +{g.meds.length - 2} more dosages
@@ -584,6 +640,7 @@ export default function PendingOrders({ pharmacyId }) {
                   Next →{" "}
                 </button>
               </div>
+              
             </div>
           </div>
         )}

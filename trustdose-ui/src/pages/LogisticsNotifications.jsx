@@ -13,12 +13,19 @@ import {
   doc,
   getDoc,
   setDoc,
-  updateDoc,
   serverTimestamp,
   writeBatch,
+  limit,
 } from "firebase/firestore";
 
-import { Loader2, Bell, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  Loader2,
+  Bell,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  ThermometerSnowflake,
+} from "lucide-react";
 
 const C = {
   primary: "#B08CC1",
@@ -67,11 +74,9 @@ async function resolveLogisticsDocId() {
 
   if (!lgId) return null;
 
-
   const byId = await getDoc(doc(db, "logistics", String(lgId)));
   if (byId.exists()) return String(lgId);
 
-  
   const col = collection(db, "logistics");
   const qs = await getDocs(query(col, where("LogisticsID", "==", String(lgId))));
   if (!qs.empty) return qs.docs[0].id;
@@ -79,17 +84,57 @@ async function resolveLogisticsDocId() {
   return null;
 }
 
+// ✅ UI config for notification types
+function getTypeUi(type) {
+  const t = String(type || "");
+
+  if (t === "DELIVERY_OVERDUE_24H") {
+    return {
+      iconBg: "rgba(220,38,38,0.10)",
+      icon: <Clock size={20} style={{ color: "#DC2626" }} />,
+      badgeText: "Overdue (24h)",
+      badgeStyle: {
+        color: "#DC2626",
+        borderColor: "rgba(220,38,38,0.35)",
+        backgroundColor: "rgba(220,38,38,0.08)",
+      },
+      titleFallback: "Delivery overdue (24h)",
+    };
+  }
+
+  if (t === "TEMP_OUT_OF_RANGE") {
+    return {
+      iconBg: "rgba(245,158,11,0.14)",
+      icon: <ThermometerSnowflake size={20} style={{ color: "#F59E0B" }} />,
+      badgeText: "Out of range",
+      badgeStyle: {
+        color: "#92400E",
+        borderColor: "rgba(245,158,11,0.35)",
+        backgroundColor: "rgba(245,158,11,0.10)",
+      },
+      titleFallback: "Temperature alert",
+    };
+  }
+
+  return {
+    iconBg: "rgba(176,140,193,0.15)",
+    icon: <Bell size={20} style={{ color: C.ink }} />,
+    badgeText: null,
+    badgeStyle: null,
+    titleFallback: "Notification",
+  };
+}
+
 export default function LogisticsNotifications() {
   const [loading, setLoading] = React.useState(true);
   const [logisticsDocId, setLogisticsDocId] = React.useState(null);
   const [header, setHeader] = React.useState({ companyName: "" });
-
   const [listenErr, setListenErr] = React.useState("");
-
-
   const [items, setItems] = React.useState([]);
 
- 
+  // ✅ يمنع تكرار معالجة نفس القراءة (زيادة أمان، بس التكرار الحقيقي يمنعه notifId الثابت)
+  const processedReadingIdsRef = React.useRef(new Set());
+
   React.useEffect(() => {
     let mounted = true;
 
@@ -117,6 +162,123 @@ export default function LogisticsNotifications() {
     return () => (mounted = false);
   }, []);
 
+  /**
+   * ✅ NEW: iotReadings -> notifications (TEMP_OUT_OF_RANGE)
+   *
+   * شرط الإنشاء:
+   * - outOfRange == true
+   * - prescriptionId موجود (r.prescriptionId أو r.prescriptionID)
+   *
+   * منع التكرار:
+   * - docId ثابت = temp_${logisticsDocId}_${pid}
+   *   إذا موجود خلاص ما ينشئ مرة ثانية.
+   */
+  React.useEffect(() => {
+    if (!logisticsDocId) return;
+
+    setListenErr("");
+
+    const qOrdered = query(
+      collection(db, "iotReadings"),
+      where("outOfRange", "==", true),
+      orderBy("createdAt", "desc"),
+      limit(10)
+    );
+
+    const qPlain = query(
+      collection(db, "iotReadings"),
+      where("outOfRange", "==", true),
+      limit(10)
+    );
+
+    let unsub = null;
+
+    const handleSnap = async (snap) => {
+      if (snap.empty) return;
+
+      // نشتغل على آخر 10 (أحدث) لتجنب ضياع حدث بسبب reload
+      const docs = snap.docs;
+
+      for (const d of docs) {
+        const readingId = d.id;
+
+        // معالجة مرة واحدة داخل نفس الجلسة
+        if (processedReadingIdsRef.current.has(readingId)) continue;
+        processedReadingIdsRef.current.add(readingId);
+
+        const r = d.data() || {};
+
+        // لازم prescriptionId يكون موجود (ما نستخدم orderId كبديل عشان ما يطلع TEST_ORDER_1)
+        const pid = String(r.prescriptionId || r.prescriptionID || "").trim();
+        if (!pid) continue;
+
+        const deviceId = String(r.deviceId || "").trim();
+        const temp = r.temp;
+        const hum = r.humidity;
+
+        const notifId = `temp_${logisticsDocId}_${pid}`;
+        const notifRef = doc(db, "notifications", notifId);
+
+        // إذا فيه إشعار سابق لنفس الوصفة، لا تكرر
+        const existsSnap = await getDoc(notifRef);
+        if (existsSnap.exists()) continue;
+
+        await setDoc(notifRef, {
+          toRole: "logistics",
+          toLogisticsDocId: logisticsDocId,
+          type: "TEMP_OUT_OF_RANGE",
+          title: "Temperature alert",
+          message: `prescription ${pid}. Marked invalid due to unsafe temperature. Please initiate redispensing.`,
+          orderId: pid,
+          prescriptionID: pid,
+          deviceId,
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      }
+    };
+
+    const attach = (qq, label) => {
+      unsub = onSnapshot(
+        qq,
+        async (snap) => {
+          try {
+            await handleSnap(snap);
+          } catch (e) {
+            console.error("iotReadings -> notif failed:", e);
+          }
+        },
+        (err) => {
+          console.error(`iotReadings listen error (${label}):`, err);
+
+          // إذا قال يحتاج Index، نحاول fallback للـ plain query
+          const msg = String(err?.message || "").toLowerCase();
+          const isIndex =
+            err?.code === "failed-precondition" ||
+            msg.includes("requires an index") ||
+            msg.includes("index");
+
+          if (isIndex && label === "ordered") {
+            try {
+              if (unsub) unsub();
+            } catch {}
+            attach(qPlain, "plain");
+            return;
+          }
+        }
+      );
+    };
+
+    attach(qOrdered, "ordered");
+
+    return () => {
+      try {
+        if (unsub) unsub();
+      } catch {}
+    };
+  }, [logisticsDocId]);
+
+  // Existing 24h writer (unchanged)
   React.useEffect(() => {
     if (!logisticsDocId) return;
 
@@ -137,7 +299,6 @@ export default function LogisticsNotifications() {
         const cutoff24 = now - 24 * 60 * 60 * 1000;
 
         const tasks = [];
-
         const seenPrescriptionIds = new Set();
 
         snap.forEach((d) => {
@@ -149,7 +310,7 @@ export default function LogisticsNotifications() {
 
           const acceptedMs = toMs(rx.logisticsAcceptedAt);
           if (!acceptedMs) return;
-          if (acceptedMs > cutoff24) return; 
+          if (acceptedMs > cutoff24) return;
 
           const prescriptionId =
             rx.prescriptionID ||
@@ -163,7 +324,6 @@ export default function LogisticsNotifications() {
           if (seenPrescriptionIds.has(pid)) return;
           seenPrescriptionIds.add(pid);
 
-        
           const notifId = `lg24_${logisticsDocId}_${pid}`;
           const notifRef = doc(db, "notifications", notifId);
 
@@ -176,15 +336,11 @@ export default function LogisticsNotifications() {
                 await setDoc(notifRef, {
                   toRole: "logistics",
                   toLogisticsDocId: logisticsDocId,
-
                   type: "DELIVERY_OVERDUE_24H",
                   title: "Delivery overdue (24h)",
                   message: `Prescription ${pid} has not been completed within 24 hours.`,
-
-                 
                   orderId,
                   prescriptionID: pid,
-
                   read: false,
                   createdAt: serverTimestamp(),
                 });
@@ -211,7 +367,7 @@ export default function LogisticsNotifications() {
     };
   }, [logisticsDocId]);
 
-
+  // ✅ Reader for notifications
   React.useEffect(() => {
     if (!logisticsDocId) return;
 
@@ -234,7 +390,6 @@ export default function LogisticsNotifications() {
     const plainQ = query(collection(db, "notifications"), ...base);
 
     const dedupNotifications = (arr) => {
-    
       const m = new Map();
 
       for (const n of arr) {
@@ -247,12 +402,10 @@ export default function LogisticsNotifications() {
           continue;
         }
 
-    
         const prevMs = toMs(prev.createdAt) ?? 0;
         const curMs = toMs(n.createdAt) ?? 0;
 
         const latest = curMs >= prevMs ? n : prev;
-
         const mergedRead = isReadVal(prev.read) && isReadVal(n.read);
 
         m.set(key, { ...latest, read: mergedRead });
@@ -306,7 +459,6 @@ export default function LogisticsNotifications() {
   }, [logisticsDocId]);
 
   const unreadCount = items.filter((n) => !isReadVal(n.read)).length;
-
 
   async function markAsRead(n) {
     try {
@@ -366,13 +518,14 @@ export default function LogisticsNotifications() {
           </div>
         )}
 
-
         <div className="mb-6 flex items-center">
           <div className="w-full">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h1 className="font-extrabold text-[24px]" style={{ color: "#334155" }}>
-                  {header.companyName ? `Notifications — ${header.companyName}` : "Notifications"}
+                  {header.companyName
+                    ? `Notifications — ${header.companyName}`
+                    : "Notifications"}
                 </h1>
 
                 <div className="mt-3 pt-3 border-t border-gray-200">
@@ -387,9 +540,13 @@ export default function LogisticsNotifications() {
                 style={{
                   color: unreadCount > 0 ? "#DC2626" : C.ink,
                   borderColor:
-                    unreadCount > 0 ? "rgba(220,38,38,0.35)" : "rgba(176,140,193,0.35)",
+                    unreadCount > 0
+                      ? "rgba(220,38,38,0.35)"
+                      : "rgba(176,140,193,0.35)",
                   backgroundColor:
-                    unreadCount > 0 ? "rgba(220,38,38,0.08)" : "rgba(176,140,193,0.08)",
+                    unreadCount > 0
+                      ? "rgba(220,38,38,0.08)"
+                      : "rgba(176,140,193,0.08)",
                 }}
               >
                 Unread: {unreadCount}
@@ -397,7 +554,6 @@ export default function LogisticsNotifications() {
             </div>
           </div>
         </div>
-
 
         {items.length === 0 && (
           <div className="p-8 border rounded-2xl bg-white shadow-sm text-center">
@@ -420,51 +576,40 @@ export default function LogisticsNotifications() {
         {items.length > 0 && (
           <section className="grid grid-cols-1 gap-4 mt-4">
             {items.map((n) => {
-              const isOverdue24 = n.type === "DELIVERY_OVERDUE_24H";
               const isUnread = !isReadVal(n.read);
-
               const prescriptionId = n.prescriptionID || n.orderId || "—";
+              const ui = getTypeUi(n.type);
 
               return (
                 <div
                   key={n.id}
                   className="p-4 border rounded-2xl bg-white shadow-sm flex items-start justify-between gap-3"
                   style={{
-                    borderColor: isUnread ? "rgba(176,140,193,0.55)" : "rgba(226,232,240,1)",
+                    borderColor: isUnread
+                      ? "rgba(176,140,193,0.55)"
+                      : "rgba(226,232,240,1)",
                   }}
                 >
                   <div className="flex items-start gap-3">
                     <div
                       className="h-11 w-11 rounded-2xl flex items-center justify-center"
-                      style={{
-                        backgroundColor: isOverdue24
-                          ? "rgba(220,38,38,0.10)"
-                          : "rgba(176,140,193,0.15)",
-                      }}
+                      style={{ backgroundColor: ui.iconBg }}
                     >
-                      {isOverdue24 ? (
-                        <Clock size={20} style={{ color: "#DC2626" }} />
-                      ) : (
-                        <Bell size={20} style={{ color: C.ink }} />
-                      )}
+                      {ui.icon}
                     </div>
 
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="text-sm font-bold text-slate-800">
-                          {n.title || "Notification"}
+                          {n.title || ui.titleFallback}
                         </div>
 
-                        {isOverdue24 && (
+                        {ui.badgeText && (
                           <span
                             className="px-2.5 py-1 rounded-full text-xs font-semibold border"
-                            style={{
-                              color: "#DC2626",
-                              borderColor: "rgba(220,38,38,0.35)",
-                              backgroundColor: "rgba(220,38,38,0.08)",
-                            }}
+                            style={ui.badgeStyle}
                           >
-                            Overdue (24h)
+                            {ui.badgeText}
                           </span>
                         )}
 
@@ -485,7 +630,8 @@ export default function LogisticsNotifications() {
                       <div className="text-sm text-slate-700 mt-1">{n.message || "-"}</div>
 
                       <div className="mt-3 text-xs text-gray-500">
-                        Prescription ID: <b className="text-slate-800">{prescriptionId}</b>
+                        Prescription ID:{" "}
+                        <b className="text-slate-800">{prescriptionId}</b>
                         <span className="mx-2">•</span>
                         {formatFsTimestamp(n.createdAt)}
                       </div>
