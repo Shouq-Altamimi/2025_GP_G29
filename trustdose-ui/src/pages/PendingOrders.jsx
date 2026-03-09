@@ -20,7 +20,7 @@ import { ethers } from "ethers";
 import LOGISTICS_RECEIVE from "../contracts/LogisticsReceive.json";
 import { Loader2, FileText, CheckCircle2 } from "lucide-react";
 
-const LOGISTICS_RECEIVE_ADDRESS = "0x99aBd40A784fA87542Cd73abFc4edB106a3291C6";
+const LOGISTICS_RECEIVE_ADDRESS = "0x72971c76BEd36E17851e9BC80205DDB371B0EfD1";
 
 // ✅ IoT device (مؤقتًا ثابت)
 const DEFAULT_IOT_DEVICE_ID = "esp8266_1";

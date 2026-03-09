@@ -249,12 +249,7 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
             <span>Add Doctor</span>
           </SidebarItem>
 
-<SidebarItem active={isActive("/admin/medicines")} onClick={() => go("/admin/medicines")}>
-  <Pill size={18} />
-  <span>Add Medicine</span>
-</SidebarItem>
-
-          {/* ✅ NEW: Analytics tab */}
+ 
           <SidebarItem active={isActive("/admin/analytics")} onClick={() => go("/admin/analytics")}>
             <BarChart3 size={18} />
             <span>Analytics</span>
@@ -375,7 +370,7 @@ export default function AdminAddDoctorOnly() {
 
   const HOSPITAL_NAME = "Dr. Sulaiman Al Habib Hospital";
   const [contractAddress, setContractAddress] = useState(
-    "0x5Dc3801dfE4DCC1289B09702E56Ae32aeB82004e"
+    "0xBD79FDB3f4a2754819Dc5f640e9f084A2c75f9ee"
   );
   const [DoctorID, setDoctorID] = useState("");
   const [healthFacility] = useState(HOSPITAL_NAME);

@@ -335,15 +335,93 @@ export default function PharmacyShell() {
 const isHistActive = location.pathname.startsWith("/pharmacy/history"); 
 
   let subtitleText = "";
-  if (isPickActive) {
-    subtitleText = "Pick-up orders awaiting patient arrival";
-  } else if (isDelivActive) {
-    subtitleText = "Delivery requests awaiting your acceptance";
-  } else if (isPendActive) {
-    subtitleText = "Pending delivery prescriptions awaiting dispensing";
-  } else if (isNotifActive) {
-    subtitleText = "Reminder alerts";
-  }
+  if (isPickActive) subtitleText = "Pick-up orders awaiting patient arrival";
+  else if (isDelivActive) subtitleText = "Delivery requests awaiting your acceptance";
+  else if (isPendActive) subtitleText = "Pending delivery prescriptions awaiting dispensing";
+  else if (isNotifActive) subtitleText = "Reminder alerts";
+
+  // ✅ Listen to notifications collection ONLY (DB is source of truth)
+  useEffect(() => {
+    if (!isPharmacyPage) return;
+
+    const base = [where("toRole", "==", "pharmacy")];
+
+    const orderedQ = query(
+      collection(db, "notifications"),
+      ...base,
+      orderBy("createdAt", "desc")
+    );
+    const plainQ = query(collection(db, "notifications"), ...base);
+
+    let unsub = null;
+
+    const attach = (qq, label) => {
+      unsub = onSnapshot(
+        qq,
+        (snap) => {
+          setNotifItems(
+            snap.docs.map((d) => ({
+              __docId: d.id,
+              id: d.id,
+              ...d.data(),
+            }))
+          );
+        },
+        (err) => {
+          const msg = String(err?.message || "");
+          const isIndex =
+            err?.code === "failed-precondition" ||
+            msg.toLowerCase().includes("index") ||
+            msg.toLowerCase().includes("requires an index");
+
+          if (isIndex && label === "ordered") {
+            try {
+              if (unsub) unsub();
+            } catch {}
+            attach(plainQ, "plain");
+            return;
+          }
+
+          setNotifItems([]);
+        }
+      );
+    };
+
+    attach(orderedQ, "ordered");
+
+    return () => {
+      try {
+        if (unsub) unsub();
+      } catch {}
+    };
+  }, [isPharmacyPage]);
+
+  const unreadCount = useMemo(() => {
+    return (notifItems || []).filter((n) => !(n.read === true || n.read === "true")).length;
+  }, [notifItems]);
+
+  
+  const bellRightNode = isPharmacyPage ? (
+    <button
+      type="button"
+      onClick={() => navigate("/pharmacy/notifications")}
+      className="h-10 w-10 grid place-items-center rounded-xl hover:bg-black/[0.04] transition"
+      aria-label="Notifications"
+      style={{ color: C.ink }}
+    >
+      <div className="relative">
+        <Bell size={20} />
+        {unreadCount > 0 && (
+          <span
+            className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-bold grid place-items-center"
+            style={{ background: "#DC2626", color: "#fff", lineHeight: "18px" }}
+          >
+            {unreadCount > 99 ? "99+" : String(unreadCount)}
+          </span>
+        )}
+      </div>
+    </button>
+  ) : null;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
