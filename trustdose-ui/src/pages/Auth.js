@@ -17,6 +17,7 @@ import {
 } from "firebase/firestore";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
 import { ethers } from "ethers";
+import { logEvent } from "../utils/logEvent";
 
 const TD = {
   primary: "#B08CC1",
@@ -515,6 +516,12 @@ export default function TrustDoseAuth() {
       localStorage.setItem("userRole", "admin");
       localStorage.setItem("wallet", address);
       localStorage.setItem("userId", address);
+
+      await logEvent(
+  `Admin logged in with MetaMask: ${address}`,
+  "admin",
+  "login"
+);
   
       setAdminMsg("✅ Logged in as administrator");
 
@@ -629,7 +636,11 @@ export default function TrustDoseAuth() {
 
      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
 
-
+await logEvent(
+  `Password reset link sent for ID: ${id}`,
+  role || "unknown",
+  "password_reset_request"
+);
       setForgotMsg(
         `✅ Password reset link sent to ${email}. Check your inbox and spam folder!`
       );
@@ -720,6 +731,11 @@ export default function TrustDoseAuth() {
       }
 
       if (!user) {
+          await logEvent(
+    `Login failed for ID: ${id}`,
+    "unknown",
+    "login_failed"
+  );
         setMsg("❌ ID or password incorrect.");
         return;
       }
@@ -900,7 +916,11 @@ else if (!verified && role === "logistics" && user.password) {
         localStorage.setItem("userId", id);
         localStorage.setItem("userRole", role);
       }
-
+await logEvent(
+  `${role} logged in: ${displayName}`,
+  role,
+  "login"
+);
       setMsg(`✅ Logged in as ${role}. Welcome ${displayName}!`);
 
       if (role === "doctor") {
@@ -1040,6 +1060,11 @@ else if (!verified && role === "logistics" && user.password) {
       };
 
       await setDoc(doc(db, "patients", docId), payload);
+      await logEvent(
+  `Patient account created: ${nidAscii}`,
+  "patient",
+  "signup"
+);
 
       setMsg("🎉 Patient account created successfully. You can sign in now.");
       setMode("signin");

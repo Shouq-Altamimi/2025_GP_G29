@@ -19,8 +19,7 @@ import {
 import { useNavigate, useLocation } from "react-router-dom";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
-import { logEvent } from "./logEvent";
-
+import { logEvent } from "../utils/logEvent";
 import app, { db } from "../firebase";
 import {
   collection,
@@ -167,6 +166,10 @@ function isNonEmpty(v) {
 function okRange(minV, maxV) {
   if (minV == null || maxV == null) return false;
   return minV <= maxV;
+}
+
+function removeArabic(text) {
+  return text.replace(/[\u0600-\u06FF]/g, "");
 }
 
 /* =======================
@@ -440,23 +443,33 @@ export default function AdminMedicines() {
                 Label <span className="text-rose-600">*</span>
               </label>
               <input
-                value={form.label}
-                onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))}
-                placeholder="e.g., azithromycin 500 mg"
-                className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
-              />
+  value={form.label}
+  onChange={(e) =>
+    setForm((p) => ({
+      ...p,
+      label: removeArabic(e.target.value),
+    }))
+  }
+  placeholder="e.g., azithromycin 500 mg"
+  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
+/>
             </div>
 
             <div>
               <label className="block text-sm text-gray-700 mb-1">
                 Name <span className="text-rose-600">*</span>
               </label>
-              <input
-                value={form.name}
-                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                placeholder="e.g., azithromycin"
-                className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
-              />
+             <input
+  value={form.name}
+  onChange={(e) =>
+    setForm((p) => ({
+      ...p,
+      name: removeArabic(e.target.value),
+    }))
+  }
+  placeholder="e.g., azithromycin"
+  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1]"
+/>
             </div>
 
             <div>
@@ -494,19 +507,25 @@ export default function AdminMedicines() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <input
-                  value={form.minTemp}
-                  onChange={(e) => setForm((p) => ({ ...p, minTemp: e.target.value }))}
-                  placeholder="minTemp"
-                  inputMode="decimal"
-                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1] bg-white"
-                />
-                <input
-                  value={form.maxTemp}
-                  onChange={(e) => setForm((p) => ({ ...p, maxTemp: e.target.value }))}
-                  placeholder="maxTemp"
-                  inputMode="decimal"
-                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1] bg-white"
-                />
+  type="number"
+  step="0.1"
+  min="-50"
+  max="100"
+  value={form.minTemp}
+  onChange={(e) => setForm((p) => ({ ...p, minTemp: e.target.value }))}
+  placeholder="minTemp"
+  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1] bg-white"
+/>
+               <input
+  type="number"
+  step="0.1"
+  min="-50"
+  max="100"
+  value={form.maxTemp}
+  onChange={(e) => setForm((p) => ({ ...p, maxTemp: e.target.value }))}
+  placeholder="maxTemp"
+  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1] bg-white"
+/>
               </div>
             </div>
 
@@ -515,20 +534,26 @@ export default function AdminMedicines() {
                 Humidity Range (%) — optional
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <input
-                  value={form.minHumidity}
-                  onChange={(e) => setForm((p) => ({ ...p, minHumidity: e.target.value }))}
-                  placeholder="minHumidity"
-                  inputMode="decimal"
-                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1] bg-white"
-                />
-                <input
-                  value={form.maxHumidity}
-                  onChange={(e) => setForm((p) => ({ ...p, maxHumidity: e.target.value }))}
-                  placeholder="maxHumidity"
-                  inputMode="decimal"
-                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1] bg-white"
-                />
+              <input
+  type="number"
+  step="0.1"
+  min="0"
+  max="100"
+  value={form.minHumidity}
+  onChange={(e) => setForm((p) => ({ ...p, minHumidity: e.target.value }))}
+  placeholder="minHumidity"
+  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1] bg-white"
+/>
+               <input
+  type="number"
+  step="0.1"
+  min="0"
+  max="100"
+  value={form.maxHumidity}
+  onChange={(e) => setForm((p) => ({ ...p, maxHumidity: e.target.value }))}
+  placeholder="maxHumidity"
+  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1] bg-white"
+/>
               </div>
             </div>
           </div>

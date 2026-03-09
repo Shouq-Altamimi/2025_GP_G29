@@ -20,6 +20,7 @@ import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useNavigate, useLocation } from "react-router-dom";
 import { BarChart3 } from "lucide-react";
+import { logEvent } from "../utils/logEvent";
 
 
 const C = { primary: "#B08CC1", teal: "#52B9C4", ink: "#4A2C59" };
@@ -519,6 +520,12 @@ export default function Admin() {
           expiresAtMs,
         },
       });
+
+      await logEvent(
+  `Admin reset temporary password for doctor: ${row.accessId || row.name || row.id}`,
+  "admin",
+  "doctor_temp_password_reset"
+);
 
       setDoctors((prev) =>
         prev.map((d) =>
@@ -1110,8 +1117,10 @@ export default function Admin() {
         open={open}
         setOpen={setOpen}
         onNav={(p) => navigate(p)}
-        onLogout={() => navigate("/auth", { replace: true })}
-      />
+onLogout={async () => {
+  await logEvent("Admin signed out", "admin", "logout");
+  navigate("/auth", { replace: true });
+}}      />
 
       {resetModal && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40">

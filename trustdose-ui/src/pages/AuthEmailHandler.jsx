@@ -13,7 +13,7 @@ import {
   getDocs
 } from "firebase/firestore";
 import { getAuth, isSignInWithEmailLink, signInWithEmailLink, signOut } from "firebase/auth";
-
+import { logEvent } from "../utils/logEvent";
 export default function AuthEmailHandler() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
@@ -96,6 +96,7 @@ export default function AuthEmailHandler() {
             console.error(`❌ Email exists in ${col}`);
             setStatus("❌ This email is already registered");
             setError(true);
+            await logEvent(`Email verification failed: email already exists in ${col} (${email})`, "system", "email_verify_failed");
             
             try {
               await signOut(auth);
@@ -116,6 +117,7 @@ export default function AuthEmailHandler() {
   emailVerifiedAt: serverTimestamp(),
   updatedAt: serverTimestamp(), 
 });
+await logEvent(`Email verified successfully for ${safeCol}: ${email}`, "system", "email_verified");
 
         console.log("✅ Email saved successfully");
 
@@ -138,6 +140,7 @@ export default function AuthEmailHandler() {
       } catch (e) {
         console.error("💥 Verification error:", e);
         setError(true);
+        await logEvent(`Email verification error: ${e?.code || "unknown"} - ${e?.message || "No message"}`, "system", "email_verify_error");
 
         if (e?.code === "auth/invalid-action-code") {
           setStatus("❌ This link has expired or was already used");

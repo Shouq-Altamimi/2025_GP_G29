@@ -19,6 +19,7 @@ import {
 import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { ethers } from "ethers";
 import LOGISTICS_ACCEPT from "../contracts/LogisticsAccept.json";
+import { logEvent } from "../utils/logEvent";
 
 const C = {
   primary: "#B08CC1",
@@ -455,7 +456,11 @@ export default function Logistics() {
           })
         )
       );
-
+await logEvent(
+  `Logistics accepted delivery for prescription: ${g.prescriptionId}`,
+  "logistics",
+  "delivery_accept"
+);
       const docIds = new Set(g.meds.map((x) => x._docId));
       setRows((prev) => prev.filter((row) => !docIds.has(row._docId)));
 

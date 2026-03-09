@@ -16,6 +16,7 @@ import Footer from "../components/Footer.jsx";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { useNavigate, useLocation } from "react-router-dom";
+import { logEvent } from "../utils/logEvent";
 
 const C = {
   primary: "#B08CC1",
@@ -447,6 +448,9 @@ export default function AdminAnalytics() {
 
   const [loading, setLoading] = useState(true);
   const [rx, setRx] = useState([]);
+  useEffect(() => {
+  logEvent("Admin opened analytics page", "admin", "analytics_open");
+}, []);
 
   useEffect(() => {
     (async () => {
@@ -578,8 +582,10 @@ export default function AdminAnalytics() {
         open={open}
         setOpen={setOpen}
         onNav={(p) => navigate(p)}
-        onLogout={() => navigate("/auth", { replace: true })}
-      />
+  onLogout={async () => {
+    await logEvent("Admin signed out", "admin", "logout");
+    navigate("/auth", { replace: true });
+  }}      />
     </div>
   );
 }

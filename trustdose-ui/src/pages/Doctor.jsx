@@ -24,7 +24,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 import PRESCRIPTION from "../contracts/Prescription.json";
-
+import { logEvent } from "../utils/logEvent";
 const C = {
   primary: "#B08CC1",
   primaryDark: "#B08CC1",
@@ -350,9 +350,19 @@ export default function Doctor() {
           "td_patient",
           JSON.stringify({ id: patient.id, name: patient.name })
         );
+        await logEvent(
+  `Doctor searched and found patient: ${patient.name || natDigits}`,
+  "doctor",
+  "patient_search_success"
+);
       } else {
         setSelectedPatient(null);
         setSearched(true);
+        await logEvent(
+  `Doctor searched for unavailable patient ID: ${natDigits}`,
+  "doctor",
+  "patient_search_failed"
+);
         setSearchMsg("The national ID you entered isn’t registered in our system.");
       }
     } catch (e) {
@@ -550,7 +560,11 @@ export default function Doctor() {
 
         await addDoc(collection(db, "prescriptions"), payload);
       }
-
+await logEvent(
+  `Doctor created ${vf2.length} prescription(s) for patient: ${selectedPatient.name || natId}`,
+  "doctor",
+  "prescription_create"
+);
       sessionStorage.setItem("td_last_patient", natId);
       sessionStorage.setItem(
         "td_patient",

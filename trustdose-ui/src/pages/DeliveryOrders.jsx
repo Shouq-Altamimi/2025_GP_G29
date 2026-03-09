@@ -19,6 +19,7 @@ import {
 import { Loader2, CheckCircle2 } from "lucide-react";
 import { ethers } from "ethers";
 import DELIVERY_ACCEPT from "../contracts/DeliveryAccept.json";
+import { logEvent } from "../utils/logEvent";
 
 const C = {
   primary: "#B08CC1",
@@ -403,7 +404,11 @@ export default function DeliveryOrders({ pharmacyId }) {
       if (txHashes.length > 1) updatePayload.acceptDeliveryTxs = txHashes;
 
       await Promise.all(valid.map(({ ref }) => updateDoc(ref, updatePayload)));
-
+await logEvent(
+  `Pharmacy accepted sensitive delivery request for prescription ${g.prescriptionId} with ${valid.length} medicine(s)`,
+  "pharmacy",
+  "delivery_accept"
+);
 
       const docIds = new Set(g.meds.map((x) => x._docId));
       setRows((arr) => arr.filter((x) => !docIds.has(x._docId)));
@@ -424,6 +429,11 @@ export default function DeliveryOrders({ pharmacyId }) {
       });
     } catch (err) {
       console.error(err);
+      await logEvent(
+  `Delivery accept failed for prescription ${g.prescriptionId}: ${err?.message || "unknown error"}`,
+  "pharmacy",
+  "delivery_accept_error"
+);
 
       let m = "Error occurred. Please try again.";
       if (err?.code === "ACTION_REJECTED" || err?.code === 4001) {

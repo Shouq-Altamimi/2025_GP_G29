@@ -24,6 +24,7 @@ import {
 import { ethers } from "ethers";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
+import { logEvent } from "../utils/logEvent";
 
 const PRESCRIPTION_ADDRESS = "0xB3775F4DA983aa2E9488aF6D8128711C1e0413Ee";
 const DISPENSE_ADDRESS = "0x30079699c785e463f5F077D8eA1071953a28643D";
@@ -479,6 +480,11 @@ const [toDT, setToDT] = useState("");
 
           const hydrated = await enrichWithDoctorPhone([n]);
           setResults(hydrated);
+          await logEvent(
+  `Pharmacy searched and found prescription: ${n.ref || rxID}`,
+  "pharmacy",
+  "prescription_search_success"
+);
         } else {
           setResults([]);
         }
@@ -559,6 +565,13 @@ const [toDT, setToDT] = useState("");
 
       const hydrated = await enrichWithDoctorPhone(list);
       setResults(hydrated);
+  if (hydrated.length > 0) {
+  await logEvent(
+    `Pharmacy searched and found ${hydrated.length} prescription(s) for patient ID: ${natDigits}`,
+    "pharmacy",
+    "prescription_search_success"
+  );
+}
     } catch (e) {
       console.error(e);
       setError("Error fetching from database. Please try again.");
@@ -654,6 +667,12 @@ const [toDT, setToDT] = useState("");
         dispensedBy: pharmacistAddr,
         dispenseTx: txHash,
       });
+
+      await logEvent(
+  `Pharmacy dispensed prescription: ${item.ref || item._docId}`,
+  "pharmacy",
+  "medicine_dispense"
+);
 
       setResults((prev) =>
         prev.map((r) =>

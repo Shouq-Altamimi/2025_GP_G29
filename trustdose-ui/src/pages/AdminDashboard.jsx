@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState , useRef } from "react";
 import {
   X,
   LayoutDashboard,
@@ -30,7 +30,7 @@ import {
   where,
 } from "firebase/firestore";
 import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "firebase/auth";
-
+import { logEvent } from "../utils/logEvent";
 const auth = getAuth(app);
 if (!auth.currentUser) signInAnonymously(auth).catch(() => {});
 onAuthStateChanged(auth, (u) => u && console.log(" anon uid:", u.uid));
@@ -361,8 +361,10 @@ function ErrorMsg({ children }) {
 export default function AdminAddDoctorOnly() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const addDoctorPageLoggedRef = useRef(false);
 
   async function handleLogout() {
+      await logEvent("Admin signed out", "admin", "logout");
     localStorage.clear();
     sessionStorage.clear();
     try {
@@ -385,6 +387,12 @@ export default function AdminAddDoctorOnly() {
   const [tempPassword, setTempPassword] = useState(generateTempPassword());
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  useEffect(() => {
+  if (!addDoctorPageLoggedRef.current) {
+    logEvent("Admin opened add doctor page", "admin", "add_doctor_page_open");
+    addDoctorPageLoggedRef.current = true;
+  }
+}, []);
 
   const [dirty, setDirty] = useState({
     contract: false,
@@ -418,6 +426,7 @@ export default function AdminAddDoctorOnly() {
       setWalletAddress(addr);
       setDirty((d) => ({ ...d, wallet: true }));
       setStatus("✅ Address fetched from MetaMask.");
+      await logEvent("Admin connected MetaMask on add doctor page", "admin", "metamask_connect");
     } catch (e) {
       if (isUserRejectedError(e)) {
         setMmError("MetaMask request was declined. Please try again.");
@@ -497,6 +506,11 @@ export default function AdminAddDoctorOnly() {
       });
 
       await markAccessIdClaimed_Firestore(id);
+      await logEvent(
+  `Admin added doctor: ${name} (${id})`,
+  "admin",
+  "doctor_create"
+);
 
       setSuccessModal({
         accessId: usedAccessId,

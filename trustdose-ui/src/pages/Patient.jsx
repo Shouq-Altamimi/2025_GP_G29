@@ -1,6 +1,6 @@
 // src/pages/Patient.jsx
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { db } from "../firebase";
 import {
   doc,
@@ -11,6 +11,7 @@ import {
   where,
   limit as fsLimit,
 } from "firebase/firestore";
+import { logEvent } from "../utils/logEvent";
 
 const isNid = (v) => /^\d{10,12}$/.test(String(v || "").trim());
 
@@ -285,6 +286,7 @@ function normalizeSensitivity(raw) {
 
 export default function PatientPage() {
   const [nid, setNid] = useState(null);
+    const dashboardLoggedRef = useRef(false);
   const [logisticsName, setLogisticsName] = useState("—");
   const [logisticsPhone, setLogisticsPhone] = useState("—");
 const [medicinesMap, setMedicinesMap] = useState({});
@@ -360,16 +362,42 @@ const [medicinesMap, setMedicinesMap] = useState({});
 
         setRx(pres);
         setPage(1);
+   if (!dashboardLoggedRef.current) {
+  await logEvent(
+    `Patient opened dashboard: ${found.data?.name || nid}`,
+    "patient",
+    "dashboard_open"
+  );
+  dashboardLoggedRef.current = true;
+}
       } catch (e) {
+         await logEvent(
+    `Patient dashboard load failed: ${nid || "unknown"}`,
+    "patient",
+    "dashboard_load_failed"
+  );
         setErr(e?.message || String(e));
       } finally {
         setLoading(false);
       }
     })();
-  }, [nid]);
+  }, [nid , logisticsName]);
 
   const fullName = useMemo(() => patient?.name || "-", [patient]);
-  const toggleOpen = (id) => setOpenIds((s) => ({ ...s, [id]: !s[id] }));
+  //const toggleOpen = (id) => setOpenIds((s) => ({ ...s, [id]: !s[id] }));
+  const toggleOpen = async (id) => {
+  const willOpen = !openIds[id];
+
+  setOpenIds((s) => ({ ...s, [id]: willOpen }));
+
+  if (willOpen) {
+    await logEvent(
+      `Patient viewed prescription details: ${id}`,
+      "patient",
+      "prescription_view"
+    );
+  }
+};
 
   const openProfile = () => window.dispatchEvent(new Event("openPatientProfile"));
 
