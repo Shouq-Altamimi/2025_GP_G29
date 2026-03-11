@@ -27,6 +27,8 @@ import {
   ThermometerSnowflake,
 } from "lucide-react";
 
+import { recordBreachOnChain } from "../IoTBreachContract";
+
 const C = {
   primary: "#B08CC1",
   primaryDark: "#9F76B4",
@@ -84,7 +86,6 @@ async function resolveLogisticsDocId() {
   return null;
 }
 
-// ✅ UI config for notification types
 function getTypeUi(type) {
   const t = String(type || "");
 
@@ -132,8 +133,8 @@ export default function LogisticsNotifications() {
   const [listenErr, setListenErr] = React.useState("");
   const [items, setItems] = React.useState([]);
 
-  // ✅ يمنع تكرار معالجة نفس القراءة (زيادة أمان، بس التكرار الحقيقي يمنعه notifId الثابت)
   const processedReadingIdsRef = React.useRef(new Set());
+  const processedBreachRef = React.useRef(new Set());
 
   React.useEffect(() => {
     let mounted = true;
@@ -162,17 +163,6 @@ export default function LogisticsNotifications() {
     return () => (mounted = false);
   }, []);
 
-  /**
-   * ✅ NEW: iotReadings -> notifications (TEMP_OUT_OF_RANGE)
-   *
-   * شرط الإنشاء:
-   * - outOfRange == true
-   * - prescriptionId موجود (r.prescriptionId أو r.prescriptionID)
-   *
-   * منع التكرار:
-   * - docId ثابت = temp_${logisticsDocId}_${pid}
-   *   إذا موجود خلاص ما ينشئ مرة ثانية.
-   */
   React.useEffect(() => {
     if (!logisticsDocId) return;
 
@@ -196,45 +186,94 @@ export default function LogisticsNotifications() {
     const handleSnap = async (snap) => {
       if (snap.empty) return;
 
-      // نشتغل على آخر 10 (أحدث) لتجنب ضياع حدث بسبب reload
       const docs = snap.docs;
 
       for (const d of docs) {
         const readingId = d.id;
 
-        // معالجة مرة واحدة داخل نفس الجلسة
         if (processedReadingIdsRef.current.has(readingId)) continue;
         processedReadingIdsRef.current.add(readingId);
 
         const r = d.data() || {};
 
-        // لازم prescriptionId يكون موجود (ما نستخدم orderId كبديل عشان ما يطلع TEST_ORDER_1)
         const pid = String(r.prescriptionId || r.prescriptionID || "").trim();
         if (!pid) continue;
 
         const deviceId = String(r.deviceId || "").trim();
-        const temp = r.temp;
-        const hum = r.humidity;
+        const temp = Number(r.temp || 0);
+        const hum = Number(r.humidity || 0);
 
         const notifId = `temp_${logisticsDocId}_${pid}`;
         const notifRef = doc(db, "notifications", notifId);
 
-        // إذا فيه إشعار سابق لنفس الوصفة، لا تكرر
         const existsSnap = await getDoc(notifRef);
-        if (existsSnap.exists()) continue;
+        if (!existsSnap.exists()) {
+          await setDoc(notifRef, {
+            toRole: "logistics",
+            toLogisticsDocId: logisticsDocId,
+            type: "TEMP_OUT_OF_RANGE",
+            title: "Temperature alert",
+            message: `Prescription ${pid} is marked invalid due to unsafe temperature. Please initiate redispensing.`,
+            orderId: pid,
+            prescriptionID: pid,
+            deviceId,
+            read: false,
+            createdAt: serverTimestamp(),
+          });
+        }
 
-        await setDoc(notifRef, {
-          toRole: "logistics",
-          toLogisticsDocId: logisticsDocId,
-          type: "TEMP_OUT_OF_RANGE",
-          title: "Temperature alert",
-          message: `prescription ${pid}. Marked invalid due to unsafe temperature. Please initiate redispensing.`,
-          orderId: pid,
-          prescriptionID: pid,
-          deviceId,
-          read: false,
-          createdAt: serverTimestamp(),
-        });
+        // ==============================
+        // BLOCKCHAIN BREACH RECORD
+        // ==============================
+        try {
+          if (!processedBreachRef.current.has(pid)) {
+            processedBreachRef.current.add(pid);
+
+            const qRx = query(
+              collection(db, "prescriptions"),
+              where("prescriptionID", "==", pid),
+              limit(1)
+            );
+
+            const rxQs = await getDocs(qRx);
+            if (!rxQs.empty) {
+              const rxDoc = rxQs.docs[0];
+              const rx = rxDoc.data() || {};
+
+              const onchainId = rx.onchainId;
+              const already = rx.breachRecordedOnChain;
+
+              if (onchainId && !already) {
+                const txHash = await recordBreachOnChain({
+                  prescriptionOnchainId: Number(onchainId),
+                  breachType: "TEMP_OUT_OF_RANGE",
+
+                 
+                  measuredValue: Math.round(temp),
+                  minAllowed: Math.round(Number(rx.tempMin || 0)),
+                  maxAllowed: Math.round(Number(rx.tempMax || 0)),
+
+                  breachTime: Math.floor(Date.now() / 1000),
+                });
+
+                await setDoc(
+                  rxDoc.ref,
+                  {
+                    breachRecordedOnChain: true,
+                    breachTxHash: txHash,
+                    breachRecordedAt: serverTimestamp(),
+                    breachType: "TEMP_OUT_OF_RANGE",
+                    breachMeasuredValue: Math.round(temp),
+                    breachMeasuredHumidity: Math.round(hum),
+                  },
+                  { merge: true }
+                );
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Blockchain breach record failed:", e);
+        }
       }
     };
 
@@ -251,7 +290,6 @@ export default function LogisticsNotifications() {
         (err) => {
           console.error(`iotReadings listen error (${label}):`, err);
 
-          // إذا قال يحتاج Index، نحاول fallback للـ plain query
           const msg = String(err?.message || "").toLowerCase();
           const isIndex =
             err?.code === "failed-precondition" ||
@@ -278,7 +316,7 @@ export default function LogisticsNotifications() {
     };
   }, [logisticsDocId]);
 
-  // Existing 24h writer (unchanged)
+  
   React.useEffect(() => {
     if (!logisticsDocId) return;
 
@@ -367,7 +405,6 @@ export default function LogisticsNotifications() {
     };
   }, [logisticsDocId]);
 
-  // ✅ Reader for notifications
   React.useEffect(() => {
     if (!logisticsDocId) return;
 
