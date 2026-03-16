@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import PRESCRIPTION from "../contracts/Prescription.json";
 import { logEvent } from "../utils/logEvent";
+
 const C = {
   primary: "#B08CC1",
   primaryDark: "#B08CC1",
@@ -32,7 +33,7 @@ const C = {
   pale: "#F6F1FA",
 };
 
-const CONTRACT_ADDRESS = "0xB84B9EAcc5ecAc5E721D468b64E120Bde1c70d00";
+const CONTRACT_ADDRESS = "0x56c6D8ba686f4338c8299Ed24D833CE2af001bBE";
 
 const OTHER_MAX = 20;
 const LIMITS = Object.freeze({
@@ -56,9 +57,8 @@ function getDoseOptions(form) {
 }
 
 function normalizeSensitivity(v) {
-  const s = String(v || "").toLowerCase().trim();
-  const isSens = s === "sensitive" || s === "yes" || s === "true" || s === "1";
-  return isSens ? "Sensitive" : "NonSensitive";
+  const s = String(v || "").trim();
+  return s === "Sensitive" ? "Sensitive" : "NonSensitive";
 }
 
 const F = Object.freeze({
@@ -99,8 +99,9 @@ async function sha256Hex(input) {
 }
 
 async function getSignerEnsured() {
-  if (!window.ethereum)
+  if (!window.ethereum) {
     throw new Error("MetaMask not detected. Please install/enable it.");
+  }
   await window.ethereum.request({ method: "eth_requestAccounts" });
   const provider = new ethers.BrowserProvider(window.ethereum);
   return provider.getSigner();
@@ -179,14 +180,19 @@ export default function Doctor() {
             ...welcome,
             name: d.name || welcome?.name || "",
             phone: d.phone || welcome?.phone || "",
-            facility: d.facility || welcome?.facility || welcome?.healthFacility || "",
+            facility:
+              d.facility ||
+              welcome?.facility ||
+              welcome?.healthFacility ||
+              "",
             healthFacility:
               d.healthFacility ||
               d.facility ||
               welcome?.healthFacility ||
               welcome?.facility ||
               "",
-            speciality: d.speciality || d.specialty || welcome?.speciality || "",
+            speciality:
+              d.speciality || d.specialty || welcome?.speciality || "",
           };
 
           setDoctorProfile(merged);
@@ -215,7 +221,7 @@ export default function Doctor() {
   const [rxMsg, setRxMsg] = useState("");
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
-  const MAX_FORMS = 2;
+  const MAX_FORMS = 10;
 
   const emptyForm = () => ({
     medicalCondition: "",
@@ -229,7 +235,6 @@ export default function Doctor() {
   });
 
   const [forms, setForms] = useState([emptyForm()]);
-  const [hideSecond, setHideSecond] = useState(false);
 
   function updateForm(i, patch) {
     setForms((prev) =>
@@ -238,12 +243,13 @@ export default function Doctor() {
   }
 
   function addOtherPrescription() {
-    if (forms.length === 2 && hideSecond) {
-      setHideSecond(false);
-      return;
-    }
-    setForms((prev) => (prev.length >= MAX_FORMS ? prev : [...prev, emptyForm()]));
-    setHideSecond(false);
+    setForms((prev) =>
+      prev.length >= MAX_FORMS ? prev : [...prev, emptyForm()]
+    );
+  }
+
+  function removeForm(i) {
+    setForms((prev) => prev.filter((_, idx) => idx !== i));
   }
 
   function clearOneForm(i) {
@@ -351,19 +357,21 @@ export default function Doctor() {
           JSON.stringify({ id: patient.id, name: patient.name })
         );
         await logEvent(
-  `Doctor searched and found patient: ${patient.name || natDigits}`,
-  "doctor",
-  "patient_search_success"
-);
+          `Doctor searched and found patient: ${patient.name || natDigits}`,
+          "doctor",
+          "patient_search_success"
+        );
       } else {
         setSelectedPatient(null);
         setSearched(true);
         await logEvent(
-  `Doctor searched for unavailable patient ID: ${natDigits}`,
-  "doctor",
-  "patient_search_failed"
-);
-        setSearchMsg("The national ID you entered isn’t registered in our system.");
+          `Doctor searched for unavailable patient ID: ${natDigits}`,
+          "doctor",
+          "patient_search_failed"
+        );
+        setSearchMsg(
+          "The national ID you entered isn’t registered in our system."
+        );
       }
     } catch (e) {
       console.error(e);
@@ -376,8 +384,7 @@ export default function Doctor() {
   }
 
   function visibleForms() {
-    if (forms.length < 2) return forms;
-    return hideSecond ? [forms[0]] : forms;
+    return forms;
   }
 
   async function confirmAndSave() {
@@ -404,10 +411,26 @@ export default function Doctor() {
         );
       }
 
-      if (!f.selectedMed) return setRxMsg(`Please choose a medicine for prescription #${i + 1}.`);
-      if (!f.dose) return setRxMsg(`Please enter/select a dosage for prescription #${i + 1}.`);
-      if (!f.timesPerDay) return setRxMsg(`Please enter/select a frequency for prescription #${i + 1}.`);
-      if (!f.durationDays) return setRxMsg(`Please enter/select a duration for prescription #${i + 1}.`);
+      if (!f.selectedMed) {
+        return setRxMsg(
+          `Please choose a medicine for prescription #${i + 1}.`
+        );
+      }
+      if (!f.dose) {
+        return setRxMsg(
+          `Please enter/select a dosage for prescription #${i + 1}.`
+        );
+      }
+      if (!f.timesPerDay) {
+        return setRxMsg(
+          `Please enter/select a frequency for prescription #${i + 1}.`
+        );
+      }
+      if (!f.durationDays) {
+        return setRxMsg(
+          `Please enter/select a duration for prescription #${i + 1}.`
+        );
+      }
 
       if ((f.notes || "").length > LIMITS.notes.max) {
         return setRxMsg(
@@ -428,7 +451,11 @@ export default function Doctor() {
 
       const signer = await getSignerEnsured();
       const doctorAddress = await signer.getAddress();
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, PRESCRIPTION.abi, signer);
+      const contract = new ethers.Contract(
+        CONTRACT_ADDRESS,
+        PRESCRIPTION.abi,
+        signer
+      );
 
       const vf2 = visibleForms();
       const sharedPrescriptionID = await generateSequentialPrescriptionId();
@@ -438,12 +465,13 @@ export default function Doctor() {
       );
       const sharedSensitivity = anySensitive ? "Sensitive" : "NonSensitive";
 
-      
       let perItemTxHashes = [];
       let onchainIds = [];
 
       if (vf2.length > 1) {
-        const medicines = vf2.map((f) => String(f.selectedMed?.label || "").trim());
+        const medicines = vf2.map((f) =>
+          String(f.selectedMed?.label || "").trim()
+        );
         const dosages = vf2.map((f) => String(f.dose || ""));
         const freqs = vf2.map((f) => String(f.timesPerDay || ""));
         const durs = vf2.map((f) => String(f.durationDays || ""));
@@ -456,7 +484,9 @@ export default function Doctor() {
           durs
         );
         const receipt = await tx.wait();
-        if (receipt?.status !== 1) throw new Error("Transaction reverted or failed.");
+        if (receipt?.status !== 1) {
+          throw new Error("Transaction reverted or failed.");
+        }
 
         const txHash = receipt?.hash || receipt?.transactionHash || tx.hash;
         perItemTxHashes = vf2.map(() => txHash);
@@ -488,7 +518,9 @@ export default function Doctor() {
           f.durationDays
         );
         const receipt = await tx.wait();
-        if (receipt?.status !== 1) throw new Error("Transaction reverted or failed.");
+        if (receipt?.status !== 1) {
+          throw new Error("Transaction reverted or failed.");
+        }
 
         const txHash = receipt?.hash || receipt?.transactionHash || tx.hash;
         perItemTxHashes = [txHash];
@@ -511,7 +543,6 @@ export default function Doctor() {
         }
       }
 
-  
       for (let i = 0; i < vf2.length; i++) {
         const f = vf2[i];
 
@@ -536,7 +567,6 @@ export default function Doctor() {
           [F.patientDisplayId]: natId ? natId.slice(-4) : "",
           [F.patientNationalIdHash]: "0x" + natIdHashHex,
 
-      
           patientDocId: selectedPatient.docId || "",
           patientName: selectedPatient.name || "",
           patientPhone: selectedPatient.phone || "",
@@ -546,12 +576,13 @@ export default function Doctor() {
 
           [F.onchainTx]: perItemTxHashes[i] || "",
 
-          ...(onchainIds?.[i] != null ? { onchainId: String(onchainIds[i]) } : {}),
+          ...(onchainIds?.[i] != null
+            ? { onchainId: String(onchainIds[i]) }
+            : {}),
 
           [F.prescriptionID]: sharedPrescriptionID,
           [F.sensitivity]: sharedSensitivity,
 
-       
           dispensed: false,
           acceptDelivery: false,
           logisticsAccepted: false,
@@ -560,11 +591,13 @@ export default function Doctor() {
 
         await addDoc(collection(db, "prescriptions"), payload);
       }
-await logEvent(
-  `Doctor created ${vf2.length} prescription(s) for patient: ${selectedPatient.name || natId}`,
-  "doctor",
-  "prescription_create"
-);
+
+      await logEvent(
+        `Doctor created ${vf2.length} prescription(s) for patient: ${selectedPatient.name || natId}`,
+        "doctor",
+        "prescription_create"
+      );
+
       sessionStorage.setItem("td_last_patient", natId);
       sessionStorage.setItem(
         "td_patient",
@@ -572,12 +605,12 @@ await logEvent(
       );
 
       setForms([emptyForm()]);
-      setHideSecond(false);
       setShowSuccessPopup(true);
     } catch (e) {
       console.error("createPrescription failed:", e);
 
-      const rawMsg = e?.info?.error?.message || e?.shortMessage || e?.message || "";
+      const rawMsg =
+        e?.info?.error?.message || e?.shortMessage || e?.message || "";
       const lower = String(rawMsg).toLowerCase();
 
       if (
@@ -617,21 +650,20 @@ await logEvent(
     <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-6 py-6 md:py-8">
       {(profile.name || profile.healthFacility || profile.speciality) && (
         <div className="mb-4">
-  <div className="font-extrabold text-2xl" style={{ color: "#334155" }}>
-    {profile?.name ? `Welcome, Dr. ${profile.name}` : "Welcome, Doctor"}
-  </div>
+          <div className="font-extrabold text-2xl" style={{ color: "#334155" }}>
+            {profile?.name ? `Welcome, Dr. ${profile.name}` : "Welcome, Doctor"}
+          </div>
 
-  <div className="mt-3 mb-3 h-px w-full bg-gray-200" />
+          <div className="mt-3 mb-3 h-px w-full bg-gray-200" />
 
-  {(profile?.healthFacility || profile?.speciality) && (
-    <div className="text-sm text-gray-600">
-      {profile?.healthFacility || ""}
-      {profile?.healthFacility && profile?.speciality ? " • " : ""}
-      {profile?.speciality || ""}
-    </div>
-  )}
-</div>
-
+          {(profile?.healthFacility || profile?.speciality) && (
+            <div className="text-sm text-gray-600">
+              {profile?.healthFacility || ""}
+              {profile?.healthFacility && profile?.speciality ? " • " : ""}
+              {profile?.speciality || ""}
+            </div>
+          )}
+        </div>
       )}
 
       <section className="space-y-6">
@@ -676,7 +708,9 @@ await logEvent(
                     ? C.primary
                     : "rgba(176, 140, 193, 0.4)",
                 cursor:
-                  q.trim().length > 0 && !validationMsg ? "pointer" : "not-allowed",
+                  q.trim().length > 0 && !validationMsg
+                    ? "pointer"
+                    : "not-allowed",
               }}
             >
               <Search size={18} /> Search
@@ -705,29 +739,49 @@ await logEvent(
         {searched && selectedPatient && (
           <>
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 relative">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
+              <h2
+                className="text-xl font-semibold mb-4 flex items-center gap-2"
+                style={{ color: C.ink }}
+              >
                 <ClipboardList size={20} style={{ color: C.primary }} />
                 Patient Information
               </h2>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                 <InfoCard label="Name" value={selectedPatient.name} highlight />
-                <InfoCard label="National ID" value={selectedPatient.id} bold />
-                <InfoCard label="Age" value={`${selectedPatient.age || "—"} years`} />
+                <InfoCard
+                  label="National ID"
+                  value={selectedPatient.id}
+                  bold
+                />
+                <InfoCard
+                  label="Age"
+                  value={`${selectedPatient.age || "—"} years`}
+                />
               </div>
 
               <div className="flex justify-end">
                 <button
                   onClick={async () => {
-                    const pidHash = "0x" + (await sha256Hex(selectedPatient.id.toString()));
+                    const pidHash =
+                      "0x" + (await sha256Hex(selectedPatient.id.toString()));
                     sessionStorage.setItem(
                       "td_patient",
-                      JSON.stringify({ id: selectedPatient.id, name: selectedPatient.name })
+                      JSON.stringify({
+                        id: selectedPatient.id,
+                        name: selectedPatient.name,
+                      })
                     );
-                    sessionStorage.setItem("td_last_patient", String(selectedPatient.id));
+                    sessionStorage.setItem(
+                      "td_last_patient",
+                      String(selectedPatient.id)
+                    );
                     navigate(`/prescriptions?pid=${pidHash}`, {
                       replace: true,
-                      state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
+                      state: {
+                        patientId: selectedPatient.id,
+                        patientName: selectedPatient.name,
+                      },
                     });
                   }}
                   className="px-6 py-3 text-white rounded-xl transition-colors flex items-center gap-2 font-medium shadow-sm"
@@ -740,7 +794,10 @@ await logEvent(
             </section>
 
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2" style={{ color: C.ink }}>
+              <h2
+                className="text-xl font-semibold mb-4 flex items-center gap-2"
+                style={{ color: C.ink }}
+              >
                 <FileText size={20} style={{ color: C.primary }} />
                 Create New Prescription
               </h2>
@@ -748,7 +805,11 @@ await logEvent(
               {!!rxMsg && (
                 <div
                   className="p-3 rounded-lg mb-4 flex items-center gap-2 border"
-                  style={{ background: "#FEF2F2", color: "#991B1B", borderColor: "#FECACA" }}
+                  style={{
+                    background: "#FEF2F2",
+                    color: "#991B1B",
+                    borderColor: "#FECACA",
+                  }}
                 >
                   <AlertCircle size={18} />
                   {rxMsg}
@@ -756,16 +817,20 @@ await logEvent(
               )}
 
               {forms.map((f, idx) => {
-                if (idx === 1 && hideSecond) return null;
-
                 return (
                   <div
                     key={f.key}
                     className="rounded-2xl p-4 mb-4"
                     style={{
-                      border: idx === 0 ? "1px solid #E9DFF1" : "1px dashed #E5E7EB",
+                      border:
+                        idx === 0
+                          ? "1px solid #E9DFF1"
+                          : "1px dashed #E5E7EB",
                       background: idx === 0 ? "#FFFFFF" : "#FAFAFB",
-                      boxShadow: idx === 0 ? "0 4px 12px rgba(176,140,193,0.12)" : "0 2px 6px rgba(0,0,0,0.04)",
+                      boxShadow:
+                        idx === 0
+                          ? "0 4px 12px rgba(176,140,193,0.12)"
+                          : "0 2px 6px rgba(0,0,0,0.04)",
                     }}
                   >
                     <div className="flex items-center justify-between mb-3">
@@ -773,12 +838,12 @@ await logEvent(
                         Prescription #{idx + 1}
                       </div>
 
-                      {idx === 1 && (
+                      {idx > 0 && (
                         <button
                           type="button"
-                          onClick={() => setHideSecond(true)}
+                          onClick={() => removeForm(idx)}
                           className="p-1 rounded-md hover:bg-gray-100 transition"
-                          title="Hide this prescription"
+                          title="Remove this prescription"
                           style={{ color: "#6B7280" }}
                         >
                           ✕
@@ -788,18 +853,23 @@ await logEvent(
 
                     <div className="mt-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Medical Condition <span className="text-rose-500">*</span>
+                        Medical Condition{" "}
+                        <span className="text-rose-500">*</span>
                       </label>
 
                       <input
                         className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
-                          f.mcTouched && (f.medicalCondition || "").trim().length < LIMITS.medicalCondition.min
+                          f.mcTouched &&
+                          (f.medicalCondition || "").trim().length <
+                            LIMITS.medicalCondition.min
                             ? "border-rose-400 focus:ring-rose-200"
                             : "border-gray-300"
                         }`}
                         style={{
                           outlineColor:
-                            f.mcTouched && (f.medicalCondition || "").trim().length < LIMITS.medicalCondition.min
+                            f.mcTouched &&
+                            (f.medicalCondition || "").trim().length <
+                              LIMITS.medicalCondition.min
                               ? "#f87171"
                               : C.primary,
                         }}
@@ -807,19 +877,28 @@ await logEvent(
                         value={f.medicalCondition}
                         onChange={(e) => {
                           let raw = e.target.value.replace(/[^A-Za-z0-9 ]/g, "");
-                          updateForm(idx, { medicalCondition: raw.slice(0, LIMITS.medicalCondition.max) });
+                          updateForm(idx, {
+                            medicalCondition: raw.slice(
+                              0,
+                              LIMITS.medicalCondition.max
+                            ),
+                          });
                         }}
                         onBlur={() => updateForm(idx, { mcTouched: true })}
                       />
 
                       <div className="mt-1 flex items-center justify-between text-xs">
-                        {f.mcTouched && (f.medicalCondition || "").trim().length < LIMITS.medicalCondition.min && (
-                          <span className="text-rose-600">
-                            Please enter at least {LIMITS.medicalCondition.min} characters.
-                          </span>
-                        )}
+                        {f.mcTouched &&
+                          (f.medicalCondition || "").trim().length <
+                            LIMITS.medicalCondition.min && (
+                            <span className="text-rose-600">
+                              Please enter at least{" "}
+                              {LIMITS.medicalCondition.min} characters.
+                            </span>
+                          )}
                         <span className="text-gray-500">
-                          {String(f.medicalCondition || "").length}/{LIMITS.medicalCondition.max}
+                          {String(f.medicalCondition || "").length}/
+                          {LIMITS.medicalCondition.max}
                         </span>
                       </div>
                     </div>
@@ -845,19 +924,37 @@ await logEvent(
                           <span
                             className="inline-flex items-center rounded-lg px-3 py-1 text-sm font-medium border"
                             style={{
-                              background: normalizeSensitivity(f.selectedMed.sensitivity) === "Sensitive" ? "#FEF2F2" : "#F1F8F5",
-                              color: normalizeSensitivity(f.selectedMed.sensitivity) === "Sensitive" ? "#991B1B" : "#166534",
-                              borderColor: normalizeSensitivity(f.selectedMed.sensitivity) === "Sensitive" ? "#FECACA" : "#BBE5C8",
+                              background:
+                                normalizeSensitivity(
+                                  f.selectedMed.sensitivity
+                                ) === "Sensitive"
+                                  ? "#FEF2F2"
+                                  : "#F1F8F5",
+                              color:
+                                normalizeSensitivity(
+                                  f.selectedMed.sensitivity
+                                ) === "Sensitive"
+                                  ? "#991B1B"
+                                  : "#166534",
+                              borderColor:
+                                normalizeSensitivity(
+                                  f.selectedMed.sensitivity
+                                ) === "Sensitive"
+                                  ? "#FECACA"
+                                  : "#BBE5C8",
                             }}
                           >
-                            Sensitivity: {normalizeSensitivity(f.selectedMed.sensitivity)}
+                            Sensitivity:{" "}
+                            {normalizeSensitivity(f.selectedMed.sensitivity)}
                           </span>
                         </div>
                       )}
                     </div>
 
                     {!f.selectedMed ? (
-                      <div className="mt-2 text-sm text-gray-500">Select a medicine first to show fields.</div>
+                      <div className="mt-2 text-sm text-gray-500">
+                        Select a medicine first to show fields.
+                      </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <DosageSelect
@@ -871,9 +968,16 @@ await logEvent(
                         <SelectField
                           label="Frequency"
                           value={f.timesPerDay}
-                          onChange={(v) => updateForm(idx, { timesPerDay: v })}
+                          onChange={(v) =>
+                            updateForm(idx, { timesPerDay: v })
+                          }
                           placeholder="Select frequency"
-                          options={["Once daily (OD)", "Every 6 hours", "Every 8 hours", "Every 12 hours"]}
+                          options={[
+                            "Once daily (OD)",
+                            "Every 6 hours",
+                            "Every 8 hours",
+                            "Every 12 hours",
+                          ]}
                           required
                           allowOther
                         />
@@ -881,9 +985,21 @@ await logEvent(
                         <SelectField
                           label="Duration"
                           value={f.durationDays}
-                          onChange={(v) => updateForm(idx, { durationDays: v })}
+                          onChange={(v) =>
+                            updateForm(idx, { durationDays: v })
+                          }
                           placeholder="Select duration"
-                          options={["3 days", "5 days", "7 days", "10 days", "14 days", "21 days", "1 month", "2 months", "3 months"]}
+                          options={[
+                            "3 days",
+                            "5 days",
+                            "7 days",
+                            "10 days",
+                            "14 days",
+                            "21 days",
+                            "1 month",
+                            "2 months",
+                            "3 months",
+                          ]}
                           required
                           allowOther
                         />
@@ -897,7 +1013,11 @@ await logEvent(
 
                       <textarea
                         className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 transition-all resize-none"
-                        style={{ outlineColor: C.primary, minHeight: "48px", overflow: "hidden" }}
+                        style={{
+                          outlineColor: C.primary,
+                          minHeight: "48px",
+                          overflow: "hidden",
+                        }}
                         rows={1}
                         placeholder="Special instructions"
                         value={f.notes}
@@ -906,7 +1026,8 @@ await logEvent(
                           if (raw.length <= LIMITS.notes.max) {
                             updateForm(idx, { notes: raw });
                             e.target.style.height = "auto";
-                            e.target.style.height = e.target.scrollHeight + "px";
+                            e.target.style.height =
+                              e.target.scrollHeight + "px";
                           }
                         }}
                       />
@@ -923,7 +1044,7 @@ await logEvent(
                         className="px-5 py-2.5 rounded-xl font-medium"
                         style={{ background: "#F3F4F6", color: "#374151" }}
                       >
-                        {idx === 0 ? "Clear First Prescription" : "Clear Second Prescription"}
+                        {`Clear Prescription #${idx + 1}`}
                       </button>
                     </div>
                   </div>
@@ -945,7 +1066,7 @@ await logEvent(
                   <button
                     type="button"
                     onClick={addOtherPrescription}
-                    disabled={isLoading || (forms.length >= 2 && !hideSecond)}
+                    disabled={isLoading || forms.length >= MAX_FORMS}
                     className="px-4 py-2 rounded-lg text-sm font-medium border disabled:opacity-50"
                     style={{
                       borderColor: "rgba(176,140,193,0.55)",
@@ -987,15 +1108,25 @@ await logEvent(
                   setShowSuccessPopup(false);
                   if (!selectedPatient?.id) return;
 
-                  const pidHash = "0x" + (await sha256Hex(selectedPatient.id.toString()));
+                  const pidHash =
+                    "0x" + (await sha256Hex(selectedPatient.id.toString()));
                   sessionStorage.setItem(
                     "td_patient",
-                    JSON.stringify({ id: selectedPatient.id, name: selectedPatient.name })
+                    JSON.stringify({
+                      id: selectedPatient.id,
+                      name: selectedPatient.name,
+                    })
                   );
-                  sessionStorage.setItem("td_last_patient", String(selectedPatient.id));
+                  sessionStorage.setItem(
+                    "td_last_patient",
+                    String(selectedPatient.id)
+                  );
                   navigate(`/prescriptions?pid=${pidHash}`, {
                     replace: true,
-                    state: { patientId: selectedPatient.id, patientName: selectedPatient.name },
+                    state: {
+                      patientId: selectedPatient.id,
+                      patientName: selectedPatient.name,
+                    },
                   });
                 }}
                 className="px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
@@ -1033,7 +1164,15 @@ function InfoCard({ label, value, bold = false, highlight = false }) {
   );
 }
 
-function SelectField({ label, value, onChange, placeholder, options, required = false, allowOther = false }) {
+function SelectField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  options,
+  required = false,
+  allowOther = false,
+}) {
   const [isCustomMode, setIsCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
   const [touched, setTouched] = useState(false);
@@ -1050,7 +1189,8 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
   }, [value, options, allowOther]);
 
   const selectValue = isCustomMode ? "__OTHER__" : value || "";
-  const missing = required && (isCustomMode ? customText.trim() === "" : selectValue === "");
+  const missing =
+    required && (isCustomMode ? customText.trim() === "" : selectValue === "");
   const showError = missing && touched;
 
   return (
@@ -1062,7 +1202,9 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
       <div className="relative">
         <select
           className={`w-full pl-4 pr-10 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all appearance-none bg-white ${
-            showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+            showError
+              ? "border-rose-400 focus:ring-rose-200"
+              : "border-gray-300"
           }`}
           style={{ outlineColor: showError ? "#f87171" : C.primary }}
           value={selectValue}
@@ -1099,7 +1241,9 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
         <div className="mt-2">
           <input
             className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
-              showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+              showError
+                ? "border-rose-400 focus:ring-rose-200"
+                : "border-gray-300"
             }`}
             style={{ outlineColor: showError ? "#f87171" : C.primary }}
             placeholder={`Enter custom ${label.toLowerCase()}`}
@@ -1107,7 +1251,9 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
             maxLength={OTHER_MAX}
             onChange={(e) => {
               setTouched(true);
-              const clean = e.target.value.replace(/[^A-Za-z0-9 ]/g, "").slice(0, OTHER_MAX);
+              const clean = e.target.value
+                .replace(/[^A-Za-z0-9 ]/g, "")
+                .slice(0, OTHER_MAX);
               setCustomText(clean);
               onChange(clean);
             }}
@@ -1115,14 +1261,25 @@ function SelectField({ label, value, onChange, placeholder, options, required = 
           <div className="text-xs text-gray-500 mt-1">
             {customText.length}/{OTHER_MAX}
           </div>
-          {showError && <div className="mt-1 text-xs text-rose-600">This field is required.</div>}
+          {showError && (
+            <div className="mt-1 text-xs text-rose-600">
+              This field is required.
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function DosageSelect({ value, onChange, options = [], required = true, placeholder = "Select dosage", allowOther = true }) {
+function DosageSelect({
+  value,
+  onChange,
+  options = [],
+  required = true,
+  placeholder = "Select dosage",
+  allowOther = true,
+}) {
   const [isCustomMode, setIsCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
   const [touched, setTouched] = useState(false);
@@ -1139,7 +1296,8 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
   }, [value, options, allowOther]);
 
   const selectValue = isCustomMode ? "__OTHER__" : value || "";
-  const missing = required && (isCustomMode ? customText.trim() === "" : selectValue === "");
+  const missing =
+    required && (isCustomMode ? customText.trim() === "" : selectValue === "");
   const showError = missing && touched;
 
   return (
@@ -1151,7 +1309,9 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
       <div className="relative">
         <select
           className={`w-full pl-4 pr-10 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all appearance-none bg-white ${
-            showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+            showError
+              ? "border-rose-400 focus:ring-rose-200"
+              : "border-gray-300"
           }`}
           style={{ outlineColor: showError ? "#f87171" : C.primary }}
           value={selectValue}
@@ -1188,7 +1348,9 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
         <div className="mt-2">
           <input
             className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
-              showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300"
+              showError
+                ? "border-rose-400 focus:ring-rose-200"
+                : "border-gray-300"
             }`}
             style={{ outlineColor: showError ? "#f87171" : C.primary }}
             placeholder="Enter custom dosage"
@@ -1196,7 +1358,9 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
             maxLength={OTHER_MAX}
             onChange={(e) => {
               setTouched(true);
-              const clean = e.target.value.replace(/[^A-Za-z0-9 ]/g, "").slice(0, OTHER_MAX);
+              const clean = e.target.value
+                .replace(/[^A-Za-z0-9 ]/g, "")
+                .slice(0, OTHER_MAX);
               setCustomText(clean);
               onChange(clean);
             }}
@@ -1204,14 +1368,23 @@ function DosageSelect({ value, onChange, options = [], required = true, placehol
           <div className="text-xs text-gray-500 mt-1">
             {customText.length}/{OTHER_MAX}
           </div>
-          {showError && <div className="mt-1 text-xs text-rose-600">Please enter dosage.</div>}
+          {showError && (
+            <div className="mt-1 text-xs text-rose-600">
+              Please enter dosage.
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine name" }) {
+function MedicineSearch({
+  value,
+  onSelect,
+  data,
+  placeholder = "Type medicine name",
+}) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState(value || "");
   const [cursor, setCursor] = useState(-1);
@@ -1237,7 +1410,10 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
     return base
       .map((m) => ({ m, s: score(m) }))
       .filter((x) => x.s > 0)
-      .sort((a, b) => b.s - a.s || String(a.m.label).localeCompare(String(b.m.label)))
+      .sort(
+        (a, b) =>
+          b.s - a.s || String(a.m.label).localeCompare(String(b.m.label))
+      )
       .map((x) => x.m)
       .slice(0, 15);
   }, [q, data]);
@@ -1291,7 +1467,9 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
       </label>
       <input
         className={`w-full px-4 py-3 border rounded-xl focus:ring-2 transition-all ${
-          showError ? "border-rose-400 focus:ring-rose-200" : "border-gray-300 focus:border-transparent"
+          showError
+            ? "border-rose-400 focus:ring-rose-200"
+            : "border-gray-300 focus:border-transparent"
         }`}
         style={{ outlineColor: showError ? "#f87171" : C.primary }}
         placeholder={placeholder}
@@ -1307,12 +1485,21 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
         aria-autocomplete="list"
         role="combobox"
       />
-      {showError && <div className="mt-1 text-xs text-rose-600">Please choose a medicine from the list.</div>}
+      {showError && (
+        <div className="mt-1 text-xs text-rose-600">
+          Please choose a medicine from the list.
+        </div>
+      )}
 
       {open && (
-        <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-80 overflow-y-auto" role="listbox">
+        <ul
+          className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-80 overflow-y-auto"
+          role="listbox"
+        >
           {suggestions.length === 0 ? (
-            <li className="px-4 py-3 text-sm text-gray-500">No matches found</li>
+            <li className="px-4 py-3 text-sm text-gray-500">
+              No matches found
+            </li>
           ) : (
             suggestions.map((m, i) => (
               <li
@@ -1324,19 +1511,32 @@ function MedicineSearch({ value, onSelect, data, placeholder = "Type medicine na
                   choose(m);
                 }}
                 onMouseEnter={() => setCursor(i)}
-                className={`px-4 py-2 text-sm cursor-pointer ${i === cursor ? "bg-gray-100" : "hover:bg-gray-50"}`}
+                className={`px-4 py-2 text-sm cursor-pointer ${
+                  i === cursor ? "bg-gray-100" : "hover:bg-gray-50"
+                }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="font-medium">{m.label}</div>
                   <div className="ml-3 flex items-center gap-2">
-                    <span className="text-[11px] uppercase text-gray-500">{m.dosageForm}</span>
+                    <span className="text-[11px] uppercase text-gray-500">
+                      {m.dosageForm}
+                    </span>
                     {m.sensitivity && (
                       <span
                         className="text-[11px] px-2 py-0.5 rounded-full border"
                         style={{
-                          background: normalizeSensitivity(m.sensitivity) === "Sensitive" ? "#FEF2F2" : "#F1F8F5",
-                          color: normalizeSensitivity(m.sensitivity) === "Sensitive" ? "#991B1B" : "#166534",
-                          borderColor: normalizeSensitivity(m.sensitivity) === "Sensitive" ? "#FECACA" : "#BBE5C8",
+                          background:
+                            normalizeSensitivity(m.sensitivity) === "Sensitive"
+                              ? "#FEF2F2"
+                              : "#F1F8F5",
+                          color:
+                            normalizeSensitivity(m.sensitivity) === "Sensitive"
+                              ? "#991B1B"
+                              : "#166534",
+                          borderColor:
+                            normalizeSensitivity(m.sensitivity) === "Sensitive"
+                              ? "#FECACA"
+                              : "#BBE5C8",
                         }}
                       >
                         {normalizeSensitivity(m.sensitivity)}
@@ -1390,7 +1590,6 @@ function mapPatient(dbRec, id) {
   if (!dbRec) return null;
   const national = dbRec.nationalId || dbRec.nationalID || id;
   const birth = dbRec.birthDate ?? dbRec.birthdate;
-
   const phone = dbRec.contact || dbRec.phone || dbRec.mobile || "";
 
   return {
