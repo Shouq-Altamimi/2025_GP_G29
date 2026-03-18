@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 
 import { recordBreachOnChain } from "../IoTBreachContract";
+import { logEvent } from "../utils/logEvent";
 
 const C = {
   primary: "#B08CC1",
@@ -268,11 +269,21 @@ export default function LogisticsNotifications() {
                   },
                   { merge: true }
                 );
+                await logEvent(
+  `Blockchain breach recorded for prescription ${pid}`,
+  "logistics",
+  "breach_recorded_onchain"
+);
               }
             }
           }
         } catch (e) {
           console.error("Blockchain breach record failed:", e);
+          await logEvent(
+    `Blockchain breach record failed for prescription ${pid}: ${e?.message || "unknown error"}`,
+    "logistics",
+    "breach_recorded_onchain_error"
+  );
         }
       }
     };

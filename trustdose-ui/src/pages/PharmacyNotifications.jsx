@@ -28,6 +28,7 @@ import {
   AlertCircle,
   ThermometerSnowflake,
 } from "lucide-react";
+import { logEvent } from "../utils/logEvent";
 
 const C = {
   primary: "#B08CC1",
@@ -324,11 +325,30 @@ export default function PharmacyNotifications() {
         }
 
         // ✅ بعد الإشعار: reset للوصفة
-        try {
+        /*try {
           await resetPrescriptionForOutOfRange(pid);
         } catch (e) {
           console.error("resetPrescriptionForOutOfRange failed:", e);
-        }
+        }*/
+       try {
+  const resetDone = await resetPrescriptionForOutOfRange(pid);
+
+  if (resetDone) {
+    await logEvent(
+      `Pharmacy reset prescription ${pid} after temperature out of range`,
+      "pharmacy",
+      "prescription_reset_out_of_range"
+    );
+  }
+} catch (e) {
+  console.error("resetPrescriptionForOutOfRange failed:", e);
+
+  await logEvent(
+    `Pharmacy failed to reset prescription ${pid} after temperature out of range: ${e?.message || "unknown error"}`,
+    "pharmacy",
+    "prescription_reset_out_of_range_error"
+  );
+}
       }
     };
 

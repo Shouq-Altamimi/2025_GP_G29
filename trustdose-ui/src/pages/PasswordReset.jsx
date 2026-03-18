@@ -6,6 +6,7 @@ import { db } from "../firebase.js";
 import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { getAuth, isSignInWithEmailLink, signInWithEmailLink, signOut } from "firebase/auth";
 import { Eye, EyeOff, CheckCircle, Circle } from "lucide-react";
+import { logEvent } from "../utils/logEvent";
 
 const TD = {
   primary: "#B08CC1",
@@ -155,6 +156,7 @@ export default function PasswordReset() {
           setStatus("❌ Invalid or expired reset link");
           setStep("error");
           setError(true);
+          await logEvent("Password reset failed: invalid or expired reset link", "system", "password_reset_invalid_link");
           return;
         }
 
@@ -163,6 +165,7 @@ export default function PasswordReset() {
           setStatus("❌ Invalid reset link - missing information");
           setStep("error");
           setError(true);
+          await logEvent("Password reset failed: missing reset link parameters", "system", "password_reset_missing_params");
           return;
         }
 
@@ -170,6 +173,7 @@ export default function PasswordReset() {
         console.log("🔐 Signing in with email link...");
         
         await signInWithEmailLink(auth, email, href);
+        await logEvent(`Password reset link verified for ${col}: ${email}`, "system", "password_reset_link_verified");
         console.log("✅ Sign in successful");
         
         //await signOut(auth);
@@ -186,6 +190,11 @@ export default function PasswordReset() {
         
       } catch (e) {
         console.error("💥 Verification error:", e);
+        await logEvent(
+  `Password reset verification error: ${e?.code || "unknown"} - ${e?.message || "no message"}`,
+  "system",
+  "password_reset_verify_error"
+);
         setError(true);
         setStep("error");
         
@@ -243,6 +252,7 @@ export default function PasswordReset() {
           passwordAlgo: "PBKDF2-SHA256-100k",
           passwordUpdatedAt: serverTimestamp(),
         });
+        await logEvent(`Password reset completed for ${userCol}: ${userDocId}`, "system", "password_reset_success");
       } 
       else {
         console.log("Using SHA-256 for", userCol);
@@ -252,6 +262,7 @@ export default function PasswordReset() {
           password: hashedPassword,
           passwordUpdatedAt: serverTimestamp(),
         });
+        await logEvent(`Password reset completed for ${userCol}: ${userDocId}`, "system", "password_reset_success");
       }
 
       console.log("✅ Password updated successfully");
@@ -266,6 +277,11 @@ export default function PasswordReset() {
 
     } catch (error) {
       console.error("Password reset error:", error);
+      await logEvent(
+  `Password reset failed for ${userCol || "unknown"}: ${error?.message || "unknown error"}`,
+  "system",
+  "password_reset_error"
+);
       setMsg(error.message || "Failed to reset password");
     } finally {
       setLoading(false);

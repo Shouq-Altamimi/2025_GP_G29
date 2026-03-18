@@ -194,6 +194,8 @@ export default function AdminMedicines() {
 
   // search
   const [q, setQ] = useState("");
+  const ITEMS_PER_PAGE = 10;
+const [page, setPage] = useState(1);
 
   // form
   const empty = () => ({
@@ -208,6 +210,7 @@ export default function AdminMedicines() {
     maxHumidity: "",
   });
   const [form, setForm] = useState(empty());
+  const isSensitive = form.sensitivity === "Sensitive";
 
   // ui messages
   const [saving, setSaving] = useState(false);
@@ -241,6 +244,27 @@ export default function AdminMedicines() {
       return a.includes(s);
     });
   }, [rows, q]);
+  useEffect(() => {
+  setPage(1);
+}, [q]);
+
+const totalItems = filtered.length;
+const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE));
+
+const currentPage = Math.min(page, totalPages);
+const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+const endIndex = startIndex + ITEMS_PER_PAGE;
+
+const paginatedRows = filtered.slice(startIndex, endIndex);
+
+const showingFrom = totalItems === 0 ? 0 : startIndex + 1;
+const showingTo = Math.min(endIndex, totalItems);
+
+useEffect(() => {
+  if (page > totalPages) {
+    setPage(totalPages);
+  }
+}, [page, totalPages]);
 
   function startEdit(r) {
     setStatus("");
@@ -269,7 +293,7 @@ export default function AdminMedicines() {
     if (!label) return "Label is required.";
     if (!name) return "Name is required.";
 
-    const minT = toNumberOrNull(form.minTemp);
+    /*const minT = toNumberOrNull(form.minTemp);
     const maxT = toNumberOrNull(form.maxTemp);
     const minH = toNumberOrNull(form.minHumidity);
     const maxH = toNumberOrNull(form.maxHumidity);
@@ -279,7 +303,36 @@ export default function AdminMedicines() {
 
     if ((minT != null && maxT == null) || (minT == null && maxT != null)) return "Please fill both minTemp and maxTemp.";
     if ((minH != null && maxH == null) || (minH == null && maxH != null)) return "Please fill both minHumidity and maxHumidity.";
+*/
+const minT = toNumberOrNull(form.minTemp);
+const maxT = toNumberOrNull(form.maxTemp);
+const minH = toNumberOrNull(form.minHumidity);
+const maxH = toNumberOrNull(form.maxHumidity);
 
+if (form.sensitivity === "Sensitive") {
+  if (minT == null || maxT == null) {
+    return "Temperature range is required for sensitive medicines.";
+  }
+  if (minH == null || maxH == null) {
+    return "Humidity range is required for sensitive medicines.";
+  }
+}
+
+if ((minT != null && maxT == null) || (minT == null && maxT != null)) {
+  return "Please fill both minTemp and maxTemp.";
+}
+
+if ((minH != null && maxH == null) || (minH == null && maxH != null)) {
+  return "Please fill both minHumidity and maxHumidity.";
+}
+
+if ((minT != null || maxT != null) && !okRange(minT, maxT)) {
+  return "Temp range must be valid (min ≤ max).";
+}
+
+if ((minH != null || maxH != null) && !okRange(minH, maxH)) {
+  return "Humidity range must be valid (min ≤ max).";
+}
     return "";
   }
 
@@ -408,34 +461,20 @@ export default function AdminMedicines() {
         {/* Form */}
         <div className="mt-6 bg-white rounded-3xl shadow-xl border border-gray-200 p-6">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h3 className="text-xl font-semibold text-[#4A2C59]">
-              {form.id ? "Edit Medicine" : "Create Medicine"}
-            </h3>
+  <h3 className="text-xl font-semibold text-[#4A2C59]">
+    {form.id ? "Edit Medicine" : "Create Medicine"}
+  </h3>
 
-            <div className="flex items-center gap-2">
-              {form.id && (
-                <button
-                  onClick={resetForm}
-                  className="rounded-2xl border border-gray-200 px-4 py-2 text-[#4A2C59] hover:bg-[#F5F0FA]"
-                  type="button"
-                >
-                  Cancel Edit
-                </button>
-              )}
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className={`rounded-2xl px-4 py-2 font-medium text-white shadow-md transition-all ${
-                  saving ? "bg-[#CBB4D9] cursor-not-allowed" : "bg-[#B08CC1] hover:bg-[#9A7EAF]"
-                }`}
-                type="button"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <Save size={18} /> {saving ? "Saving…" : form.id ? "Update" : "Save"}
-                </span>
-              </button>
-            </div>
-          </div>
+  {form.id && (
+    <button
+      onClick={resetForm}
+      className="rounded-2xl border border-gray-200 px-4 py-2 text-[#4A2C59] hover:bg-[#F5F0FA]"
+      type="button"
+    >
+      Cancel Edit
+    </button>
+  )}
+</div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
             <div>
@@ -502,25 +541,27 @@ export default function AdminMedicines() {
 
           <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="rounded-2xl border border-gray-200 p-4 bg-gray-50">
-              <div className="text-sm font-semibold text-gray-700 mb-3">
-                Temperature Range (°C) — optional
-              </div>
+        <div className="text-sm font-semibold text-gray-700 mb-3">
+  Temperature Range (°C) {isSensitive ? "*" : "— optional"}
+</div>
               <div className="grid grid-cols-2 gap-3">
-                <input
+  <input
   type="number"
   step="0.1"
   min="-50"
   max="100"
+  required={isSensitive}
   value={form.minTemp}
   onChange={(e) => setForm((p) => ({ ...p, minTemp: e.target.value }))}
   placeholder="minTemp"
   className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1] bg-white"
 />
-               <input
+           <input
   type="number"
   step="0.1"
   min="-50"
   max="100"
+  required={isSensitive}
   value={form.maxTemp}
   onChange={(e) => setForm((p) => ({ ...p, maxTemp: e.target.value }))}
   placeholder="maxTemp"
@@ -531,24 +572,26 @@ export default function AdminMedicines() {
 
             <div className="rounded-2xl border border-gray-200 p-4 bg-gray-50">
               <div className="text-sm font-semibold text-gray-700 mb-3">
-                Humidity Range (%) — optional
-              </div>
+  Humidity Range (%) {isSensitive ? "*" : "— optional"}
+</div>
               <div className="grid grid-cols-2 gap-3">
-              <input
+   <input
   type="number"
   step="0.1"
   min="0"
   max="100"
+  required={isSensitive}
   value={form.minHumidity}
   onChange={(e) => setForm((p) => ({ ...p, minHumidity: e.target.value }))}
   placeholder="minHumidity"
   className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-[#B08CC1] bg-white"
 />
-               <input
+        <input
   type="number"
   step="0.1"
   min="0"
   max="100"
+  required={isSensitive}
   value={form.maxHumidity}
   onChange={(e) => setForm((p) => ({ ...p, maxHumidity: e.target.value }))}
   placeholder="maxHumidity"
@@ -557,6 +600,20 @@ export default function AdminMedicines() {
               </div>
             </div>
           </div>
+          <div className="mt-6 flex justify-end">
+  <button
+    onClick={handleSave}
+    disabled={saving}
+    className={`rounded-2xl px-5 py-3 font-medium text-white shadow-md transition-all ${
+      saving ? "bg-[#CBB4D9] cursor-not-allowed" : "bg-[#B08CC1] hover:bg-[#9A7EAF]"
+    }`}
+    type="button"
+  >
+    <span className="inline-flex items-center gap-2">
+      <Save size={18} /> {saving ? "Saving…" : form.id ? "Update" : "Save"}
+    </span>
+  </button>
+</div>
 
           {status ? <p className="mt-3 text-center text-xs text-gray-500">{status}</p> : null}
         </div>
@@ -568,8 +625,8 @@ export default function AdminMedicines() {
               <Pill size={18} style={{ color: C.primary }} />
               <div className="text-lg font-semibold text-[#2A1E36]">Medicines</div>
               <div className="text-xs text-gray-500">
-                {loading ? "…" : `${filtered.length} item(s)`}
-              </div>
+  {loading ? "…" : `${totalItems} item(s)`}
+</div>
             </div>
 
             <div className="w-full sm:w-[360px] relative">
@@ -611,7 +668,7 @@ export default function AdminMedicines() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((r) => (
+                  paginatedRows.map((r) => (
                     <tr key={r.id} className="border-t border-gray-100">
                       <td className="py-3 pr-4 font-semibold text-[#2A1E36]">
                         {r.label || "—"}
@@ -665,6 +722,35 @@ export default function AdminMedicines() {
               </tbody>
             </table>
           </div>
+          <div className="mt-5 flex items-center justify-between gap-3 flex-wrap">
+  <div className="text-sm text-gray-500">
+    {loading ? "Loading…" : `Showing ${showingFrom}–${showingTo} of ${totalItems}`}
+  </div>
+
+  <div className="flex items-center gap-3">
+    <button
+      onClick={() => setPage((p) => Math.max(1, p - 1))}
+      disabled={currentPage === 1 || loading}
+      className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+      type="button"
+    >
+      Previous
+    </button>
+
+    <div className="text-sm text-gray-700">
+      Page {currentPage} / {totalPages}
+    </div>
+
+    <button
+      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+      disabled={currentPage === totalPages || loading}
+      className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+      type="button"
+    >
+      Next
+    </button>
+  </div>
+</div>
         </div>
       </main>
 

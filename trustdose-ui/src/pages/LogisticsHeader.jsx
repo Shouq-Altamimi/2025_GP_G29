@@ -34,6 +34,7 @@ import {
   History,
 } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail, signInAnonymously } from "firebase/auth";
+import { logEvent } from "../utils/logEvent";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
@@ -350,7 +351,8 @@ export default function LogisticsHeader() {
     return () => unsub();
   }, [docId]);
 
-  function signOut() {
+  async function signOut() {
+      await logEvent("Logistics provider signed out", "logistics", "logout");
     localStorage.clear();
     sessionStorage.clear();
     navigate("/auth");
@@ -587,6 +589,7 @@ function AccountModal({ user, docId, onClose, onSaved }) {
         };
 
         await updateDoc(doc(db, "logistics", docId), payload);
+        await logEvent("Logistics provider updated phone number", "logistics", "logistics_phone_update");
         setInitialPhone(payload.phone);
         onSaved?.({ phone: payload.phone });
         setPhoneError("");
@@ -599,6 +602,11 @@ function AccountModal({ user, docId, onClose, onSaved }) {
         }, 1500);
       } catch (e) {
         console.error(e);
+        await logEvent(
+  `Logistics phone update failed: ${e?.message || "unknown error"}`,
+  "logistics",
+  "logistics_phone_update_error"
+);
         setPhoneError("Something went wrong while saving your phone number. Please try again.");
         setPhone("+966");
       } finally {
@@ -644,6 +652,11 @@ function AccountModal({ user, docId, onClose, onSaved }) {
 
       setEmailLoading(true);
       await sendSignInLinkToEmail(getAuth(), email, settings);
+      await logEvent(
+  `Logistics provider requested email verification link for ${email}`,
+  "logistics",
+  "logistics_email_verify_send"
+);
 
       await updateDoc(doc(db, "logistics", docId), {
         email: email,
@@ -654,6 +667,11 @@ function AccountModal({ user, docId, onClose, onSaved }) {
 
       setEmailMsg("A verification link has been sent to your email. Open it, then return to the app.");
     } catch (e) {
+      await logEvent(
+  `Logistics email verification link failed: ${e?.code || e?.message || "unknown error"}`,
+  "logistics",
+  "logistics_email_verify_send_error"
+);
       if (e?.code === "auth/too-many-requests" || e?.code === "auth/quota-exceeded") {
         setEmailMsg("Too many verification emails were requested. Please try again later.");
       } else if (e?.code === "auth/invalid-email") {
@@ -1034,7 +1052,7 @@ function PasswordResetSection({ user, docId, onSaved }) {
         "tempPassword.expiresAtMs": 0,
         "tempPassword.value": deleteField(),
       });
-
+await logEvent("Logistics provider updated password successfully", "logistics", "logistics_password_update");
       setMsg("Password updated successfully! ✓");
       setMsgType("success");
       setOldPass("");
@@ -1047,6 +1065,11 @@ function PasswordResetSection({ user, docId, onSaved }) {
       });
     } catch (error) {
       console.error(error);
+      await logEvent(
+  `Logistics password update failed: ${error?.message || "unknown error"}`,
+  "logistics",
+  "logistics_password_update_error"
+);
       setMsg(error?.message || "Failed to update password");
       setMsgType("error");
     } finally {
