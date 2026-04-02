@@ -10,6 +10,7 @@ import {
   LogOut,
   X,
     Pill,
+      Search,
 } from "lucide-react";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
@@ -22,6 +23,14 @@ const C = {
   primary: "#B08CC1",
   teal: "#52B9C4",
   ink: "#4A2C59",
+
+   success: "#166534",
+  successBg: "#DCFCE7",
+  successBorder: "#86EFAC",
+
+  danger: "#991B1B",
+  dangerBg: "#FEE2E2",
+  dangerBorder: "#FCA5A5",
 };
 
 function toDateSafe(ts) {
@@ -60,6 +69,18 @@ function labelDay(d) {
 }
 function labelMonth(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+}
+
+function formatDateTime(ts) {
+  const d = toDateSafe(ts);
+  if (!d) return "—";
+  return d.toLocaleString("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function buildAxis(period) {
@@ -448,6 +469,15 @@ export default function AdminAnalytics() {
 
   const [loading, setLoading] = useState(true);
   const [rx, setRx] = useState([]);
+  const [iotLoading, setIotLoading] = useState(true);
+const [readings, setReadings] = useState([]);
+const [statusTab, setStatusTab] = useState("all");
+const [search, setSearch] = useState("");
+const [page, setPage] = useState(1);
+const PAGE_SIZE = 10;
+useEffect(() => {
+  setPage(1);
+}, [statusTab, search]);
   useEffect(() => {
   logEvent("Admin opened analytics page", "admin", "analytics_open");
 }, []);
@@ -465,6 +495,20 @@ export default function AdminAnalytics() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+  (async () => {
+    setIotLoading(true);
+    try {
+      const snap = await getDocs(collection(db, "iotReadings"));
+      const rows = [];
+      snap.forEach((s) => rows.push({ id: s.id, ...(s.data() || {}) }));
+      setReadings(rows);
+    } finally {
+      setIotLoading(false);
+    }
+  })();
+}, []);
 
   const { dispSeries, delSeries, totals } = useMemo(() => {
     const dispBuckets = Object.fromEntries(axis.map((b) => [b.key, 0]));
@@ -514,6 +558,44 @@ export default function AdminAnalytics() {
       totals: { dispensed: totalDisp, delivered: totalDel },
     };
   }, [rx, axis, period]);
+
+  const filteredReadings = useMemo(() => {
+  let data = [...readings];
+
+  if (statusTab === "successful") {
+    data = data.filter((item) => item.outOfRange === false);
+  } else if (statusTab === "failed") {
+    data = data.filter((item) => item.outOfRange === true);
+  }
+
+  if (search.trim()) {
+    const q = search.toLowerCase();
+    data = data.filter(
+      (item) =>
+        String(item.prescriptionId || "").toLowerCase().includes(q) ||
+        String(item.deviceId || "").toLowerCase().includes(q) ||
+        String(item.orderId || "").toLowerCase().includes(q)
+    );
+  }
+
+  data.sort((a, b) => {
+    const da = toDateSafe(a.createdAt)?.getTime?.() || 0;
+    const dbb = toDateSafe(b.createdAt)?.getTime?.() || 0;
+    return dbb - da;
+  });
+
+  return data;
+}, [readings, statusTab, search]);
+
+const pageCount = Math.max(1, Math.ceil(filteredReadings.length / PAGE_SIZE));
+
+const pagedReadings = useMemo(() => {
+  const start = (page - 1) * PAGE_SIZE;
+  return filteredReadings.slice(start, start + PAGE_SIZE);
+}, [filteredReadings, page]);
+
+const startItem = filteredReadings.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+const endItem = Math.min(page * PAGE_SIZE, filteredReadings.length);
 
   const periodLabel =
     period === "day"
@@ -573,6 +655,170 @@ export default function AdminAnalytics() {
               )}
             </Card>
           </div>
+<div className="mt-6 rounded-2xl border border-gray-200 bg-white shadow-sm p-4">  <div className="flex flex-col gap-4">
+    <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div>
+       <h2 className="text-lg font-semibold text-[#2A1E36]">
+  Prescription Status
+</h2>
+<p className="text-sm text-gray-500 mt-1">
+  Track all, successful, and failed prescriptions
+</p>
+      </div>
+
+     <div className="relative w-full sm:w-[240px]">
+  <Search
+    size={16}
+    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+  />
+  <input
+    value={search}
+    onChange={(e) => setSearch(e.target.value)}
+    placeholder="Search..."
+    className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:ring-2 focus:ring-[#B08CC1]"
+  />
+</div>
+    </div>
+
+    <div className="flex gap-3 flex-wrap">
+      <button
+        onClick={() => setStatusTab("all")}
+        className={`px-5 py-3 rounded-2xl border text-sm font-semibold transition ${
+          statusTab === "all"
+            ? "text-white border-transparent"
+            : "bg-white text-[#4A2C59] border-gray-200 hover:bg-gray-50"
+        }`}
+        style={statusTab === "all" ? { backgroundColor: C.primary } : {}}
+      >
+        All Prescriptions
+      </button>
+
+      <button
+        onClick={() => setStatusTab("successful")}
+        className={`px-5 py-3 rounded-2xl border text-sm font-semibold transition ${
+          statusTab === "successful"
+            ? "text-white border-transparent"
+            : "bg-white text-[#4A2C59] border-gray-200 hover:bg-gray-50"
+        }`}
+        style={statusTab === "successful" ? { backgroundColor: C.primary } : {}}
+      >
+        Successful
+      </button>
+
+      <button
+        onClick={() => setStatusTab("failed")}
+        className={`px-5 py-3 rounded-2xl border text-sm font-semibold transition ${
+          statusTab === "failed"
+            ? "text-white border-transparent"
+            : "bg-white text-[#4A2C59] border-gray-200 hover:bg-gray-50"
+        }`}
+        style={statusTab === "failed" ? { backgroundColor: C.primary } : {}}
+      >
+        Failed
+      </button>
+    </div>
+
+<div className="overflow-auto">
+        <table className="min-w-full text-sm">
+        <thead className="bg-gray-50 text-gray-600">
+  <tr>
+    <th className="text-left px-4 py-3">Prescription ID</th>
+    <th className="text-left px-4 py-3">Device ID</th>
+    <th className="text-left px-4 py-3">Order ID</th>
+    <th className="text-left px-4 py-3">Temp</th>
+    <th className="text-left px-4 py-3">Humidity</th>
+    <th className="text-left px-4 py-3">Status</th>
+    <th className="text-left px-4 py-3">Created</th>
+  </tr>
+</thead>
+
+        <tbody>
+          {iotLoading ? (
+            <tr>
+              <td colSpan="7" className="px-4 py-6 text-center text-gray-500">
+                Loading...
+              </td>
+            </tr>
+          ) : filteredReadings.length === 0 ? (
+            <tr>
+              <td colSpan="7" className="px-4 py-6 text-center text-gray-500">
+                No readings found
+              </td>
+            </tr>
+          ) : (
+            pagedReadings.map((item) => (
+              <tr key={item.id} className="border-t border-gray-100">
+                <td className="px-4 py-3 font-medium text-[#2A1E36]">
+                  {item.prescriptionId || "—"}
+                </td>
+                <td className="px-4 py-3">{item.deviceId || "—"}</td>
+                <td className="px-4 py-3">{item.orderId || "—"}</td>
+                <td className="px-4 py-3">
+                  {item.temp !== undefined ? `${item.temp}°C` : "—"}
+                </td>
+                <td className="px-4 py-3">
+                  {item.humidity !== undefined ? `${item.humidity}%` : "—"}
+                </td>
+                <td className="px-4 py-3">
+                  <span
+  className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold"
+  style={{
+    backgroundColor: item.outOfRange ? C.dangerBg : C.successBg,
+    color: item.outOfRange ? C.danger : C.success,
+    border: `1px solid ${
+      item.outOfRange ? C.dangerBorder : C.successBorder
+    }`,
+  }}
+>
+  {item.outOfRange ? "Failed" : "Successful"}
+</span>
+                </td>
+                <td className="px-4 py-3">{formatDateTime(item.createdAt)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+    <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
+  <div>
+    {filteredReadings.length > 0
+      ? `Showing ${startItem}–${endItem} of ${filteredReadings.length}`
+      : "No records"}
+  </div>
+
+  <div className="flex items-center gap-2">
+    <button
+      onClick={() => setPage((p) => Math.max(1, p - 1))}
+      disabled={page <= 1}
+      className={`px-3 py-1 rounded-lg border ${
+        page <= 1
+          ? "text-gray-400 border-gray-200"
+          : "text-[#4A2C59] border-gray-300 hover:bg-gray-50"
+      }`}
+    >
+      Prev
+    </button>
+
+    <span>
+      Page {page} / {pageCount}
+    </span>
+
+    <button
+      onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+      disabled={page >= pageCount}
+      className={`px-3 py-1 rounded-lg border ${
+        page >= pageCount
+          ? "text-gray-400 border-gray-200"
+          : "text-[#4A2C59] border-gray-300 hover:bg-gray-50"
+      }`}
+    >
+      Next
+    </button>
+  </div>
+</div>
+  </div>
+</div>
         </section>
       </main>
 

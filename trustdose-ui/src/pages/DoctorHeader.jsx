@@ -31,6 +31,7 @@ import {
   Circle,
 } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
+import { logEvent } from "../utils/logEvent";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
@@ -301,7 +302,8 @@ export default function DoctorHeader() {
     })();
   }, [isDoctorPage, location.pathname]);
 
-  function signOut() {
+  async function signOut() {
+      await logEvent("Doctor signed out", "doctor", "logout");
     localStorage.clear();
     sessionStorage.clear();
     navigate("/auth");
@@ -563,6 +565,7 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       };
 
       await updateDoc(doc(db, "doctors", doctorDocId), payload);
+      await logEvent("Doctor updated phone number", "doctor", "doctor_phone_update");
       setInitialPhone(payload.phone);
       onSaved?.({ phone: payload.phone });
       setPhoneError("");
@@ -574,6 +577,11 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
         setMsgType("");
       }, 1500);
     } catch (e) {
+      await logEvent(
+  `Doctor phone update failed: ${e?.message || "unknown error"}`,
+  "doctor",
+  "doctor_phone_update_error"
+);
       setPhoneError(
         "Something went wrong while saving your phone number. Please try again."
       );
@@ -621,6 +629,11 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
       };
       setEmailLoading(true);
       await sendSignInLinkToEmail(getAuth(), email, settings);
+      await logEvent(
+  `Doctor requested email verification link for ${email}`,
+  "doctor",
+  "doctor_email_verify_send"
+);
 
       localStorage.setItem(
         "td_email_pending",
@@ -630,6 +643,11 @@ function AccountModal({ doctor, doctorDocId, onClose, onSaved }) {
         "A verification link has been sent to your email. Open it, then return to the app."
       );
     } catch (e) {
+      await logEvent(
+  `Doctor email verification link failed: ${e?.code || e?.message || "unknown error"}`,
+  "doctor",
+  "doctor_email_verify_send_error"
+);
       if (e?.code === "auth/too-many-requests" || e?.code === "auth/quota-exceeded") {
         setEmailMsg("Too many verification emails were requested. Please try again later.");
       } else if (e?.code === "auth/invalid-email") {
@@ -1083,7 +1101,7 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
         "tempPassword.expiresAtMs": 0,
         "tempPassword.value": deleteField(),
       });
-
+await logEvent("Doctor updated password successfully", "doctor", "doctor_password_update");
       setMsg("Password updated successfully! ✓");
       setMsgType("success");
       setOldPass("");
@@ -1093,6 +1111,11 @@ function PasswordResetSection({ doctor, doctorDocId, onSaved }) {
       onSaved?.({ requirePasswordChange: false, passwordUpdatedAt: new Date() });
     } catch (error) {
       console.error(error);
+      await logEvent(
+  `Doctor password update failed: ${error?.message || "unknown error"}`,
+  "doctor",
+  "doctor_password_update_error"
+);
       setMsg(error?.message || "Failed to update password");
       setMsgType("error");
     } finally {

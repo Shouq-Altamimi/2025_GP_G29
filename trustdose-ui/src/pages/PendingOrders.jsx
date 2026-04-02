@@ -19,6 +19,7 @@ import {
 import { ethers } from "ethers";
 import LOGISTICS_RECEIVE from "../contracts/LogisticsReceive.json";
 import { Loader2, FileText, CheckCircle2 } from "lucide-react";
+import { logEvent } from "../utils/logEvent";
 
 const LOGISTICS_RECEIVE_ADDRESS = "0x99aBd40A784fA87542Cd73abFc4edB106a3291C6";
 
@@ -341,7 +342,11 @@ export default function PendingOrders({ pharmacyId }) {
           })
         )
       );
-
+await logEvent(
+  `Pharmacy dispensed prescription ${g.prescriptionId} to logistics with ${g.meds.length} medicine(s)`,
+  "pharmacy",
+  "prescription_dispensed_to_logistics"
+);
       const docIds = new Set(g.meds.map((x) => x._docId));
       setRows((old) => old.filter((x) => !docIds.has(x._docId)));
 
@@ -351,6 +356,11 @@ export default function PendingOrders({ pharmacyId }) {
       });
     } catch (err) {
       console.error("Error:", err);
+      await logEvent(
+  `Dispense to logistics failed for prescription ${g.prescriptionId}: ${err?.message || "unknown error"}`,
+  "pharmacy",
+  "prescription_dispensed_to_logistics_error"
+);
 
       let m = "Error occurred. Please try again.";
       if (err?.code === "ACTION_REJECTED" || err?.code === 4001) {

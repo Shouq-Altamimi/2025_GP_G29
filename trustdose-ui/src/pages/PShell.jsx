@@ -37,6 +37,7 @@ import {
    Bell,
   FileText,
 } from "lucide-react";
+import { logEvent } from "../utils/logEvent";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
@@ -312,7 +313,8 @@ const [unreadCount, setUnreadCount] = useState(0);
     return () => window.removeEventListener("openPatientProfile", openProfile);
   }, []);
 
-  function signOut() {
+  async function signOut() {
+      await logEvent("Patient signed out", "patient", "logout");
     localStorage.removeItem("userRole");
     localStorage.removeItem("userId");
     sessionStorage.removeItem("td_patient");
@@ -563,6 +565,7 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
       };
 
       await updateDoc(doc(db, "patients", patientDocId), payload);
+      await logEvent("Patient updated phone number", "patient", "patient_phone_update");
 
       setInitialPhone(payload.contact);
       setPhone(payload.contact);
@@ -577,6 +580,11 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
         setPhoneMsgType("");
       }, 1500);
     } catch (e) {
+        await logEvent(
+    `Patient phone update failed: ${e?.message || "unknown error"}`,
+    "patient",
+    "patient_phone_update_error"
+  );
       setPhoneError(
         "Something went wrong while saving your phone number. Please try again."
       );
@@ -635,6 +643,11 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
       };
       setEmailLoading(true);
       await sendSignInLinkToEmail(auth, raw, settings);
+      await logEvent(
+  `Patient requested email verification link for ${raw}`,
+  "patient",
+  "patient_email_verify_send"
+);
       localStorage.setItem(
         "td_email_pending",
         JSON.stringify({ email: raw, ts: Date.now() })
@@ -643,6 +656,11 @@ function PatientProfileModal({ patient, patientDocId, onClose, onSaved }) {
         "A verification link has been sent to your email. Open it, then return to the app."
       );
     } catch (e) {
+       await logEvent(
+    `Patient email verification link failed: ${e?.code || e?.message || "unknown error"}`,
+    "patient",
+    "patient_email_verify_send_error"
+  );
       setEmailMsg(
         `Firebase: ${e?.code || e?.message || "Unable to send verification link."}`
       );
@@ -1088,6 +1106,11 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
       if (data?.password) payload.password = deleteField();
 
       await updateDoc(ref, payload);
+      await logEvent(
+  "Patient updated password successfully",
+  "patient",
+  "patient_password_update"
+);
 
       setMsg("Password updated successfully! ✓");
       setMsgType("success");
@@ -1096,6 +1119,11 @@ function PatientPasswordSection({ patientDocId, onSaved, color = C.primary }) {
       setConfirmPass("");
       onSaved?.({ passwordUpdated: true });
     } catch (e) {
+        await logEvent(
+    `Patient password update failed: ${e?.message || "unknown error"}`,
+    "patient",
+    "patient_password_update_error"
+  );
       setMsg(e?.message || "Failed to update password");
       setMsgType("error");
     } finally {

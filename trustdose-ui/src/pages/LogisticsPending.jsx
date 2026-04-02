@@ -19,6 +19,7 @@ import {
 import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { ethers } from "ethers";
 import DELIVERY_CONFIRMATION from "../contracts/DeliveryConfirmation.json";
+import { logEvent } from "../utils/logEvent";
 
 const C = {
   primary: "#B08CC1",
@@ -324,6 +325,11 @@ export default function Logistics() {
           })
         )
       );
+      await logEvent(
+  `Logistics confirmed delivery to patient for prescription ${g.prescriptionId} with ${g.meds.length} medicine(s)`,
+  "logistics",
+  "delivery_confirm"
+);
 
       const docIds = new Set(g.meds.map((x) => x._docId));
       setRows((prev) => prev.filter((row) => !docIds.has(row._docId)));
@@ -331,6 +337,11 @@ export default function Logistics() {
       setShowSuccessPopup(true);
     } catch (err) {
       console.error("Error:", err);
+      await logEvent(
+  `Delivery confirmation failed for prescription ${g.prescriptionId}: ${err?.message || "unknown error"}`,
+  "logistics",
+  "delivery_confirm_error"
+);
 
       if (err?.code === "ACTION_REJECTED")
         setMsg("MetaMask request was declined. Please try again.");

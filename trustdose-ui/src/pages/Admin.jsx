@@ -13,6 +13,8 @@ import {
   LogOut,
   CheckCircle2,
     Pill,
+      History,
+
 } from "lucide-react";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
@@ -399,6 +401,7 @@ export default function Admin() {
   const [doctors, setDoctors] = useState([]);
   const [pharmacies, setPharmacies] = useState([]);
   const [logistics, setLogistics] = useState([]);
+  const [logs, setLogs] = useState([]);
 
   
   const [loading, setLoading] = useState({
@@ -406,6 +409,8 @@ export default function Admin() {
     doctors: true,
     pharmacies: true,
     logistics: true,
+      logs: true,
+
   });
   const [qPatients, setQPatients] = useState("");
   const [pPatients, setPPatients] = useState(1);
@@ -415,6 +420,8 @@ export default function Admin() {
   const [pPharms, setPPharms] = useState(1);
   const [qLogs, setQLogs] = useState("");
   const [pLogs, setPLogs] = useState(1);
+  const [qLogsTable, setQLogsTable] = useState("");
+const [pLogsTable, setPLogsTable] = useState(1);
   const PAGE = 10;
 
   useEffect(() => {
@@ -496,6 +503,24 @@ export default function Admin() {
         setLogistics(rows);
       } finally {
         setLoading((s) => ({ ...s, logistics: false }));
+      }
+            try {
+        const snap = await getDocs(collection(db, "logs"));
+        const rows = [];
+        snap.forEach((docSnap) =>
+          rows.push({
+            id: docSnap.id,
+            ...(docSnap.data() || {}),
+          })
+        );
+        rows.sort(
+          (a, b) =>
+            (b.createdAt?.seconds || b.createdAt || 0) -
+            (a.createdAt?.seconds || a.createdAt || 0)
+        );
+        setLogs(rows);
+      } finally {
+        setLoading((s) => ({ ...s, logs: false }));
       }
     })();
   }, []);
@@ -650,12 +675,30 @@ export default function Admin() {
       flags,
     };
   }, [logistics, qLogs, pLogs]);
+    const fLogsTable = useMemo(() => {
+    const q = qLogsTable.trim().toLowerCase();
+
+    const list = !q
+      ? logs
+      : logs.filter((r) =>
+          [r.message, r.role, r.action].some((v) =>
+            String(v || "").toLowerCase().includes(q)
+          )
+        );
+
+    return {
+      total: list.length,
+      rows: list.slice((pLogsTable - 1) * PAGE, pLogsTable * PAGE),
+    };
+  }, [logs, qLogsTable, pLogsTable]);
 
   const tabs = [
     { key: "patients", label: "Patients" },
     { key: "doctors", label: "Doctors" },
     { key: "pharmacies", label: "Pharmacies" },
     { key: "logistics", label: "Logistics" },
+    { key: "logs", label: "Logs" },
+
   ];
 
   const changeTab = (key) => {
@@ -1104,6 +1147,75 @@ export default function Admin() {
                 total={fLogs.total}
                 pageSize={PAGE}
                 setPage={setPLogs}
+              />
+            </div>
+          )}
+                    {active === "logs" && (
+            <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
+              <SectionHeader
+                title="System Logs"
+                search={qLogsTable}
+                setSearch={(v) => {
+                  setQLogsTable(v);
+                  setPLogsTable(1);
+                }}
+              />
+
+              <div className="overflow-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="text-left px-4 py-3">Time</th>
+                      <th className="text-left px-4 py-3">Role</th>
+                      <th className="text-left px-4 py-3">Action</th>
+                      <th className="text-left px-4 py-3">Message</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading.logs ? (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-6 text-center text-gray-500">
+                          Loading…
+                        </td>
+                      </tr>
+                    ) : fLogsTable.rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-6 text-center text-gray-500">
+                          No logs found.
+                        </td>
+                      </tr>
+                    ) : (
+                      fLogsTable.rows.map((r) => (
+                        <tr key={r.id} className="border-t border-gray-100 align-top">
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {fmtDate(r.createdAt)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-1 rounded-full text-xs bg-gray-50 text-gray-700">
+                              {r.role || "—"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-1 rounded-full text-xs bg-[#F3ECF8] text-[#5B3A70]">
+                              {r.action || "—"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-[#2A1E36] max-w-[520px]">
+                            {r.message || "—"}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <Pager
+                page={pLogsTable}
+                pageCount={Math.ceil(fLogsTable.total / PAGE)}
+                total={fLogsTable.total}
+                pageSize={PAGE}
+                setPage={setPLogsTable}
               />
             </div>
           )}

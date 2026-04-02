@@ -37,6 +37,7 @@ import {
   History,
 } from "lucide-react";
 import { getAuth, sendSignInLinkToEmail } from "firebase/auth";
+import { logEvent } from "../utils/logEvent";
 
 const C = { primary: "#B08CC1", ink: "#4A2C59" };
 
@@ -385,7 +386,8 @@ export default function PharmacyShell() {
     return (notifItems || []).filter((n) => !(n.read === true || n.read === "true")).length;
   }, [notifItems]);
 
-  function signOut() {
+  async function signOut() {
+      await logEvent("Pharmacy signed out", "pharmacy", "logout");
     localStorage.clear();
     sessionStorage.clear();
     navigate("/auth");
@@ -721,6 +723,7 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
       };
 
       await updateDoc(doc(db, "pharmacies", pharmacyDocId), payload);
+      await logEvent("Pharmacy updated phone number", "pharmacy", "pharmacy_phone_update");
       setInitialPhone(payload.phone);
       onSaved?.({ phone: payload.phone });
       setPhoneError("");
@@ -734,6 +737,11 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
       }, 1500);
     } catch (e) {
       console.error(e);
+       await logEvent(
+    `Pharmacy phone update failed: ${e?.message || "unknown error"}`,
+    "pharmacy",
+    "pharmacy_phone_update_error"
+  );
       setPhoneError("Something went wrong while saving your phone number. Please try again.");
       setPhone("+966");
     } finally {
@@ -779,12 +787,22 @@ function AccountModal({ pharmacy, pharmacyDocId, onClose, onSaved }) {
 
       setEmailLoading(true);
       await sendSignInLinkToEmail(getAuth(), email, settings);
+      await logEvent(
+  `Pharmacy requested email verification link for ${email}`,
+  "pharmacy",
+  "pharmacy_email_verify_send"
+);
 
       localStorage.setItem("td_email_pending", JSON.stringify({ email, ts: Date.now() }));
       setEmailMsg(
         "A verification link has been sent to your email. Open it, then return to the app."
       );
     } catch (e) {
+      await logEvent(
+  `Pharmacy email verification link failed: ${e?.code || e?.message || "unknown error"}`,
+  "pharmacy",
+  "pharmacy_email_verify_send_error"
+);
       if (e?.code === "auth/too-many-requests" || e?.code === "auth/quota-exceeded") {
         setEmailMsg("Too many verification emails were requested. Please try again later.");
       } else if (e?.code === "auth/invalid-email") {
@@ -1203,6 +1221,12 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
         password: deleteField(),
       });
 
+      await logEvent(
+  "Pharmacy updated password successfully",
+  "pharmacy",
+  "pharmacy_password_update"
+);
+
       setMsg("Password updated successfully! ✓");
       setMsgType("success");
       setOldPass("");
@@ -1211,6 +1235,11 @@ function PasswordResetSection({ pharmacyDocId, onSaved }) {
 
       onSaved?.({ requirePasswordChange: false, passwordUpdatedAt: new Date() });
     } catch (e) {
+        await logEvent(
+    `Pharmacy password update failed: ${e?.message || "unknown error"}`,
+    "pharmacy",
+    "pharmacy_password_update_error"
+  );
       setMsg(e?.message || "Failed to update password");
       setMsgType("error");
     } finally {
