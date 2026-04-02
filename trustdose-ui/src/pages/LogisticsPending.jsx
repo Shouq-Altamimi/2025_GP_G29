@@ -1,4 +1,3 @@
-
 /* global BigInt */
 "use client";
 
@@ -29,7 +28,7 @@ const C = {
 };
 
 const PAGE_SIZE = 6;
-const DELIVERY_CONFIRMATION_ADDRESS = "0x90f1289856d9F4845526444dE80aB4d6F85E85eB";
+const DELIVERY_CONFIRMATION_ADDRESS = "0x8ceDd87dd1c506198cb777A94d757B58710eedD0";
 
 function formatFsTimestamp(v) {
   if (!v) return "-";
@@ -48,7 +47,6 @@ function formatFsTimestamp(v) {
   } catch {}
   return String(v);
 }
-
 
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected.");
@@ -71,7 +69,6 @@ export default function Logistics() {
 
   const [showSuccessPopup, setShowSuccessPopup] = React.useState(false);
 
- 
   React.useEffect(() => {
     async function loadHeader() {
       try {
@@ -224,7 +221,6 @@ export default function Logistics() {
       !r.deliveryConfirmed
   );
 
-  
   const groups = React.useMemo(() => {
     const map = new Map();
 
@@ -291,7 +287,6 @@ export default function Logistics() {
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = groups.slice(start, end);
 
-  
   async function handleAcceptGroup(g) {
     try {
       setMsg("");
@@ -310,11 +305,9 @@ export default function Logistics() {
         signer
       );
 
-      
-      for (const idStr of g.onchainIds) {
-        const tx = await contract.confirmDelivery(BigInt(idStr));
-        await tx.wait();
-      }
+      const ids = g.onchainIds.map((idStr) => BigInt(idStr));
+      const tx = await contract.confirmMultipleDeliveries(ids);
+      await tx.wait();
 
       await Promise.all(
         g.meds.map((r) =>
@@ -325,11 +318,12 @@ export default function Logistics() {
           })
         )
       );
+
       await logEvent(
-  `Logistics confirmed delivery to patient for prescription ${g.prescriptionId} with ${g.meds.length} medicine(s)`,
-  "logistics",
-  "delivery_confirm"
-);
+        `Logistics confirmed delivery to patient for prescription ${g.prescriptionId} with ${g.meds.length} medicine(s)`,
+        "logistics",
+        "delivery_confirm"
+      );
 
       const docIds = new Set(g.meds.map((x) => x._docId));
       setRows((prev) => prev.filter((row) => !docIds.has(row._docId)));
@@ -337,11 +331,12 @@ export default function Logistics() {
       setShowSuccessPopup(true);
     } catch (err) {
       console.error("Error:", err);
+
       await logEvent(
-  `Delivery confirmation failed for prescription ${g.prescriptionId}: ${err?.message || "unknown error"}`,
-  "logistics",
-  "delivery_confirm_error"
-);
+        `Delivery confirmation failed for prescription ${g.prescriptionId}: ${err?.message || "unknown error"}`,
+        "logistics",
+        "delivery_confirm_error"
+      );
 
       if (err?.code === "ACTION_REJECTED")
         setMsg("MetaMask request was declined. Please try again.");
@@ -378,8 +373,6 @@ export default function Logistics() {
         )}
 
         <div className="mb-6 flex items-center gap-3">
-          
-
           <div>
             <h1
               className="font-extrabold text-[24px]"
@@ -537,40 +530,44 @@ export default function Logistics() {
       </div>
 
       {showSuccessPopup && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-          <div
-            className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border"
-            style={{
-              background: "#F6F1FA",
-              borderColor: C.primary,
-            }}
-          >
-            <div className="flex flex-col items-center text-center">
-              <div
-                className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
-                style={{ backgroundColor: "#ECFDF3" }}
-              >
-                <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
-              </div>
-
-              <h3
-                className="text-lg font-semibold mb-1"
-                style={{ color: C.ink }}
-              >
-                You have successfully confirmed the delivery to the patient
-              </h3>
-
-              <button
-                onClick={() => setShowSuccessPopup(false)}
-                className="mt-3 px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
-                style={{ backgroundColor: C.primary, color: "#fff" }}
-              >
-                OK
-              </button>
-            </div>
-          </div>
+  <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+    <div
+      className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border"
+      style={{
+        background: "#F6F1FA",
+        borderColor: C.primary,
+      }}
+    >
+      <div className="flex flex-col items-center text-center">
+        <div
+          className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
+          style={{ backgroundColor: "#ECFDF3" }}
+        >
+          <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
         </div>
-      )}
+
+        <h3
+          className="text-lg font-semibold mb-1"
+          style={{ color: C.ink }}
+        >
+          You have successfully confirmed the delivery to the patient
+        </h3>
+
+        <p className="text-sm mt-1" style={{ color: "#64748b" }}>
+          The order has been successfully completed and confirmed.
+        </p>
+
+        <button
+          onClick={() => setShowSuccessPopup(false)}
+          className="mt-3 px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
+          style={{ backgroundColor: C.primary, color: "#fff" }}
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }

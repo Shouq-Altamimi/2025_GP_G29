@@ -30,7 +30,6 @@ contract DeliveryConfirmation {
 
     function confirmDelivery(uint256 prescriptionId) external {
         require(isLogistics[msg.sender], "Not logistics");
-
         require(prescription.isValid(prescriptionId), "Invalid/expired");
 
         Delivery storage d = deliveries[prescriptionId];
@@ -41,5 +40,25 @@ contract DeliveryConfirmation {
         d.deliveredAt = block.timestamp;
 
         emit DeliveryConfirmed(prescriptionId, msg.sender);
+    }
+
+    function confirmMultipleDeliveries(uint256[] memory prescriptionIds) external {
+        require(isLogistics[msg.sender], "Not logistics");
+        require(prescriptionIds.length > 0, "Empty prescriptions");
+
+        for (uint256 i = 0; i < prescriptionIds.length; i++) {
+            uint256 prescriptionId = prescriptionIds[i];
+
+            require(prescription.isValid(prescriptionId), "Invalid/expired");
+
+            Delivery storage d = deliveries[prescriptionId];
+            require(!d.delivered, "Already delivered");
+
+            d.delivered = true;
+            d.logistics = msg.sender;
+            d.deliveredAt = block.timestamp;
+
+            emit DeliveryConfirmed(prescriptionId, msg.sender);
+        }
     }
 }

@@ -21,7 +21,7 @@ import LOGISTICS_RECEIVE from "../contracts/LogisticsReceive.json";
 import { Loader2, FileText, CheckCircle2 } from "lucide-react";
 import { logEvent } from "../utils/logEvent";
 
-const LOGISTICS_RECEIVE_ADDRESS = "0x99aBd40A784fA87542Cd73abFc4edB106a3291C6";
+const LOGISTICS_RECEIVE_ADDRESS = "0xb56FBb3BB8420c9dDf62aC1940BF323aB19f9344";
 
 // ✅ IoT device (مؤقتًا ثابت)
 const DEFAULT_IOT_DEVICE_ID = "esp8266_1";
