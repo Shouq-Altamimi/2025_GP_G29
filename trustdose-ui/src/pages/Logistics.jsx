@@ -490,6 +490,32 @@ export default function Logistics() {
 
   return (
     <div className="p-6">
+      <style>{`
+        .more-meds-scroll::-webkit-scrollbar {
+          width: 10px;
+        }
+
+        .more-meds-scroll::-webkit-scrollbar-track {
+          background: #f3edf7;
+          border-radius: 999px;
+        }
+
+        .more-meds-scroll::-webkit-scrollbar-thumb {
+          background: #B08CC1;
+          border-radius: 999px;
+          border: 2px solid #f3edf7;
+        }
+
+        .more-meds-scroll::-webkit-scrollbar-thumb:hover {
+          background: #9F76B4;
+        }
+
+        .more-meds-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: #B08CC1 #f3edf7;
+        }
+      `}</style>
+
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
         {msg && (
           <div className="mb-4 p-4 rounded-xl flex items-center gap-2 text-red-700 bg-red-100 border border-red-300">
@@ -766,8 +792,17 @@ export default function Logistics() {
       {showMedsPopup &&
         selectedGroup &&
         (selectedGroup.extraMeds || []).length > 0 && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6">
-            <div className="w-full max-w-5xl h-[85vh] rounded-3xl bg-white shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6"
+            onClick={() => {
+              setShowMedsPopup(false);
+              setSelectedGroup(null);
+            }}
+          >
+            <div
+              className="w-full max-w-2xl max-h-[85vh] rounded-3xl bg-white shadow-2xl border border-gray-200 flex flex-col overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-gray-200">
                 <div>
                   <h3
@@ -794,8 +829,8 @@ export default function Logistics() {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-6 py-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="more-meds-scroll flex-1 overflow-y-auto px-6 py-6">
+                <div className="grid grid-cols-1 gap-5">
                   {Array.from(
                     {
                       length: Math.ceil((selectedGroup.extraMeds || []).length / 2),
@@ -820,7 +855,7 @@ export default function Logistics() {
                               {pair.map((m, idx) => (
                                 <div
                                   key={`${selectedGroup.prescriptionId}-popup-med-${boxIndex}-${idx}`}
-                                  className="text-lg font-bold text-slate-800 leading-snug line-clamp-1"
+                                  className="text-lg font-bold text-slate-800 leading-snug break-words"
                                   title={m.medicineLabel}
                                 >
                                   {m.medicineLabel}
