@@ -1,4 +1,4 @@
-// src/pages/DeliveryOrders.jsx 
+// src/pages/DeliveryOrders.jsx
 /* global BigInt */
 "use client";
 
@@ -33,7 +33,7 @@ const RX_STATUS = {
 };
 const PAGE_SIZE = 6;
 
-const DELIVERY_ACCEPT_ADDRESS = "0xFBE49a895c15Eb235eA79829AaE4C2ad5856Dd20";
+const DELIVERY_ACCEPT_ADDRESS = "0x7aB1153A3B118ef7B00799ECD37bd9B6df3F5A88";
 const DELIVERY_ACCEPT_ABI = DELIVERY_ACCEPT?.abi ?? [];
 
 function formatFsTimestamp(v) {
@@ -330,7 +330,6 @@ export default function DeliveryOrders({ pharmacyId }) {
   const end = Math.min(start + PAGE_SIZE, total);
   const pageItems = groups.slice(start, end);
 
-  // reset page when filters change
   React.useEffect(() => setPage(0), [fromDT, toDT, rows.length]);
 
   function getDeliveryAcceptProvider() {
@@ -377,11 +376,15 @@ export default function DeliveryOrders({ pharmacyId }) {
           signer
         );
 
-        for (const idStr of g.onchainIds) {
-          const tx = await contract.accept(BigInt(idStr));
-          await tx.wait();
-          txHashes.push(tx.hash);
-        }
+        const ids = g.onchainIds.map((idStr) => BigInt(idStr));
+        console.log(
+  "IMPORTED ABI NAMES:",
+  (DELIVERY_ACCEPT_ABI || []).map((x) => x?.name).filter(Boolean)
+);
+console.log("HAS acceptMany?", (DELIVERY_ACCEPT_ABI || []).some((x) => x?.name === "acceptMany"));
+        const tx = await contract.acceptMany(ids);
+        await tx.wait();
+        txHashes = [tx.hash];
       }
 
       const updatePayload = {
@@ -404,11 +407,12 @@ export default function DeliveryOrders({ pharmacyId }) {
       if (txHashes.length > 1) updatePayload.acceptDeliveryTxs = txHashes;
 
       await Promise.all(valid.map(({ ref }) => updateDoc(ref, updatePayload)));
-await logEvent(
-  `Pharmacy accepted sensitive delivery request for prescription ${g.prescriptionId} with ${valid.length} medicine(s)`,
-  "pharmacy",
-  "delivery_accept"
-);
+
+      await logEvent(
+        `Pharmacy accepted sensitive delivery request for prescription ${g.prescriptionId} with ${valid.length} medicine(s)`,
+        "pharmacy",
+        "delivery_accept"
+      );
 
       const docIds = new Set(g.meds.map((x) => x._docId));
       setRows((arr) => arr.filter((x) => !docIds.has(x._docId)));
@@ -430,10 +434,10 @@ await logEvent(
     } catch (err) {
       console.error(err);
       await logEvent(
-  `Delivery accept failed for prescription ${g.prescriptionId}: ${err?.message || "unknown error"}`,
-  "pharmacy",
-  "delivery_accept_error"
-);
+        `Delivery accept failed for prescription ${g.prescriptionId}: ${err?.message || "unknown error"}`,
+        "pharmacy",
+        "delivery_accept_error"
+      );
 
       let m = "Error occurred. Please try again.";
       if (err?.code === "ACTION_REJECTED" || err?.code === 4001) {
@@ -607,7 +611,6 @@ await logEvent(
                   className="p-4 border rounded-xl bg-white shadow-sm"
                 >
                   <div>
-                    {/* meds title (first 2) */}
                     <div className="space-y-1 mb-3">
                       {(g.meds || []).slice(0, 2).map((m, idx) => (
                         <div
