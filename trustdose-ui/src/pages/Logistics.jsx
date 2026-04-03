@@ -1,4 +1,3 @@
-
 /* global BigInt */
 "use client";
 
@@ -29,8 +28,7 @@ const C = {
 };
 
 const PAGE_SIZE = 6;
-const LOGISTICS_ACCEPT_ADDRESS = "0xFa9aa1F694dF602c5648b6072A16687A8dbfCDD5";
-
+const LOGISTICS_ACCEPT_ADDRESS = "0x5D68159Ee26578E8a45D6cDD3065D74650fF87c0";
 
 function formatFsTimestamp(v) {
   if (!v) return "-";
@@ -56,14 +54,12 @@ function last4(id) {
   return s.length <= 4 ? s : s.slice(-4);
 }
 
-
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected.");
   await window.ethereum.request({ method: "eth_requestAccounts" });
   const provider = new ethers.BrowserProvider(window.ethereum);
   return provider.getSigner();
 }
-
 
 async function fetchPatientInfoByNationalId(nationalIdFull) {
   const id = String(nationalIdFull ?? "").trim();
@@ -104,11 +100,8 @@ export default function Logistics() {
   const [rows, setRows] = React.useState([]);
   const [msg, setMsg] = React.useState("");
   const [page, setPage] = React.useState(0);
-
-
   const [pending, setPending] = React.useState({});
 
- 
   const [qText, setQText] = React.useState("");
   const [fromDT, setFromDT] = React.useState("");
   const [toDT, setToDT] = React.useState("");
@@ -144,7 +137,6 @@ export default function Logistics() {
 
   const [showSuccessPopup, setShowSuccessPopup] = React.useState(false);
 
-  
   React.useEffect(() => {
     async function loadHeader() {
       try {
@@ -183,7 +175,6 @@ export default function Logistics() {
     loadHeader();
   }, []);
 
-  
   React.useEffect(() => {
     let mounted = true;
 
@@ -230,13 +221,14 @@ export default function Logistics() {
         return;
       }
 
-     
       const data = snap.docs
         .map((d) => {
           const x = d.data() || {};
 
           const patientNatId =
-            String(x.patientNationalId ?? x.nationalID ?? x.nationalId ?? "").trim() || "-";
+            String(
+              x.patientNationalId ?? x.nationalID ?? x.nationalId ?? ""
+            ).trim() || "-";
 
           const patientIdLast4 =
             String(x.patientNationalIdLast4 ?? x.patientDisplayId ?? "").trim() ||
@@ -326,7 +318,6 @@ export default function Logistics() {
     return () => (mounted = false);
   }, []);
 
-
   const filteredRows = React.useMemo(() => {
     let base = rows.filter(
       (r) => r.acceptDelivery && !r.dispensed && !r.logisticsAccepted
@@ -344,7 +335,7 @@ export default function Logistics() {
         (r) =>
           (r.medicineLabel || "").toLowerCase().includes(v) ||
           (r.patientName || "").toLowerCase().includes(v) ||
-          (String(r.patientIdFull || "")).toLowerCase().includes(v) ||
+          String(r.patientIdFull || "").toLowerCase().includes(v) ||
           (r.prescriptionId || "").toLowerCase().includes(v)
       );
     }
@@ -352,12 +343,10 @@ export default function Logistics() {
     return base;
   }, [rows, qText, fromDT, toDT]);
 
-  
   const groups = React.useMemo(() => {
     const map = new Map();
 
     for (const r of filteredRows) {
-   
       const key = r.prescriptionId || r._docId;
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(r);
@@ -392,7 +381,9 @@ export default function Logistics() {
         return t > (acc?.getTime?.() || 0) ? m.createdAtTS : acc;
       }, first.createdAtTS);
 
-      const mask = first.patientIdLast4 ? String(first.patientIdLast4) : last4(first.patientIdFull);
+      const mask = first.patientIdLast4
+        ? String(first.patientIdLast4)
+        : last4(first.patientIdFull);
 
       return {
         prescriptionId,
@@ -423,7 +414,6 @@ export default function Logistics() {
 
   React.useEffect(() => setPage(0), [qText, fromDT, toDT]);
 
-
   async function handleAcceptGroup(g) {
     try {
       setMsg("");
@@ -442,10 +432,9 @@ export default function Logistics() {
         signer
       );
 
-      for (const idStr of g.onchainIds) {
-        const tx = await contract.acceptDelivery(BigInt(idStr));
-        await tx.wait();
-      }
+      const ids = g.onchainIds.map((idStr) => BigInt(idStr));
+      const tx = await contract.acceptMultipleDeliveries(ids);
+      await tx.wait();
 
       await Promise.all(
         g.meds.map((r) =>
@@ -456,11 +445,13 @@ export default function Logistics() {
           })
         )
       );
-await logEvent(
-  `Logistics accepted delivery for prescription: ${g.prescriptionId}`,
-  "logistics",
-  "delivery_accept"
-);
+
+      await logEvent(
+        `Logistics accepted delivery for prescription: ${g.prescriptionId} with ${g.meds.length} medicine(s)`,
+        "logistics",
+        "delivery_accept"
+      );
+
       const docIds = new Set(g.meds.map((x) => x._docId));
       setRows((prev) => prev.filter((row) => !docIds.has(row._docId)));
 
@@ -505,8 +496,6 @@ await logEvent(
         )}
 
         <div className="mb-6 flex items-center gap-3">
-         
-
           <div>
             <h1
               className="font-extrabold text-[24px]"
@@ -528,7 +517,6 @@ await logEvent(
           </div>
         </div>
 
-       
         <div className="sticky top-0 z-30 mb-6">
           <div className="bg-white/95 backdrop-blur border rounded-2xl shadow-sm p-4">
             <div className="flex flex-col lg:flex-row lg:items-center gap-4">
@@ -617,7 +605,6 @@ await logEvent(
           </div>
         </div>
 
-       
         {pageItems.length > 0 && (
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             {pageItems.map((g) => {
@@ -637,9 +624,7 @@ await logEvent(
                 <div
                   key={g.prescriptionId}
                   className="p-4 border rounded-xl bg-white shadow-sm flex flex-col"
-                  style={{
-                    minHeight: 260,
-                  }}
+                  style={{ minHeight: 260 }}
                 >
                   <div className="flex-1">
                     <div className="space-y-1 mb-3" style={{ minHeight: 56 }}>
@@ -653,14 +638,12 @@ await logEvent(
                         </div>
                       ))}
 
-                   
                       {(g.meds || []).length === 1 && (
                         <div className="text-lg font-bold text-slate-800 opacity-0 select-none">
                           placeholder
                         </div>
                       )}
 
-                 
                       {(g.meds || []).length > 2 && (
                         <div className="text-xs text-gray-500 mt-1">
                           +{g.meds.length - 2} more
@@ -687,7 +670,6 @@ await logEvent(
                     </div>
                   </div>
 
-               
                   <div className="mt-4">
                     <button
                       className="w-max px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
@@ -763,7 +745,6 @@ await logEvent(
         )}
       </div>
 
-      
       {showSuccessPopup && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
           <div

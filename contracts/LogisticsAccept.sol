@@ -6,7 +6,6 @@ interface IPrescription {
 }
 
 contract LogisticsAccept {
-
     struct Delivery {
         bool accepted;
         address logistics;
@@ -41,5 +40,25 @@ contract LogisticsAccept {
         d.acceptedAt = block.timestamp;
 
         emit DeliveryAccepted(prescriptionId, msg.sender);
+    }
+
+    function acceptMultipleDeliveries(uint256[] memory prescriptionIds) external {
+        require(isLogistics[msg.sender], "Not logistics");
+        require(prescriptionIds.length > 0, "Empty prescriptions");
+
+        for (uint256 i = 0; i < prescriptionIds.length; i++) {
+            uint256 prescriptionId = prescriptionIds[i];
+
+            require(prescription.isValid(prescriptionId), "Invalid/expired");
+
+            Delivery storage d = deliveries[prescriptionId];
+            require(!d.accepted, "Already accepted");
+
+            d.accepted = true;
+            d.logistics = msg.sender;
+            d.acceptedAt = block.timestamp;
+
+            emit DeliveryAccepted(prescriptionId, msg.sender);
+        }
     }
 }
