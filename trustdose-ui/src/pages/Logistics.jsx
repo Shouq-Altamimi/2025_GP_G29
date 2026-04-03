@@ -136,6 +136,8 @@ export default function Logistics() {
   });
 
   const [showSuccessPopup, setShowSuccessPopup] = React.useState(false);
+  const [showMedsPopup, setShowMedsPopup] = React.useState(false);
+  const [selectedGroup, setSelectedGroup] = React.useState(null);
 
   React.useEffect(() => {
     async function loadHeader() {
@@ -393,6 +395,7 @@ export default function Logistics() {
         createdAtTS,
         createdAt: first.createdAt,
         meds,
+        extraMeds: meds.slice(2),
         onchainIds,
         eligible,
         missingCount: meds.filter((m) => m.onchainId == null).length,
@@ -645,9 +648,17 @@ export default function Logistics() {
                       )}
 
                       {(g.meds || []).length > 2 && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          +{g.meds.length - 2} more
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedGroup(g);
+                            setShowMedsPopup(true);
+                          }}
+                          className="text-xs mt-2 font-medium underline underline-offset-2"
+                          style={{ color: C.primary }}
+                        >
+                          Press here to view more medicines
+                        </button>
                       )}
                     </div>
 
@@ -744,6 +755,127 @@ export default function Logistics() {
           </div>
         )}
       </div>
+
+           {showMedsPopup && selectedGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6">
+          <div className="w-full max-w-5xl h-[85vh] rounded-3xl bg-white shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
+            <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-gray-200">
+              <div>
+                <h3
+                  className="text-2xl font-extrabold"
+                  style={{ color: C.ink }}
+                >
+                  More Medicines
+                </h3>
+
+                <p className="text-sm text-slate-500 mt-1">
+                  Prescription ID: {selectedGroup.prescriptionId}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMedsPopup(false);
+                  setSelectedGroup(null);
+                }}
+                className="px-4 py-2 rounded-xl text-sm font-medium border border-gray-200 hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              {(selectedGroup.extraMeds || []).length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {Array.from(
+                    {
+                      length: Math.ceil((selectedGroup.extraMeds || []).length / 2),
+                    },
+                    (_, boxIndex) => {
+                      const pair = (selectedGroup.extraMeds || []).slice(
+                        boxIndex * 2,
+                        boxIndex * 2 + 2
+                      );
+
+                      return (
+                        <div
+                          key={`popup-box-${boxIndex}`}
+                          className="p-4 border rounded-xl bg-white shadow-sm flex flex-col"
+                          style={{ minHeight: 260 }}
+                        >
+                          <div className="flex-1">
+                            <div
+                              className="space-y-1 mb-3"
+                              style={{ minHeight: 56 }}
+                            >
+                              {pair.map((m, idx) => (
+                                <div
+                                  key={`${selectedGroup.prescriptionId}-popup-med-${boxIndex}-${idx}`}
+                                  className="text-lg font-bold text-slate-800 leading-snug line-clamp-1"
+                                  title={m.medicineLabel}
+                                >
+                                  {m.medicineLabel}
+                                </div>
+                              ))}
+
+                              {pair.length === 1 && (
+                                <div className="text-lg font-bold text-slate-800 opacity-0 select-none">
+                                  placeholder
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="text-sm text-slate-700 mt-1 font-semibold">
+                              Prescription ID:
+                              <span className="font-normal">
+                                {" "}
+                                {selectedGroup.prescriptionId}
+                              </span>
+                            </div>
+
+                            <div className="text-sm text-slate-700 mt-1 font-semibold">
+                              Patient:
+                              <span className="font-normal">
+                                {" "}
+                                {selectedGroup.patientName} — ----{" "}
+                                {selectedGroup.patientIdMask}
+                              </span>
+                            </div>
+
+                            <div className="text-sm text-slate-700 mt-1 font-semibold">
+                              Patient Phone:
+                              <span className="font-normal">
+                                {" "}
+                                {selectedGroup.patientPhone || "-"}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="text-right text-xs text-gray-500 mt-3">
+                            Prescription issued on{" "}
+                            {selectedGroup.createdAtTS
+                              ? selectedGroup.createdAtTS.toLocaleString("en-GB", {
+                                  day: "2-digit",
+                                  month: "long",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : selectedGroup.createdAt}
+                          </div>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">No more medicines.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showSuccessPopup && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
