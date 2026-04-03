@@ -9,16 +9,15 @@ interface IDeliveryAccept {
     function isAccepted(uint256 id) external view returns (bool);
 }
 
-
 contract LogisticsReceive {
     IPrescription public prescription;
     IDeliveryAccept public deliveryAccept;
     address public admin;
 
     struct ReceiveRecord {
-        uint256 prescriptionId; 
-        address who;           
-        uint256 timestamp;      
+        uint256 prescriptionId;
+        address who;
+        uint256 timestamp;
     }
 
     mapping(uint256 => ReceiveRecord) public receives;
@@ -28,6 +27,7 @@ contract LogisticsReceive {
     event AcceptAddressUpdated(address indexed newAddress);
     event Received(uint256 indexed prescriptionId, address indexed who, uint256 timestamp);
     event Unreceived(uint256 indexed prescriptionId, address indexed by);
+    event ReceivedMany(uint256[] prescriptionIds, address indexed who, uint256 timestamp);
 
     modifier onlyAdmin() {
         require(msg.sender == admin, "Not admin");
@@ -35,7 +35,10 @@ contract LogisticsReceive {
     }
 
     constructor(address _prescriptionAddress, address _acceptAddress) {
-        require(_prescriptionAddress != address(0) && _acceptAddress != address(0), "Bad address");
+        require(
+            _prescriptionAddress != address(0) && _acceptAddress != address(0),
+            "Bad address"
+        );
         admin = msg.sender;
         prescription = IPrescription(_prescriptionAddress);
         deliveryAccept = IDeliveryAccept(_acceptAddress);
@@ -66,6 +69,31 @@ contract LogisticsReceive {
 
         isReceived[_prescriptionId] = true;
         emit Received(_prescriptionId, msg.sender, block.timestamp);
+    }
+
+    function receiveMultipleFromPharmacy(uint256[] calldata _prescriptionIds) external {
+        require(_prescriptionIds.length > 0, "Empty list");
+
+        uint256 ts = block.timestamp;
+
+        for (uint256 i = 0; i < _prescriptionIds.length; i++) {
+            uint256 id = _prescriptionIds[i];
+
+            require(!isReceived[id], "Already received");
+            require(prescription.isValid(id), "Invalid/expired");
+            require(deliveryAccept.isAccepted(id), "Not accepted for delivery");
+
+            receives[id] = ReceiveRecord({
+                prescriptionId: id,
+                who: msg.sender,
+                timestamp: ts
+            });
+
+            isReceived[id] = true;
+            emit Received(id, msg.sender, ts);
+        }
+
+        emit ReceivedMany(_prescriptionIds, msg.sender, ts);
     }
 
     function unreceiveFromPharmacy(uint256 _prescriptionId) external onlyAdmin {

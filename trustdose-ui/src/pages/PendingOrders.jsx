@@ -18,10 +18,12 @@ import {
 
 import { ethers } from "ethers";
 import LOGISTICS_RECEIVE from "../contracts/LogisticsReceive.json";
+import DELIVERY_ACCEPT from "../contracts/DeliveryAccept.json";
+import PRESCRIPTION from "../contracts/Prescription.json";
 import { Loader2, FileText, CheckCircle2 } from "lucide-react";
 import { logEvent } from "../utils/logEvent";
 
-const LOGISTICS_RECEIVE_ADDRESS = "0xb56FBb3BB8420c9dDf62aC1940BF323aB19f9344";
+const LOGISTICS_RECEIVE_ADDRESS = "0x3d039E897AB0aE49034d1c47f5F6b00ec90Fb052";
 
 // ✅ IoT device (مؤقتًا ثابت)
 const DEFAULT_IOT_DEVICE_ID = "esp8266_1";
@@ -50,11 +52,41 @@ function formatFsTimestamp(v) {
   return String(v);
 }
 
+function extractReadableError(err) {
+  const raw =
+    err?.reason ||
+    err?.shortMessage ||
+    err?.info?.error?.message ||
+    err?.error?.message ||
+    err?.message ||
+    "";
+
+  const lower = String(raw).toLowerCase();
+
+  if (err?.code === "ACTION_REJECTED" || err?.code === 4001) {
+    return "MetaMask request was declined. Please try again.";
+  }
+  if (lower.includes("already received")) {
+    return "This prescription was already received by logistics.";
+  }
+  if (lower.includes("invalid/expired")) {
+    return "This prescription is invalid or expired on blockchain.";
+  }
+  if (lower.includes("not accepted for delivery")) {
+    return "This prescription has not been accepted for delivery on blockchain yet.";
+  }
+  if (lower.includes("missing revert data")) {
+    return "Blockchain validation failed. Please make sure the prescription is accepted for delivery and still valid.";
+  }
+
+  return raw || "Error occurred. Please try again.";
+}
+
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected.");
   await window.ethereum.request({ method: "eth_requestAccounts" });
   const provider = new ethers.BrowserProvider(window.ethereum);
-  const network = await provider.getNetwork();
+  await provider.getNetwork();
   return provider.getSigner();
 }
 
@@ -156,8 +188,6 @@ export default function PendingOrders({ pharmacyId }) {
           acceptDelivery: !!x.acceptDelivery,
           logisticsAccepted: !!x.logisticsAccepted,
           onchainId,
-
-          // ✅✅✅ مهم: نجيب sensitivity عشان نحدد الرينج
           sensitivity: x.sensitivity || "NonSensitive",
         };
       });
@@ -265,32 +295,73 @@ export default function PendingOrders({ pharmacyId }) {
         signer
       );
 
-      let lastTxHash = null;
-      const txHashes = [];
-      for (const idStr of g.onchainIds) {
-        const tx = await logistics.receiveFromPharmacy(Number(idStr));
-        const receipt = await tx.wait();
-        const txHash = receipt?.hash || tx.hash;
-        lastTxHash = txHash;
-        txHashes.push(txHash);
+      const ids = g.onchainIds.map((idStr) => Number(idStr));
+
+      // ✅ pre-checks before sending tx
+      const acceptAddress = await logistics.deliveryAccept();
+      const prescriptionAddress = await logistics.prescription();
+
+      const acceptContract = new ethers.Contract(
+        acceptAddress,
+        DELIVERY_ACCEPT.abi,
+        signer
+      );
+
+      const prescriptionContract = new ethers.Contract(
+        prescriptionAddress,
+        PRESCRIPTION.abi,
+        signer
+      );
+
+      for (const id of ids) {
+        const [accepted, valid, received] = await Promise.all([
+          acceptContract.isAccepted(id),
+          prescriptionContract.isValid(id),
+          logistics.isReceived(id),
+        ]);
+
+        if (!accepted) {
+          throw new Error(
+            `Prescription ${id} has not been accepted for delivery on blockchain yet.`
+          );
+        }
+        if (!valid) {
+          throw new Error(`Prescription ${id} is invalid or expired on blockchain.`);
+        }
+        if (received) {
+          throw new Error(`Prescription ${id} was already received by logistics.`);
+        }
       }
 
-      // ✅✅✅ تحديد الرينج بناء على sensitivity داخل meds
+      const tx = await logistics.receiveMultipleFromPharmacy(ids);
+      const receipt = await tx.wait();
+      const lastTxHash = receipt?.hash || tx.hash;
+
       const isSensitive = (g.meds || []).some(
         (m) => String(m?.sensitivity || "").toLowerCase() === "sensitive"
       );
 
       const thresholds = isSensitive
-        ? { tempMin: 2, tempMax: 8, humMin: 20, humMax: 80, thresholdProfile: "Sensitive" }
-        : { tempMin: 15, tempMax: 30, humMin: 20, humMax: 80, thresholdProfile: "NonSensitive" };
+        ? {
+            tempMin: 2,
+            tempMax: 8,
+            humMin: 20,
+            humMax: 80,
+            thresholdProfile: "Sensitive",
+          }
+        : {
+            tempMin: 15,
+            tempMax: 30,
+            humMin: 20,
+            humMax: 80,
+            thresholdProfile: "NonSensitive",
+          };
 
-      // ✅ IoT Link (Override للـ Demo)
       const deviceId = DEFAULT_IOT_DEVICE_ID;
       const nowTs = serverTimestamp();
 
       const deviceRef = doc(db, "iotDevices", deviceId);
 
-      // ✅ بدل ما نرمي Error: نسمح بالاستبدال ونحفظ السابقة (اختياري)
       const deviceSnap = await getDoc(deviceRef);
       let previousPrescriptionId = null;
 
@@ -310,8 +381,6 @@ export default function PendingOrders({ pharmacyId }) {
           linkedAt: nowTs,
           linkedByRole: "pharmacy",
           pharmacyId: pharmacyId || null,
-
-          // ✅ اختياري للـ Demo: نسجل آخر ربط سابق
           previousPrescriptionId: previousPrescriptionId || null,
           previousUnlinkedAt:
             previousPrescriptionId && previousPrescriptionId !== String(g.prescriptionId)
@@ -321,7 +390,6 @@ export default function PendingOrders({ pharmacyId }) {
         { merge: true }
       );
 
-      // Update Firestore prescriptions
       await Promise.all(
         g.meds.map((r) =>
           updateDoc(doc(db, "prescriptions", r._docId), {
@@ -330,23 +398,21 @@ export default function PendingOrders({ pharmacyId }) {
             updatedAt: nowTs,
             logisticsReceivedBy: logisticsAddr,
             logisticsReceiveTx: lastTxHash,
-
-            // ✅ IoT fields
             iotDeviceId: deviceId,
             iotStatus: "active",
             iotLinkedAt: nowTs,
             inSmartBox: true,
-
-            // ✅✅✅ ranges (based on sensitivity)
             ...thresholds,
           })
         )
       );
-await logEvent(
-  `Pharmacy dispensed prescription ${g.prescriptionId} to logistics with ${g.meds.length} medicine(s)`,
-  "pharmacy",
-  "prescription_dispensed_to_logistics"
-);
+
+      await logEvent(
+        `Pharmacy dispensed prescription ${g.prescriptionId} to logistics with ${g.meds.length} medicine(s)`,
+        "pharmacy",
+        "prescription_dispensed_to_logistics"
+      );
+
       const docIds = new Set(g.meds.map((x) => x._docId));
       setRows((old) => old.filter((x) => !docIds.has(x._docId)));
 
@@ -356,16 +422,14 @@ await logEvent(
       });
     } catch (err) {
       console.error("Error:", err);
-      await logEvent(
-  `Dispense to logistics failed for prescription ${g.prescriptionId}: ${err?.message || "unknown error"}`,
-  "pharmacy",
-  "prescription_dispensed_to_logistics_error"
-);
 
-      let m = "Error occurred. Please try again.";
-      if (err?.code === "ACTION_REJECTED" || err?.code === 4001) {
-        m = "MetaMask request was declined. Please try again.";
-      }
+      await logEvent(
+        `Dispense to logistics failed for prescription ${g?.prescriptionId}: ${err?.message || "unknown error"}`,
+        "pharmacy",
+        "prescription_dispensed_to_logistics_error"
+      );
+
+      const m = extractReadableError(err);
       setMsg(m);
       setPageError(m);
     } finally {
@@ -451,13 +515,6 @@ await logEvent(
                 : g.createdAt || "-";
 
               const isProcessing = processingId === String(g.prescriptionId);
-
-              const dosageSummary = (g.meds || []).slice(0, 2).map((m) => {
-                const dose = m.dose || "-";
-                const freq = m.frequency || "-";
-                const dur = m.durationDays || "-";
-                return `${dose} • ${freq} • ${dur}`;
-              });
 
               return (
                 <div
@@ -650,7 +707,6 @@ await logEvent(
                   Next →{" "}
                 </button>
               </div>
-              
             </div>
           </div>
         )}

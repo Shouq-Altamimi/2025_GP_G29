@@ -26,7 +26,7 @@ import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 import { logEvent } from "../utils/logEvent";
 
-const PRESCRIPTION_ADDRESS = "0x56c6D8ba686f4338c8299Ed24D833CE2af001bBE";
+const PRESCRIPTION_ADDRESS = "0x31E4224E0863B6b85C4A451BAB091332dFE6Bcc0";
 const DISPENSE_ADDRESS = "0x96eEb13B6274F09fe6285Fdd0f698a90b0e63b8A";
 
 
