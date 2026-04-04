@@ -48,6 +48,12 @@ function formatFsTimestamp(v) {
   return String(v);
 }
 
+function last4(id) {
+  const s = String(id ?? "").replace(/\D/g, "");
+  if (!s) return "----";
+  return s.length <= 4 ? s : s.slice(-4);
+}
+
 async function getSignerEnsured() {
   if (!window.ethereum) throw new Error("MetaMask not detected.");
   await window.ethereum.request({ method: "eth_requestAccounts" });
@@ -68,6 +74,8 @@ export default function Logistics() {
   });
 
   const [showSuccessPopup, setShowSuccessPopup] = React.useState(false);
+  const [showMedsPopup, setShowMedsPopup] = React.useState(false);
+  const [selectedGroup, setSelectedGroup] = React.useState(null);
 
   React.useEffect(() => {
     async function loadHeader() {
@@ -160,17 +168,19 @@ export default function Logistics() {
 
       const data = await Promise.all(
         snap.docs.map(async (d) => {
-          const x = d.data();
+          const x = d.data() || {};
 
           let patientPhone = "-";
-          const natId = x.nationalID;
+          const natId =
+            x.patientNationalId ?? x.nationalID ?? x.nationalId ?? null;
+
           if (natId) {
             try {
               const pRef = doc(db, "patients", `Ph_${String(natId)}`);
               const pSnap = await getDoc(pRef);
               if (pSnap.exists()) {
-                const p = pSnap.data();
-                patientPhone = p.contact || p.phone || "-";
+                const p = pSnap.data() || {};
+                patientPhone = p.contact || p.phone || p.mobile || "-";
               }
             } catch (e) {
               console.error("Failed to load patient phone", e);
@@ -179,10 +189,20 @@ export default function Logistics() {
 
           return {
             _docId: d.id,
-            prescriptionId: x.prescriptionID || d.id,
-            onchainId: x.onchainId ? BigInt(String(x.onchainId)) : null,
-            patientName: x.patientName || "-",
-            patientId: String(x.nationalID ?? "-"),
+            prescriptionId: x.prescriptionID || x.prescriptionId || d.id,
+            onchainId:
+              x.onchainId !== undefined &&
+              x.onchainId !== null &&
+              String(x.onchainId).trim() !== ""
+                ? BigInt(String(x.onchainId))
+                : null,
+            patientName: x.patientName || x.patientFullName || "-",
+            patientIdFull: String(
+              x.patientNationalId ?? x.nationalID ?? x.nationalId ?? "-"
+            ),
+            patientIdMask:
+              String(x.patientNationalIdLast4 ?? x.patientDisplayId ?? "").trim() ||
+              last4(x.patientNationalId ?? x.nationalID ?? x.nationalId ?? ""),
             patientPhone,
             medicineLabel: x.medicineLabel || x.medicineName || "-",
             createdAtTS: x.createdAt?.toDate?.(),
@@ -197,8 +217,8 @@ export default function Logistics() {
       );
 
       data.sort((a, b) => {
-        const aT = a.createdAtTS?.getTime() || 0;
-        const bT = b.createdAtTS?.getTime() || 0;
+        const aT = a.createdAtTS?.getTime?.() || 0;
+        const bT = b.createdAtTS?.getTime?.() || 0;
         return bT - aT;
       });
 
@@ -262,11 +282,13 @@ export default function Logistics() {
       return {
         prescriptionId,
         patientName: first.patientName || "-",
-        patientId: first.patientId || "-",
+        patientIdFull: first.patientIdFull || "-",
+        patientIdMask: first.patientIdMask || last4(first.patientIdFull),
         patientPhone: first.patientPhone || "-",
         createdAtTS,
         createdAt: first.createdAt,
         meds,
+        extraMeds: meds.slice(2),
         onchainIds,
         eligible,
         missingCount: meds.filter((m) => m.onchainId == null).length,
@@ -338,9 +360,11 @@ export default function Logistics() {
         "delivery_confirm_error"
       );
 
-      if (err?.code === "ACTION_REJECTED")
+      if (err?.code === "ACTION_REJECTED" || err?.code === 4001) {
         setMsg("MetaMask request was declined. Please try again.");
-      else setMsg(err?.message || "Error occurred. Please try again.");
+      } else {
+        setMsg(err?.message || "Error occurred. Please try again.");
+      }
     } finally {
       setPending((p) => {
         const cp = { ...p };
@@ -411,10 +435,11 @@ export default function Logistics() {
               return (
                 <div
                   key={g.prescriptionId}
-                  className="p-4 border rounded-xl bg-white shadow-sm flex flex-col justify-between"
+                  className="p-4 border rounded-xl bg-white shadow-sm flex flex-col"
+                  style={{ minHeight: 260 }}
                 >
-                  <div>
-                    <div className="space-y-1 mb-3">
+                  <div className="flex-1">
+                    <div className="space-y-1 mb-3" style={{ minHeight: 56 }}>
                       {(g.meds || []).slice(0, 2).map((m, idx) => (
                         <div
                           key={`${g.prescriptionId}-med-${idx}`}
@@ -431,59 +456,76 @@ export default function Logistics() {
                         </div>
                       )}
 
-                      {(g.meds || []).length > 2 && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          +{g.meds.length - 2} more
-                        </div>
-                      )}
+                      {(g.extraMeds || []).length > 0 && (() => {
+                        const count = g.extraMeds.length;
+                        const label = count === 1 ? "medication" : "medications";
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!g.extraMeds.length) return;
+                              setSelectedGroup(g);
+                              setShowMedsPopup(true);
+                            }}
+                            className="text-xs mt-2 font-medium underline underline-offset-2"
+                            style={{ color: C.primary }}
+                          >
+                            Press here to view {count} more {label}
+                          </button>
+                        );
+                      })()}
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Prescription ID:{" "}
-                      <span className="font-normal">{g.prescriptionId}</span>
+                      Prescription ID:
+                      <span className="font-normal"> {g.prescriptionId}</span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Patient:{" "}
+                      Patient:
                       <span className="font-normal">
-                        {g.patientName} — {g.patientId}
+                        {" "}
+                        {g.patientName} — ---- {g.patientIdMask}
                       </span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Patient Phone:{" "}
-                      <span className="font-normal">{g.patientPhone || "-"}</span>
-                    </div>
-
-                    <div className="mt-6 flex flex-wrap gap-2">
-                      <button
-                        className="w-max px-4 py-2 text-sm rounded-lg flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
-                        style={{
-                          backgroundColor: C.primary,
-                          cursor: isPending ? "not-allowed" : "pointer",
-                        }}
-                        onClick={() => handleAcceptGroup(g)}
-                        disabled={isPending || !g.eligible}
-                        title={
-                          !g.eligible
-                            ? `Missing on-chain id for ${g.missingCount} item(s)`
-                            : ""
-                        }
-                      >
-                        {isPending && (
-                          <Loader2 size={16} className="animate-spin text-white" />
-                        )}
-                        {isPending
-                          ? "Processing..."
-                          : g.eligible
-                          ? "Confirm Delivery to Patient"
-                          : "Not eligible"}
-                      </button>
+                      Patient Phone:
+                      <span className="font-normal"> {g.patientPhone || "-"}</span>
                     </div>
                   </div>
 
-                  <div className="text-right text-xs text-gray-500 mt-4">
-                    Prescription issued on {dateTime}
+                  <div className="mt-4">
+                    <button
+                      className="w-max px-4 py-2 text-sm rounded-lg flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
+                      style={{
+                        backgroundColor: isPending
+                          ? "rgba(176,140,193,0.6)"
+                          : C.primary,
+                        cursor: isPending ? "not-allowed" : "pointer",
+                      }}
+                      onClick={() => handleAcceptGroup(g)}
+                      disabled={isPending || !g.eligible}
+                      title={
+                        !g.eligible
+                          ? `Missing on-chain id for ${g.missingCount} item(s)`
+                          : ""
+                      }
+                    >
+                      {isPending && (
+                        <Loader2 size={16} className="animate-spin text-white" />
+                      )}
+                      {isPending
+                        ? "Processing..."
+                        : g.eligible
+                        ? "Confirm Delivery to Patient"
+                        : "Not eligible"}
+                    </button>
+
+                    <div className="text-right text-xs text-gray-500 mt-4">
+                      Prescription issued on {dateTime}
+                    </div>
                   </div>
                 </div>
               );
@@ -529,45 +571,173 @@ export default function Logistics() {
         )}
       </div>
 
+      {showMedsPopup &&
+        selectedGroup &&
+        (selectedGroup.extraMeds || []).length > 0 && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6"
+            onClick={() => {
+              setShowMedsPopup(false);
+              setSelectedGroup(null);
+            }}
+          >
+            <div
+              className="w-full max-w-2xl max-h-[85vh] rounded-3xl bg-white shadow-2xl border border-gray-200 flex flex-col overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-gray-200">
+                <div>
+                  <h3
+                    className="text-2xl font-extrabold"
+                    style={{ color: C.ink }}
+                  >
+                    More Medications
+                  </h3>
+
+                  <p className="text-sm text-slate-500 mt-1">
+                    Prescription ID: {selectedGroup.prescriptionId}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMedsPopup(false);
+                    setSelectedGroup(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-sm font-medium border border-gray-200 hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="more-meds-scroll flex-1 overflow-y-auto px-6 py-6">
+                <div className="grid grid-cols-1 gap-5">
+                  {Array.from(
+                    {
+                      length: Math.ceil((selectedGroup.extraMeds || []).length / 2),
+                    },
+                    (_, boxIndex) => {
+                      const pair = (selectedGroup.extraMeds || []).slice(
+                        boxIndex * 2,
+                        boxIndex * 2 + 2
+                      );
+
+                      return (
+                        <div
+                          key={`popup-box-${boxIndex}`}
+                          className="p-4 border rounded-xl bg-white shadow-sm flex flex-col"
+                          style={{ minHeight: 260 }}
+                        >
+                          <div className="flex-1">
+                            <div
+                              className="space-y-1 mb-3"
+                              style={{ minHeight: 56 }}
+                            >
+                              {pair.map((m, idx) => (
+                                <div
+                                  key={`${selectedGroup.prescriptionId}-popup-med-${boxIndex}-${idx}`}
+                                  className="text-lg font-bold text-slate-800 leading-snug break-words"
+                                  title={m.medicineLabel}
+                                >
+                                  {m.medicineLabel}
+                                </div>
+                              ))}
+
+                              {pair.length === 1 && (
+                                <div className="text-lg font-bold text-slate-800 opacity-0 select-none">
+                                  placeholder
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="text-sm text-slate-700 mt-1 font-semibold">
+                              Prescription ID:
+                              <span className="font-normal">
+                                {" "}
+                                {selectedGroup.prescriptionId}
+                              </span>
+                            </div>
+
+                            <div className="text-sm text-slate-700 mt-1 font-semibold">
+                              Patient:
+                              <span className="font-normal">
+                                {" "}
+                                {selectedGroup.patientName} — ----{" "}
+                                {selectedGroup.patientIdMask}
+                              </span>
+                            </div>
+
+                            <div className="text-sm text-slate-700 mt-1 font-semibold">
+                              Patient Phone:
+                              <span className="font-normal">
+                                {" "}
+                                {selectedGroup.patientPhone || "-"}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="text-right text-xs text-gray-500 mt-3">
+                            Prescription issued on{" "}
+                            {selectedGroup.createdAtTS
+                              ? selectedGroup.createdAtTS.toLocaleString("en-GB", {
+                                  day: "2-digit",
+                                  month: "long",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : selectedGroup.createdAt}
+                          </div>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
       {showSuccessPopup && (
-  <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-    <div
-      className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border"
-      style={{
-        background: "#F6F1FA",
-        borderColor: C.primary,
-      }}
-    >
-      <div className="flex flex-col items-center text-center">
-        <div
-          className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
-          style={{ backgroundColor: "#ECFDF3" }}
-        >
-          <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+          <div
+            className="w-full max-w-sm px-6 py-5 rounded-2xl shadow-xl border"
+            style={{
+              background: "#F6F1FA",
+              borderColor: C.primary,
+            }}
+          >
+            <div className="flex flex-col items-center text-center">
+              <div
+                className="mx-auto mb-3 flex items-center justify-center w-12 h-12 rounded-full"
+                style={{ backgroundColor: "#ECFDF3" }}
+              >
+                <CheckCircle2 size={28} style={{ color: "#16A34A" }} />
+              </div>
+
+              <h3
+                className="text-lg font-semibold mb-1"
+                style={{ color: C.ink }}
+              >
+                You have successfully confirmed the delivery to the patient
+              </h3>
+
+              <p className="text-sm mt-1" style={{ color: "#64748b" }}>
+                The order has been successfully completed and confirmed.
+              </p>
+
+              <button
+                onClick={() => setShowSuccessPopup(false)}
+                className="mt-3 px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
+                style={{ backgroundColor: C.primary, color: "#fff" }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
         </div>
-
-        <h3
-          className="text-lg font-semibold mb-1"
-          style={{ color: C.ink }}
-        >
-          You have successfully confirmed the delivery to the patient
-        </h3>
-
-        <p className="text-sm mt-1" style={{ color: "#64748b" }}>
-          The order has been successfully completed and confirmed.
-        </p>
-
-        <button
-          onClick={() => setShowSuccessPopup(false)}
-          className="mt-3 px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm"
-          style={{ backgroundColor: C.primary, color: "#fff" }}
-        >
-          OK
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+      )}
     </div>
   );
 }

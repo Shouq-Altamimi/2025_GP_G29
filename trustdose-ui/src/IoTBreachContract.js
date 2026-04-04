@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import IoTBreachRecorder from "../src/IoTBreachRecorder.json";
 
-export const BREACH_CONTRACT_ADDRESS = "0xD931dfa101e8B4ee31F05DAE30c5d66047FFC660";
+export const BREACH_CONTRACT_ADDRESS = "0x3D979d3f12634452585550C419d64Cf4D83EeF60";
 
 export async function getBreachContract() {
   if (!window.ethereum) {

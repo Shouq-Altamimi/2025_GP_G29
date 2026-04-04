@@ -28,7 +28,7 @@ const C = {
 };
 
 const PAGE_SIZE = 6;
-const LOGISTICS_ACCEPT_ADDRESS = "0x5D68159Ee26578E8a45D6cDD3065D74650fF87c0";
+const LOGISTICS_ACCEPT_ADDRESS = "0xF09E9d1ECC143c38AcA7a39Bb2FD6A3958E82325";
 
 function formatFsTimestamp(v) {
   if (!v) return "-";

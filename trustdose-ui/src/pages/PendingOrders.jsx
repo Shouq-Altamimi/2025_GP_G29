@@ -23,7 +23,7 @@ import PRESCRIPTION from "../contracts/Prescription.json";
 import { Loader2, FileText, CheckCircle2 } from "lucide-react";
 import { logEvent } from "../utils/logEvent";
 
-const LOGISTICS_RECEIVE_ADDRESS = "0x3d039E897AB0aE49034d1c47f5F6b00ec90Fb052";
+const LOGISTICS_RECEIVE_ADDRESS = "0xCf33a4e99Ae2aD4a923aD38C907aC7B0026Dc5B9";
 
 // ✅ IoT device (مؤقتًا ثابت)
 const DEFAULT_IOT_DEVICE_ID = "esp8266_1";
