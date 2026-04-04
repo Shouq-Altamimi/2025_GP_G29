@@ -27,10 +27,12 @@ const C = {
   teal: "#52B9C4",
   ink: "#4A2C59",
 };
+
 const RX_STATUS = {
   DELIVERY_REQUESTED: "DELIVERY_REQUESTED",
   PHARM_ACCEPTED: "PHARM_ACCEPTED",
 };
+
 const PAGE_SIZE = 6;
 
 const DELIVERY_ACCEPT_ADDRESS = "0x86B35eF002E005850E6904BDeedbADAeAF79AE90";
@@ -65,7 +67,7 @@ function parseDTLocal(v) {
 }
 
 function setTodayRange(setFromDT, setToDT) {
-  const d = new Date(); // local time
+  const d = new Date();
   const pad = (n) => String(n).padStart(2, "0");
   const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   setFromDT(`${today} 00:00`);
@@ -86,6 +88,12 @@ function setQuickFilterRange(hours, setFromDT, setToDT) {
   setToDT(fmt(now));
 }
 
+function last4(id) {
+  const s = String(id ?? "").replace(/\D/g, "");
+  if (!s) return "----";
+  return s.length <= 4 ? s : s.slice(-4);
+}
+
 export default function DeliveryOrders({ pharmacyId }) {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState([]);
@@ -96,6 +104,8 @@ export default function DeliveryOrders({ pharmacyId }) {
   const [toDT, setToDT] = React.useState("");
 
   const [successModal, setSuccessModal] = React.useState(null);
+  const [showMedsPopup, setShowMedsPopup] = React.useState(false);
+  const [selectedGroup, setSelectedGroup] = React.useState(null);
 
   const outletCtx = useOutletContext?.() || {};
   const setPageError = outletCtx.setPageError || (() => {});
@@ -108,6 +118,7 @@ export default function DeliveryOrders({ pharmacyId }) {
       setRows([]);
       setMsg("");
       setPageError("");
+
       const col = collection(db, "prescriptions");
 
       async function runQ(wheres, useOrder = true) {
@@ -139,10 +150,12 @@ export default function DeliveryOrders({ pharmacyId }) {
           where("dispensed", "==", false),
         ]);
       }
+
       candidates.push([
         where("sensitivity", "==", "Sensitive"),
         where("dispensed", "==", false),
       ]);
+
       if (pharmacyId) {
         candidates.push([
           where("pharmacyId", "==", pharmacyId),
@@ -150,6 +163,7 @@ export default function DeliveryOrders({ pharmacyId }) {
           where("dispensed", "==", false),
         ]);
       }
+
       candidates.push([
         where("sensitivity", "==", "sensitive"),
         where("dispensed", "==", false),
@@ -182,6 +196,10 @@ export default function DeliveryOrders({ pharmacyId }) {
           } catch {}
         }
 
+        const patientIdMask =
+          String(x.patientNationalIdLast4 ?? x.patientDisplayId ?? "").trim() ||
+          last4(x.nationalID ?? x.patientNationalId ?? x.nationalId ?? "");
+
         return {
           _docId: d.id,
           prescriptionId: displayId,
@@ -189,7 +207,7 @@ export default function DeliveryOrders({ pharmacyId }) {
             typeof x.prescriptionNum === "number" ? x.prescriptionNum : null,
           onchainId,
           patientName: x.patientName || "-",
-          patientId: String(x.nationalID ?? x.patientDisplayId ?? "-"),
+          patientIdMask,
           doctorName: x.doctorName || "-",
           doctorFacility: x.doctorFacility || "",
           doctorPhone: x.doctorPhone || x.phone || "-",
@@ -247,6 +265,7 @@ export default function DeliveryOrders({ pharmacyId }) {
     }
 
     fetchAllSensitive();
+
     return () => {
       mounted = false;
     };
@@ -303,13 +322,14 @@ export default function DeliveryOrders({ pharmacyId }) {
         createdAtTS,
         createdAt: first.createdAt,
         patientName: first.patientName || "-",
-        patientId: first.patientId || "-",
+        patientIdMask: first.patientIdMask || "----",
         doctorName: first.doctorName || "-",
         doctorFacility: first.doctorFacility || "",
         doctorPhone: first.doctorPhone || "-",
         medicalCondition: first.medicalCondition || "",
         notes: first.notes || "",
         meds,
+        extraMeds: meds.slice(2),
         onchainIds,
         eligible,
         missingCount: meds.filter((m) => m.onchainId == null).length,
@@ -377,11 +397,6 @@ export default function DeliveryOrders({ pharmacyId }) {
         );
 
         const ids = g.onchainIds.map((idStr) => BigInt(idStr));
-        console.log(
-  "IMPORTED ABI NAMES:",
-  (DELIVERY_ACCEPT_ABI || []).map((x) => x?.name).filter(Boolean)
-);
-console.log("HAS acceptMany?", (DELIVERY_ACCEPT_ABI || []).some((x) => x?.name === "acceptMany"));
         const tx = await contract.acceptMany(ids);
         await tx.wait();
         txHashes = [tx.hash];
@@ -416,11 +431,6 @@ console.log("HAS acceptMany?", (DELIVERY_ACCEPT_ABI || []).some((x) => x?.name =
 
       const docIds = new Set(g.meds.map((x) => x._docId));
       setRows((arr) => arr.filter((x) => !docIds.has(x._docId)));
-
-      console.log(
-        "Marked acceptDelivery group",
-        txHashes.length ? `with ${txHashes.length} tx(s)` : "without on-chain tx"
-      );
 
       setSuccessModal({
         title: "Sensitive prescription accepted",
@@ -538,7 +548,7 @@ console.log("HAS acceptMany?", (DELIVERY_ACCEPT_ABI || []).some((x) => x?.name =
                   type="button"
                   onClick={() => setQuickFilterRange(48, setFromDT, setToDT)}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 bg-red-50 text-red-700"
-                >
+                  >
                   Last 48h
                 </button>
               </div>
@@ -548,7 +558,7 @@ console.log("HAS acceptMany?", (DELIVERY_ACCEPT_ABI || []).some((x) => x?.name =
                   <input
                     type="datetime-local"
                     max="9999-12-31T23:59"
-                    value={fromDT.replace(" ", "T")}
+                    value={fromDT ? fromDT.replace(" ", "T") : ""}
                     onChange={(e) =>
                       setFromDT(e.target.value.slice(0, 16).replace("T", " "))
                     }
@@ -563,7 +573,7 @@ console.log("HAS acceptMany?", (DELIVERY_ACCEPT_ABI || []).some((x) => x?.name =
                   <input
                     type="datetime-local"
                     max="9999-12-31T23:59"
-                    value={toDT.replace(" ", "T")}
+                    value={toDT ? toDT.replace(" ", "T") : ""}
                     onChange={(e) =>
                       setToDT(e.target.value.slice(0, 16).replace("T", " "))
                     }
@@ -608,10 +618,11 @@ console.log("HAS acceptMany?", (DELIVERY_ACCEPT_ABI || []).some((x) => x?.name =
               return (
                 <div
                   key={g.prescriptionId}
-                  className="p-4 border rounded-xl bg-white shadow-sm"
+                  className="p-4 border rounded-xl bg-white shadow-sm flex flex-col"
+                  style={{ minHeight: 260 }}
                 >
-                  <div>
-                    <div className="space-y-1 mb-3">
+                  <div className="flex-1">
+                    <div className="space-y-1 mb-3" style={{ minHeight: 56 }}>
                       {(g.meds || []).slice(0, 2).map((m, idx) => (
                         <div
                           key={`${g.prescriptionId}-med-${idx}`}
@@ -628,29 +639,42 @@ console.log("HAS acceptMany?", (DELIVERY_ACCEPT_ABI || []).some((x) => x?.name =
                         </div>
                       )}
 
-                      {(g.meds || []).length > 2 && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          +{g.meds.length - 2} more
-                        </div>
-                      )}
+                      {(g.extraMeds || []).length > 0 && (() => {
+                        const count = g.extraMeds.length;
+                        const label = count === 1 ? "medication" : "medications";
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedGroup(g);
+                              setShowMedsPopup(true);
+                            }}
+                            className="text-xs mt-2 font-medium underline underline-offset-2"
+                            style={{ color: C.primary }}
+                          >
+                            Press here to view {count} more {label}
+                          </button>
+                        );
+                      })()}
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Prescription ID:{" "}
-                      <span className="font-normal">{g.prescriptionId}</span>
+                      Prescription ID:
+                      <span className="font-normal"> {g.prescriptionId}</span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Patient:{" "}
+                      Patient:
                       <span className="font-normal">
-                        {g.patientName || "—"}
-                        {g.patientId ? ` — ${String(g.patientId)}` : ""}
+                        {" "}
+                        {g.patientName || "—"} — ---- {g.patientIdMask}
                       </span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
-                      Doctor Phone:{" "}
-                      <span className="font-normal">{g.doctorPhone}</span>
+                      Doctor Phone:
+                      <span className="font-normal"> {g.doctorPhone}</span>
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
@@ -662,8 +686,9 @@ console.log("HAS acceptMany?", (DELIVERY_ACCEPT_ABI || []).some((x) => x?.name =
                     </div>
 
                     <div className="text-sm text-slate-700 mt-2 font-semibold">
-                      Medical Condition:{" "}
+                      Medical Condition:
                       <span className="font-normal">
+                        {" "}
                         {g.medicalCondition || "—"}
                       </span>
                     </div>
@@ -679,8 +704,7 @@ console.log("HAS acceptMany?", (DELIVERY_ACCEPT_ABI || []).some((x) => x?.name =
 
                   <div className="mt-1">
                     <button
-                      className="w-max px-4 py-2 text-sm rounded-lg transition-colors
-                                 flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
+                      className="w-max px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-1.5 font-medium shadow-sm text-white disabled:opacity-60"
                       style={{
                         backgroundColor: isPending ? "#D8C2E6" : C.primary,
                       }}
@@ -747,6 +771,7 @@ console.log("HAS acceptMany?", (DELIVERY_ACCEPT_ABI || []).some((x) => x?.name =
               <span className="text-xs text-gray-500">
                 Page {page + 1} of {pageCount}
               </span>
+
               <div className="flex gap-2">
                 <button
                   className="px-4 py-2 rounded-lg border text-sm disabled:opacity-50"
@@ -755,6 +780,7 @@ console.log("HAS acceptMany?", (DELIVERY_ACCEPT_ABI || []).some((x) => x?.name =
                 >
                   ← Prev
                 </button>
+
                 <button
                   className="px-4 py-2 rounded-lg text-white text-sm disabled:opacity-50"
                   style={{ background: C.primary }}
@@ -768,6 +794,156 @@ console.log("HAS acceptMany?", (DELIVERY_ACCEPT_ABI || []).some((x) => x?.name =
           </div>
         )}
       </div>
+
+      {showMedsPopup &&
+        selectedGroup &&
+        (selectedGroup.extraMeds || []).length > 0 && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6">
+            <div className="w-full max-w-3xl max-h-[70vh] rounded-3xl bg-white shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-gray-200">
+                <div>
+                  <h3
+                    className="text-2xl font-extrabold"
+                    style={{ color: C.ink }}
+                  >
+                    More Medications
+                  </h3>
+
+                  <p className="text-sm text-slate-500 mt-1">
+                    Prescription ID: {selectedGroup.prescriptionId}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMedsPopup(false);
+                    setSelectedGroup(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-sm font-medium border border-gray-200 hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-6 py-6">
+                <div className="grid grid-cols-1 gap-5">
+                  {Array.from(
+                    {
+                      length: Math.ceil((selectedGroup.extraMeds || []).length / 2),
+                    },
+                    (_, boxIndex) => {
+                      const pair = (selectedGroup.extraMeds || []).slice(
+                        boxIndex * 2,
+                        boxIndex * 2 + 2
+                      );
+
+                      return (
+                        <div
+                          key={`popup-box-${boxIndex}`}
+                          className="p-5 border rounded-2xl bg-white shadow-sm flex flex-col"
+                          style={{ minHeight: 250 }}
+                        >
+                          <div className="flex-1">
+                            <div
+                              className="space-y-1 mb-4"
+                              style={{ minHeight: 56 }}
+                            >
+                              {pair.map((m, idx) => (
+                                <div
+                                  key={`${selectedGroup.prescriptionId}-popup-med-${boxIndex}-${idx}`}
+                                  className="text-lg font-bold text-slate-800 leading-snug line-clamp-1"
+                                  title={m.medicineLabel}
+                                >
+                                  {m.medicineLabel}
+                                </div>
+                              ))}
+
+                              {pair.length === 1 && (
+                                <div className="text-lg font-bold text-slate-800 opacity-0 select-none">
+                                  placeholder
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="text-sm text-slate-700 mt-1 font-semibold">
+                              Prescription ID:
+                              <span className="font-normal">
+                                {" "}
+                                {selectedGroup.prescriptionId}
+                              </span>
+                            </div>
+
+                            <div className="text-sm text-slate-700 mt-1 font-semibold">
+                              Patient:
+                              <span className="font-normal">
+                                {" "}
+                                {selectedGroup.patientName} — ----{" "}
+                                {selectedGroup.patientIdMask}
+                              </span>
+                            </div>
+
+                            <div className="text-sm text-slate-700 mt-1 font-semibold">
+                              Doctor Phone:
+                              <span className="font-normal">
+                                {" "}
+                                {selectedGroup.doctorPhone}
+                              </span>
+                            </div>
+
+                            <div className="text-sm text-slate-700 mt-1 font-semibold">
+                              Prescribed by:
+                              <span className="font-normal">
+                                {" "}
+                                {selectedGroup.doctorName
+                                  ? `Dr. ${selectedGroup.doctorName}`
+                                  : "-"}
+                                {selectedGroup.doctorFacility
+                                  ? ` — ${selectedGroup.doctorFacility}`
+                                  : ""}
+                              </span>
+                            </div>
+
+                            <div className="text-sm text-slate-700 mt-1 font-semibold">
+                              Medical Condition:
+                              <span className="font-normal">
+                                {" "}
+                                {selectedGroup.medicalCondition || "—"}
+                              </span>
+                            </div>
+
+                            {!!selectedGroup.notes && (
+                              <div className="text-sm text-slate-700 mt-1 font-semibold">
+                                Notes:
+                                <span className="font-normal">
+                                  {" "}
+                                  {selectedGroup.notes}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="text-right text-xs text-gray-500 mt-4">
+                            Prescription issued on{" "}
+                            {selectedGroup.createdAtTS
+                              ? selectedGroup.createdAtTS.toLocaleString("en-GB", {
+                                  day: "2-digit",
+                                  month: "long",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : selectedGroup.createdAt}
+                          </div>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 }
