@@ -15,10 +15,12 @@ import {
   getDoc,
   updateDoc,
   serverTimestamp,
+  deleteField,
 } from "firebase/firestore";
 import { Loader2, CheckCircle2 } from "lucide-react";
 import { ethers } from "ethers";
 import DELIVERY_ACCEPT from "../contracts/DeliveryAccept.json";
+import PRESCRIPTION from "../contracts/Prescription.json";
 import { logEvent } from "../utils/logEvent";
 
 const C = {
@@ -35,8 +37,11 @@ const RX_STATUS = {
 
 const PAGE_SIZE = 6;
 
-const DELIVERY_ACCEPT_ADDRESS = "0x86B35eF002E005850E6904BDeedbADAeAF79AE90";
+const DELIVERY_ACCEPT_ADDRESS = "0x1Cd58EC660fD60393f944827bCDA26684aAC65df";
 const DELIVERY_ACCEPT_ABI = DELIVERY_ACCEPT?.abi ?? [];
+
+const PRESCRIPTION_ADDRESS = "0x7105DfDa356EAB2D522939a7a89A7e9d37A576b2";
+const PRESCRIPTION_ABI = PRESCRIPTION?.abi ?? [];
 
 function formatFsTimestamp(v) {
   if (!v) return "-";
@@ -94,6 +99,106 @@ function last4(id) {
   return s.length <= 4 ? s : s.slice(-4);
 }
 
+function pickStr(obj, keys, fallback = "") {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v !== undefined && v !== null && String(v).trim() !== "") {
+      return String(v).trim();
+    }
+  }
+  return fallback;
+}
+
+function needsReplacementOnchainId(data) {
+  const invalidReason = String(data?.invalidReason || "").trim();
+  const overdue48Reason = String(data?.overdue48Reason || "").trim();
+  const breachReason = String(data?.breachReason || "").trim();
+
+  return (
+    invalidReason === "TEMP_OUT_OF_RANGE" ||
+    overdue48Reason === "DELIVERY_NOT_COMPLETED_48H" ||
+    breachReason === "TEMP_OUT_OF_RANGE" ||
+    breachReason === "DELIVERY_NOT_COMPLETED_48H"
+  );
+}
+
+async function createReplacementOnchainId(rx, signer) {
+  const contract = new ethers.Contract(
+    PRESCRIPTION_ADDRESS,
+    PRESCRIPTION_ABI,
+    signer
+  );
+
+  let patientHash = pickStr(rx, [
+    "patientNationalIdHash",
+    "nationalIdHash",
+    "patientHash",
+  ]);
+
+  const medicine = pickStr(rx, [
+    "medicineLabel",
+    "medicineName",
+    "medicine",
+  ]);
+
+  const dosage = pickStr(rx, [
+    "dosage",
+    "dose",
+  ]);
+
+  const frequency = pickStr(rx, [
+    "frequency",
+  ]);
+
+  const duration = pickStr(
+    rx,
+    ["duration", "durationDays"],
+    "7 days"
+  );
+
+  if (!patientHash) throw new Error("Missing patientNationalIdHash");
+
+  patientHash = String(patientHash).trim();
+
+  const isBytes32 = /^0x[0-9a-fA-F]{64}$/.test(patientHash);
+  if (!isBytes32) {
+    throw new Error("Invalid patientNationalIdHash format");
+  }
+
+  if (!medicine) throw new Error("Missing medicine");
+  if (!dosage) throw new Error("Missing dosage");
+  if (!frequency) throw new Error("Missing frequency");
+  if (!duration) throw new Error("Missing duration");
+
+  const tx = await contract.createPrescription(
+    patientHash,
+    String(medicine),
+    String(dosage),
+    String(frequency),
+    String(duration)
+  );
+
+  const receipt = await tx.wait();
+
+  let newOnchainId = null;
+  for (const log of receipt.logs || []) {
+    try {
+      const parsed = contract.interface.parseLog(log);
+      if (parsed?.name === "PrescriptionCreated") {
+        newOnchainId =
+          parsed?.args?.id?.toString?.() ?? String(parsed?.args?.id);
+        break;
+      }
+    } catch {}
+  }
+
+  if (!newOnchainId) {
+    throw new Error("Failed to extract new on-chain prescription id");
+  }
+
+  return { newOnchainId, txHash: tx.hash };
+}
+
 export default function DeliveryOrders({ pharmacyId }) {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState([]);
@@ -110,166 +215,167 @@ export default function DeliveryOrders({ pharmacyId }) {
   const outletCtx = useOutletContext?.() || {};
   const setPageError = outletCtx.setPageError || (() => {});
 
-  React.useEffect(() => {
-    let mounted = true;
+  const fetchAllSensitive = React.useCallback(async () => {
+    setLoading(true);
+    setRows([]);
+    setMsg("");
+    setPageError("");
 
-    async function fetchAllSensitive() {
-      setLoading(true);
-      setRows([]);
-      setMsg("");
-      setPageError("");
+    const col = collection(db, "prescriptions");
 
-      const col = collection(db, "prescriptions");
-
-      async function runQ(wheres, useOrder = true) {
-        try {
-          const q1 = useOrder
-            ? query(col, ...wheres, orderBy("updatedAt", "desc"))
-            : query(col, ...wheres);
-          return await getDocs(q1);
-        } catch {
-          const q2 = query(col, ...wheres);
-          return await getDocs(q2);
-        }
-      }
-
-      const candidates = [];
-      if (pharmacyId) {
-        candidates.push([
-          where("pharmacyId", "==", pharmacyId),
-          where("sensitivity", "==", "Sensitive"),
-          where("status", "in", [
-            RX_STATUS.DELIVERY_REQUESTED,
-            RX_STATUS.PHARM_ACCEPTED,
-          ]),
-          where("dispensed", "==", false),
-        ]);
-        candidates.push([
-          where("pharmacyId", "==", pharmacyId),
-          where("sensitivity", "==", "Sensitive"),
-          where("dispensed", "==", false),
-        ]);
-      }
-
-      candidates.push([
-        where("sensitivity", "==", "Sensitive"),
-        where("dispensed", "==", false),
-      ]);
-
-      if (pharmacyId) {
-        candidates.push([
-          where("pharmacyId", "==", pharmacyId),
-          where("sensitivity", "==", "sensitive"),
-          where("dispensed", "==", false),
-        ]);
-      }
-
-      candidates.push([
-        where("sensitivity", "==", "sensitive"),
-        where("dispensed", "==", false),
-      ]);
-
-      let snap = null;
-      for (const wh of candidates) {
-        snap = await runQ(wh);
-        if (snap && !snap.empty) break;
-      }
-
-      if (!snap || snap.empty) {
-        if (mounted) {
-          setMsg("No delivery prescriptions to accept.");
-          setRows([]);
-          setLoading(false);
-        }
-        return;
-      }
-
-      const rawData = snap.docs.map((d) => {
-        const x = d.data() || {};
-        const displayId = x.prescriptionID || d.id;
-
-        let onchainId = null;
-        const raw = x.onchainId;
-        if (raw !== undefined && raw !== null && String(raw).trim() !== "") {
-          try {
-            onchainId = ethers.toBigInt(String(raw));
-          } catch {}
-        }
-
-        const patientIdMask =
-          String(x.patientNationalIdLast4 ?? x.patientDisplayId ?? "").trim() ||
-          last4(x.nationalID ?? x.patientNationalId ?? x.nationalId ?? "");
-
-        return {
-          _docId: d.id,
-          prescriptionId: displayId,
-          prescriptionNum:
-            typeof x.prescriptionNum === "number" ? x.prescriptionNum : null,
-          onchainId,
-          patientName: x.patientName || "-",
-          patientIdMask,
-          doctorName: x.doctorName || "-",
-          doctorFacility: x.doctorFacility || "",
-          doctorPhone: x.doctorPhone || x.phone || "-",
-          medicineLabel: x.medicineLabel || x.medicineName || "-",
-          dose: x.dosage || x.dose || "-",
-          frequency:
-            x.frequency || (x.timesPerDay ? `${x.timesPerDay} times/day` : "-"),
-          durationDays: x.durationDays ?? x.duration ?? "-",
-          medicalCondition: x.medicalCondition || x.reason || "",
-          notes: x.notes || "",
-          status: x.status || "-",
-          createdAtTS: x?.createdAt?.toDate?.() ? x.createdAt.toDate() : undefined,
-          createdAt: formatFsTimestamp(x.createdAt),
-          updatedAt: formatFsTimestamp(x.updatedAt),
-          dispensed: !!x.dispensed,
-          acceptDelivery: !!x.acceptDelivery,
-        };
-      });
-
-      const filtered = rawData.filter((r) => !r.acceptDelivery);
-
-      filtered.sort((a, b) => {
-        const aTime = a.createdAtTS instanceof Date ? a.createdAtTS.getTime() : 0;
-        const bTime = b.createdAtTS instanceof Date ? b.createdAtTS.getTime() : 0;
-        if (bTime !== aTime) return bTime - aTime;
-
-        const aNum =
-          typeof a.prescriptionNum === "number"
-            ? a.prescriptionNum
-            : (() => {
-                const n = Number(
-                  a.prescriptionId?.toString().replace(/^[a-z]/i, "")
-                );
-                return Number.isNaN(n) ? 0 : n;
-              })();
-
-        const bNum =
-          typeof b.prescriptionNum === "number"
-            ? b.prescriptionNum
-            : (() => {
-                const n = Number(
-                  b.prescriptionId?.toString().replace(/^[a-z]/i, "")
-                );
-                return Number.isNaN(n) ? 0 : n;
-              })();
-
-        return bNum - aNum;
-      });
-
-      if (mounted) {
-        setRows(filtered);
-        setLoading(false);
-        setPage(0);
+    async function runQ(wheres, useOrder = true) {
+      try {
+        const q1 = useOrder
+          ? query(col, ...wheres, orderBy("updatedAt", "desc"))
+          : query(col, ...wheres);
+        return await getDocs(q1);
+      } catch {
+        const q2 = query(col, ...wheres);
+        return await getDocs(q2);
       }
     }
 
-    fetchAllSensitive();
+    const candidates = [];
+
+    if (pharmacyId) {
+      candidates.push([
+        where("pharmacyId", "==", pharmacyId),
+        where("sensitivity", "==", "Sensitive"),
+        where("status", "in", [
+          RX_STATUS.DELIVERY_REQUESTED,
+          RX_STATUS.PHARM_ACCEPTED,
+        ]),
+        where("dispensed", "==", false),
+      ]);
+
+      candidates.push([
+        where("pharmacyId", "==", pharmacyId),
+        where("sensitivity", "==", "Sensitive"),
+        where("dispensed", "==", false),
+      ]);
+    }
+
+    candidates.push([
+      where("sensitivity", "==", "Sensitive"),
+      where("dispensed", "==", false),
+    ]);
+
+    if (pharmacyId) {
+      candidates.push([
+        where("pharmacyId", "==", pharmacyId),
+        where("sensitivity", "==", "sensitive"),
+        where("dispensed", "==", false),
+      ]);
+    }
+
+    candidates.push([
+      where("sensitivity", "==", "sensitive"),
+      where("dispensed", "==", false),
+    ]);
+
+    let snap = null;
+    for (const wh of candidates) {
+      snap = await runQ(wh);
+      if (snap && !snap.empty) break;
+    }
+
+    if (!snap || snap.empty) {
+      setMsg("No delivery prescriptions to accept.");
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
+    const rawData = snap.docs.map((d) => {
+      const x = d.data() || {};
+      const displayId = x.prescriptionID || d.id;
+
+      let onchainId = null;
+      const raw = x.onchainId;
+      if (raw !== undefined && raw !== null && String(raw).trim() !== "") {
+        try {
+          onchainId = ethers.toBigInt(String(raw));
+        } catch {}
+      }
+
+      const patientIdMask =
+        String(x.patientNationalIdLast4 ?? x.patientDisplayId ?? "").trim() ||
+        last4(x.nationalID ?? x.patientNationalId ?? x.nationalId ?? "");
+
+      return {
+        _docId: d.id,
+        prescriptionId: displayId,
+        prescriptionNum:
+          typeof x.prescriptionNum === "number" ? x.prescriptionNum : null,
+        onchainId,
+        patientName: x.patientName || "-",
+        patientIdMask,
+        doctorName: x.doctorName || "-",
+        doctorFacility: x.doctorFacility || "",
+        doctorPhone: x.doctorPhone || x.phone || "-",
+        medicineLabel: x.medicineLabel || x.medicineName || "-",
+        dose: x.dosage || x.dose || "-",
+        frequency:
+          x.frequency || (x.timesPerDay ? `${x.timesPerDay} times/day` : "-"),
+        durationDays: x.durationDays ?? x.duration ?? "-",
+        medicalCondition: x.medicalCondition || x.reason || "",
+        notes: x.notes || "",
+        status: x.status || "-",
+        createdAtTS: x?.createdAt?.toDate?.() ? x.createdAt.toDate() : undefined,
+        createdAt: formatFsTimestamp(x.createdAt),
+        updatedAt: formatFsTimestamp(x.updatedAt),
+        dispensed: !!x.dispensed,
+        acceptDelivery: !!x.acceptDelivery,
+      };
+    });
+
+    const filtered = rawData.filter((r) => !r.acceptDelivery);
+
+    filtered.sort((a, b) => {
+      const aTime = a.createdAtTS instanceof Date ? a.createdAtTS.getTime() : 0;
+      const bTime = b.createdAtTS instanceof Date ? b.createdAtTS.getTime() : 0;
+      if (bTime !== aTime) return bTime - aTime;
+
+      const aNum =
+        typeof a.prescriptionNum === "number"
+          ? a.prescriptionNum
+          : (() => {
+              const n = Number(
+                a.prescriptionId?.toString().replace(/^[a-z]/i, "")
+              );
+              return Number.isNaN(n) ? 0 : n;
+            })();
+
+      const bNum =
+        typeof b.prescriptionNum === "number"
+          ? b.prescriptionNum
+          : (() => {
+              const n = Number(
+                b.prescriptionId?.toString().replace(/^[a-z]/i, "")
+              );
+              return Number.isNaN(n) ? 0 : n;
+            })();
+
+      return bNum - aNum;
+    });
+
+    setRows(filtered);
+    setLoading(false);
+    setPage(0);
+  }, [pharmacyId, setPageError]);
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      if (!mounted) return;
+      await fetchAllSensitive();
+    })();
 
     return () => {
       mounted = false;
     };
-  }, [pharmacyId, setPageError]);
+  }, [fetchAllSensitive]);
 
   const filteredRows = React.useMemo(() => {
     let base = rows;
@@ -365,18 +471,59 @@ export default function DeliveryOrders({ pharmacyId }) {
     setPageError("");
 
     try {
+      const provider = getDeliveryAcceptProvider();
+      await provider.send("eth_requestAccounts", []);
+      const signer = await provider.getSigner();
+
       const refs = g.meds.map((m) => doc(db, "prescriptions", m._docId));
       const freshSnaps = await Promise.all(refs.map((r) => getDoc(r)));
 
       const valid = [];
+      const freshIds = [];
+      const seenIds = new Set();
+
       for (let i = 0; i < freshSnaps.length; i++) {
         const snap = freshSnaps[i];
         if (!snap.exists()) continue;
+
         const data = snap.data() || {};
+
         if (data.dispensed === true) continue;
-        if (data.acceptDelivery === true) continue;
+
+        let currentOnchainId = data?.onchainId;
+
+        if (needsReplacementOnchainId(data)) {
+          const { newOnchainId, txHash } = await createReplacementOnchainId(data, signer);
+
+          await updateDoc(refs[i], {
+            previousOnchainId: data.onchainId ?? null,
+            onchainId: String(newOnchainId),
+            reDispensed: true,
+            reDispensedAt: serverTimestamp(),
+            redispenseTxHash: txHash,
+            invalidReason: deleteField(),
+            breachReason: deleteField(),
+            overdue48Reason: deleteField(),
+            overdue48HandledAt: deleteField(),
+            updatedAt: serverTimestamp(),
+          });
+
+          currentOnchainId = String(newOnchainId);
+        }
 
         valid.push({ ref: refs[i], docId: g.meds[i]._docId });
+
+        if (
+          currentOnchainId !== undefined &&
+          currentOnchainId !== null &&
+          String(currentOnchainId).trim() !== ""
+        ) {
+          const idStr = String(currentOnchainId).trim();
+          if (!seenIds.has(idStr)) {
+            seenIds.add(idStr);
+            freshIds.push(BigInt(idStr));
+          }
+        }
       }
 
       if (valid.length === 0) {
@@ -385,41 +532,31 @@ export default function DeliveryOrders({ pharmacyId }) {
         return;
       }
 
-      let txHashes = [];
-      if (g.onchainIds?.length) {
-        const provider = getDeliveryAcceptProvider();
-        await provider.send("eth_requestAccounts", []);
-        const signer = await provider.getSigner();
-        const contract = new ethers.Contract(
-          DELIVERY_ACCEPT_ADDRESS,
-          DELIVERY_ACCEPT_ABI,
-          signer
-        );
-
-        const ids = g.onchainIds.map((idStr) => BigInt(idStr));
-        const tx = await contract.acceptMany(ids);
-        await tx.wait();
-        txHashes = [tx.hash];
+      if (freshIds.length === 0) {
+        throw new Error("No valid on-chain IDs found.");
       }
+
+      const contract = new ethers.Contract(
+        DELIVERY_ACCEPT_ADDRESS,
+        DELIVERY_ACCEPT_ABI,
+        signer
+      );
+
+      const tx = await contract.acceptMany(freshIds);
+      await tx.wait();
 
       const updatePayload = {
         acceptDelivery: true,
         acceptDeliveryAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-
         status: RX_STATUS.PHARM_ACCEPTED,
-
         logisticsAccepted: false,
         logisticsAcceptedAt: null,
-
         deliveryConfirmed: false,
-
         deliveryOverdue24Notified: false,
         deliveryOverdue48Notified: false,
+        acceptDeliveryTx: tx.hash,
       };
-
-      if (txHashes.length === 1) updatePayload.acceptDeliveryTx = txHashes[0];
-      if (txHashes.length > 1) updatePayload.acceptDeliveryTxs = txHashes;
 
       await Promise.all(valid.map(({ ref }) => updateDoc(ref, updatePayload)));
 
@@ -441,15 +578,27 @@ export default function DeliveryOrders({ pharmacyId }) {
           </>
         ),
       });
+
+      await fetchAllSensitive();
     } catch (err) {
-      console.error(err);
+      console.error("DELIVERY ACCEPT ERROR:", err);
+      console.error("code:", err?.code);
+      console.error("reason:", err?.reason);
+      console.error("shortMessage:", err?.shortMessage);
+      console.error("message:", err?.message);
+
       await logEvent(
         `Delivery accept failed for prescription ${g.prescriptionId}: ${err?.message || "unknown error"}`,
         "pharmacy",
         "delivery_accept_error"
       );
 
-      let m = "Error occurred. Please try again.";
+      let m =
+        err?.shortMessage ||
+        err?.reason ||
+        err?.message ||
+        "Error occurred. Please try again.";
+
       if (err?.code === "ACTION_REJECTED" || err?.code === 4001) {
         m = "MetaMask request was declined. Please try again.";
       }
@@ -548,7 +697,7 @@ export default function DeliveryOrders({ pharmacyId }) {
                   type="button"
                   onClick={() => setQuickFilterRange(48, setFromDT, setToDT)}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 bg-red-50 text-red-700"
-                  >
+                >
                   Last 48h
                 </button>
               </div>
@@ -639,24 +788,25 @@ export default function DeliveryOrders({ pharmacyId }) {
                         </div>
                       )}
 
-                      {(g.extraMeds || []).length > 0 && (() => {
-                        const count = g.extraMeds.length;
-                        const label = count === 1 ? "medication" : "medications";
+                      {(g.extraMeds || []).length > 0 &&
+                        (() => {
+                          const count = g.extraMeds.length;
+                          const label = count === 1 ? "medication" : "medications";
 
-                        return (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedGroup(g);
-                              setShowMedsPopup(true);
-                            }}
-                            className="text-xs mt-2 font-medium underline underline-offset-2"
-                            style={{ color: C.primary }}
-                          >
-                            Press here to view {count} more {label}
-                          </button>
-                        );
-                      })()}
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedGroup(g);
+                                setShowMedsPopup(true);
+                              }}
+                              className="text-xs mt-2 font-medium underline underline-offset-2"
+                              style={{ color: C.primary }}
+                            >
+                              Press here to view {count} more {label}
+                            </button>
+                          );
+                        })()}
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">

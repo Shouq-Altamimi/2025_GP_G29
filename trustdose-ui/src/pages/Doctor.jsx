@@ -33,7 +33,7 @@ const C = {
   pale: "#F6F1FA",
 };
 
-const CONTRACT_ADDRESS = "0xC30b670D250c5E71e66e38407C41bD1ca7711B52";
+const CONTRACT_ADDRESS = "0x7105DfDa356EAB2D522939a7a89A7e9d37A576b2";
 
 const OTHER_MAX = 20;
 const LIMITS = Object.freeze({

@@ -28,7 +28,7 @@ const C = {
 };
 
 const PAGE_SIZE = 6;
-const LOGISTICS_ACCEPT_ADDRESS = "0xF09E9d1ECC143c38AcA7a39Bb2FD6A3958E82325";
+const LOGISTICS_ACCEPT_ADDRESS = "0xdf101B9eAe96B141B009763Dd5D349ba70c79e33";
 
 function formatFsTimestamp(v) {
   if (!v) return "-";
@@ -429,6 +429,8 @@ export default function Logistics() {
       }
 
       const signer = await getSignerEnsured();
+      const signerAddress = (await signer.getAddress()).toLowerCase();
+
       const contract = new ethers.Contract(
         LOGISTICS_ACCEPT_ADDRESS,
         LOGISTICS_ACCEPT.abi,
@@ -436,11 +438,129 @@ export default function Logistics() {
       );
 
       const ids = g.onchainIds.map((idStr) => BigInt(idStr));
-      const tx = await contract.acceptMultipleDeliveries(ids);
-      await tx.wait();
+
+      let presAddress = null;
+      try {
+        presAddress = await contract.prescription();
+      } catch {
+        throw new Error("Failed to read linked Prescription contract.");
+      }
+
+      const prescriptionContract = new ethers.Contract(
+        presAddress,
+        ["function isValid(uint256) view returns (bool)"],
+        signer
+      );
+
+      const validIds = [];
+      const skipped = [];
+      const alreadyAcceptedIds = [];
+
+      for (const id of ids) {
+        const idStr = id.toString();
+
+        try {
+          const isValid = await prescriptionContract.isValid(id);
+          if (!isValid) {
+            skipped.push(`${idStr} (invalid/expired)`);
+            continue;
+          }
+
+          const delivery = await contract.deliveries(id);
+          if (delivery?.accepted) {
+            alreadyAcceptedIds.push(id);
+          }
+
+          validIds.push(id);
+        } catch {
+          skipped.push(`${idStr} (check failed)`);
+        }
+      }
+
+      if (validIds.length === 0) {
+        throw new Error(
+          skipped.length
+            ? `No valid prescriptions to accept. Skipped: ${skipped.join(", ")}`
+            : "No valid prescriptions to accept."
+        );
+      }
+
+      // إذا accepted سابقًا: نفكها ثم نعيدها مثل صفحة الفارمسي
+      if (alreadyAcceptedIds.length > 0) {
+        let adminAddress = null;
+        try {
+          adminAddress = (await contract.admin()).toLowerCase();
+        } catch {
+          throw new Error(
+            "This prescription was already accepted before, and this contract does not expose admin/unaccept in a usable way from this page."
+          );
+        }
+
+        if (signerAddress !== adminAddress) {
+          throw new Error(
+            "This prescription was already accepted before. Switch MetaMask to the LogisticsAccept admin wallet first to re-accept the same on-chain ID."
+          );
+        }
+
+        for (const id of alreadyAcceptedIds) {
+          try {
+            const txUnaccept = await contract.unaccept(id);
+            await txUnaccept.wait();
+          } catch (e) {
+            throw new Error(
+              `Failed to reset previous logistics acceptance for ${id.toString()}: ${
+                e?.shortMessage || e?.reason || e?.message || "unknown error"
+              }`
+            );
+          }
+        }
+      }
+
+      const acceptedIds = [];
+
+      try {
+        const tx = await contract.acceptMultipleDeliveries(validIds);
+        await tx.wait();
+        acceptedIds.push(...validIds.map((x) => x.toString()));
+      } catch (batchErr) {
+        console.warn("Batch accept failed, falling back to single accepts:", batchErr);
+
+        for (const id of validIds) {
+          try {
+            const tx = await contract.acceptDelivery(id);
+            await tx.wait();
+            acceptedIds.push(id.toString());
+          } catch (singleErr) {
+            console.warn(`acceptDelivery failed for ${id.toString()}:`, singleErr);
+            skipped.push(`${id.toString()} (tx failed)`);
+          }
+        }
+      }
+
+      if (acceptedIds.length === 0) {
+        throw new Error(
+          skipped.length
+            ? `Nothing was accepted. Skipped: ${skipped.join(", ")}`
+            : "Nothing was accepted."
+        );
+      }
+
+      const acceptedSet = new Set(acceptedIds);
+
+      const acceptedMeds = g.meds.filter((r) => {
+        try {
+          return (
+            r.onchainId !== null &&
+            r.onchainId !== undefined &&
+            acceptedSet.has(r.onchainId.toString())
+          );
+        } catch {
+          return false;
+        }
+      });
 
       await Promise.all(
-        g.meds.map((r) =>
+        acceptedMeds.map((r) =>
           updateDoc(doc(db, "prescriptions", r._docId), {
             logisticsAccepted: true,
             logisticsAcceptedAt: serverTimestamp(),
@@ -450,15 +570,23 @@ export default function Logistics() {
       );
 
       await logEvent(
-        `Logistics accepted delivery for prescription: ${g.prescriptionId} with ${g.meds.length} medicine(s)`,
+        `Logistics accepted delivery for prescription: ${g.prescriptionId} with ${acceptedMeds.length} medicine(s)`,
         "logistics",
         "delivery_accept"
       );
 
-      const docIds = new Set(g.meds.map((x) => x._docId));
-      setRows((prev) => prev.filter((row) => !docIds.has(row._docId)));
+      const acceptedDocIds = new Set(acceptedMeds.map((x) => x._docId));
+      setRows((prev) => prev.filter((row) => !acceptedDocIds.has(row._docId)));
 
-      setShowSuccessPopup(true);
+      if (acceptedMeds.length > 0) {
+        setShowSuccessPopup(true);
+      }
+
+      if (skipped.length > 0) {
+        setMsg(
+          `Accepted ${acceptedIds.length} item(s). Skipped: ${skipped.join(", ")}`
+        );
+      }
     } catch (err) {
       console.error("Error:", err);
 
@@ -673,26 +801,27 @@ export default function Logistics() {
                         </div>
                       )}
 
-                      {(g.extraMeds || []).length > 0 && (() => {
-                        const count = g.extraMeds.length;
-                        const label =
-                          count === 1 ? "medication" : "medications";
+                      {(g.extraMeds || []).length > 0 &&
+                        (() => {
+                          const count = g.extraMeds.length;
+                          const label =
+                            count === 1 ? "medication" : "medications";
 
-                        return (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!g.extraMeds.length) return;
-                              setSelectedGroup(g);
-                              setShowMedsPopup(true);
-                            }}
-                            className="text-xs mt-2 font-medium underline underline-offset-2"
-                            style={{ color: C.primary }}
-                          >
-                            Press here to view {count} more {label}
-                          </button>
-                        );
-                      })()}
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!g.extraMeds.length) return;
+                                setSelectedGroup(g);
+                                setShowMedsPopup(true);
+                              }}
+                              className="text-xs mt-2 font-medium underline underline-offset-2"
+                              style={{ color: C.primary }}
+                            >
+                              Press here to view {count} more {label}
+                            </button>
+                          );
+                        })()}
                     </div>
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
@@ -710,7 +839,7 @@ export default function Logistics() {
 
                     <div className="text-sm text-slate-700 mt-1 font-semibold">
                       Patient Phone:
-                      <span className="font-normal"> {g.patientPhone || "-"}</span>
+                      <span className="font-normal">{g.patientPhone || "-"}</span>
                     </div>
                   </div>
 

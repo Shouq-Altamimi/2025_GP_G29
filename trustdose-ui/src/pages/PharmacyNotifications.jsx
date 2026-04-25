@@ -96,7 +96,6 @@ async function resolvePharmacyDocId() {
   return null;
 }
 
-// ✅ UI config for notification types (نفس ستايل اللوجستكس)
 function getTypeUi(type) {
   const t = String(type || "");
 
@@ -137,69 +136,55 @@ function getTypeUi(type) {
   };
 }
 
-/** ✅✅ reset للوصفة لما الحرارة Out of range */
-async function resetPrescriptionForOutOfRange(pid) {
+async function findPrescriptionDocs(pid) {
   const p = String(pid || "").trim();
-  if (!p) return false;
-
-  const resetPayload = {
-    acceptDelivery: false,
-    dispensed: false,
-
-    logisticsAccepted: false,
-    deliveryConfirmed: false,
-
-    deliveryOverdue24Notified: false,
-    deliveryOverdue48Notified: false,
-
-    acceptDeliveryAt: deleteField(),
-    acceptDeliveryTx: deleteField(),
-    acceptDeliveryTxs: deleteField(),
-
-    logisticsAcceptedAt: deleteField(),
-    deliveryConfirmedAt: deleteField(),
-
-    dispensedAt: deleteField(),
-    dispensedBy: deleteField(),
-    dispenseTx: deleteField(),
-
-    updatedAt: serverTimestamp(),
-  };
-
-  // 1) docId == pid
-  const byIdRef = doc(db, "prescriptions", p);
-  const byIdSnap = await getDoc(byIdRef);
-  if (byIdSnap.exists()) {
-    await updateDoc(byIdRef, resetPayload);
-    return true;
-  }
-
-  // 2) prescriptionID == pid
-  const s1 = await getDocs(
-    query(collection(db, "prescriptions"), where("prescriptionID", "==", p), limit(20))
-  );
-  if (!s1.empty) {
-    await Promise.all(s1.docs.map((d) => updateDoc(d.ref, resetPayload)));
-    return true;
-  }
-
-  // 3) prescriptionId == pid
-  const s2 = await getDocs(
-    query(collection(db, "prescriptions"), where("prescriptionId", "==", p), limit(20))
-  );
-  if (!s2.empty) {
-    await Promise.all(s2.docs.map((d) => updateDoc(d.ref, resetPayload)));
-    return true;
-  }
-
-  // 4) items.0 / items.1 (Group)
-  const [s3, s4] = await Promise.all([
-    getDocs(query(collection(db, "prescriptions"), where("items.0.prescriptionID", "==", p), limit(20))),
-    getDocs(query(collection(db, "prescriptions"), where("items.1.prescriptionID", "==", p), limit(20))),
-  ]);
+  if (!p) return [];
 
   const docs = [];
   const seen = new Set();
+
+  const byIdRef = doc(db, "prescriptions", p);
+  const byIdSnap = await getDoc(byIdRef);
+  if (byIdSnap.exists()) {
+    seen.add(byIdSnap.id);
+    docs.push(byIdSnap);
+  }
+
+  const s1 = await getDocs(
+    query(collection(db, "prescriptions"), where("prescriptionID", "==", p), limit(20))
+  );
+  s1.forEach((d) => {
+    if (seen.has(d.id)) return;
+    seen.add(d.id);
+    docs.push(d);
+  });
+
+  const s2 = await getDocs(
+    query(collection(db, "prescriptions"), where("prescriptionId", "==", p), limit(20))
+  );
+  s2.forEach((d) => {
+    if (seen.has(d.id)) return;
+    seen.add(d.id);
+    docs.push(d);
+  });
+
+  const [s3, s4] = await Promise.all([
+    getDocs(
+      query(
+        collection(db, "prescriptions"),
+        where("items.0.prescriptionID", "==", p),
+        limit(20)
+      )
+    ),
+    getDocs(
+      query(
+        collection(db, "prescriptions"),
+        where("items.1.prescriptionID", "==", p),
+        limit(20)
+      )
+    ),
+  ]);
+
   for (const snap of [s3, s4]) {
     snap.forEach((d) => {
       if (seen.has(d.id)) return;
@@ -208,25 +193,74 @@ async function resetPrescriptionForOutOfRange(pid) {
     });
   }
 
-  if (docs.length) {
-    await Promise.all(docs.map((d) => updateDoc(d.ref, resetPayload)));
-    return true;
-  }
+  return docs;
+}
 
-  console.warn("resetPrescriptionForOutOfRange: not found pid:", p);
-  return false;
+async function resetPrescriptionForOutOfRange(pid) {
+  const docs = await findPrescriptionDocs(pid);
+  if (!docs.length) return false;
+
+  await Promise.all(
+    docs.map((snap) =>
+      updateDoc(snap.ref, {
+        acceptDelivery: false,
+        dispensed: false,
+        logisticsAccepted: false,
+        deliveryConfirmed: false,
+        deliveryOverdue24Notified: false,
+        deliveryOverdue48Notified: false,
+        invalidReason: "TEMP_OUT_OF_RANGE",
+        breachReason: "TEMP_OUT_OF_RANGE",
+        acceptDeliveryAt: deleteField(),
+        acceptDeliveryTx: deleteField(),
+        acceptDeliveryTxs: deleteField(),
+        logisticsAcceptedAt: deleteField(),
+        deliveryConfirmedAt: deleteField(),
+        dispensedAt: deleteField(),
+        dispensedBy: deleteField(),
+        dispenseTx: deleteField(),
+        updatedAt: serverTimestamp(),
+      })
+    )
+  );
+
+  return true;
+}
+
+async function resetPrescriptionFor48h(pid) {
+  const docs = await findPrescriptionDocs(pid);
+  if (!docs.length) return false;
+
+  await Promise.all(
+    docs.map((snap) => {
+      const rx = snap.data() || {};
+      return updateDoc(snap.ref, {
+        logisticsAccepted: false,
+        logisticsAcceptedAt: deleteField(),
+        acceptDelivery: false,
+        acceptDeliveryAt: deleteField(),
+        acceptDeliveryTx: deleteField(),
+        overdue48BaseAt: rx.logisticsAcceptedAt || serverTimestamp(),
+        overdue48HandledAt: serverTimestamp(),
+        overdue48Reason: "DELIVERY_NOT_COMPLETED_48H",
+        breachReason: "DELIVERY_NOT_COMPLETED_48H",
+        updatedAt: serverTimestamp(),
+      });
+    })
+  );
+
+  return true;
 }
 
 export default function PharmacyNotifications() {
   const [loading, setLoading] = React.useState(true);
   const [pharmacyDocId, setPharmacyDocId] = React.useState(null);
   const [header, setHeader] = React.useState({ companyName: "" });
-
   const [listenErr, setListenErr] = React.useState("");
   const [items, setItems] = React.useState([]);
 
-  // ✅ يمنع تكرار معالجة نفس القراءة داخل نفس الجلسة (زيادة أمان)
   const processedReadingIdsRef = React.useRef(new Set());
+  const processed48WriterRef = React.useRef(new Set());
 
   React.useEffect(() => {
     let mounted = true;
@@ -242,7 +276,9 @@ export default function PharmacyNotifications() {
           const snap = await getDoc(doc(db, "pharmacies", docId));
           if (snap.exists()) {
             const d = snap.data() || {};
-            setHeader({ companyName: d.companyName || d.name || d.pharmacyName || "" });
+            setHeader({
+              companyName: d.companyName || d.name || d.pharmacyName || "",
+            });
           }
         }
       } catch (e) {
@@ -252,23 +288,13 @@ export default function PharmacyNotifications() {
       }
     })();
 
-    return () => (mounted = false);
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  /**
-   * ✅ NEW: iotReadings -> notifications (TEMP_OUT_OF_RANGE) + reset
-   *
-   * شرط الإنشاء:
-   * - outOfRange == true
-   * - prescriptionId موجود (r.prescriptionId أو r.prescriptionID)
-   *
-   * منع التكرار:
-   * - docId ثابت = temp_${pharmacyDocId}_${pid}
-   */
   React.useEffect(() => {
     if (!pharmacyDocId) return;
-
-    setListenErr("");
 
     const qOrdered = query(
       collection(db, "iotReadings"),
@@ -288,26 +314,19 @@ export default function PharmacyNotifications() {
     const handleSnap = async (snap) => {
       if (snap.empty) return;
 
-      const docs = snap.docs;
-
-      for (const d of docs) {
+      for (const d of snap.docs) {
         const readingId = d.id;
-
         if (processedReadingIdsRef.current.has(readingId)) continue;
         processedReadingIdsRef.current.add(readingId);
 
         const r = d.data() || {};
-
-        // مهم: ما نستخدم orderId كبديل عشان ما يطلع TEST_ORDER_1
         const pid = String(r.prescriptionId || r.prescriptionID || "").trim();
         if (!pid) continue;
 
         const deviceId = String(r.deviceId || "").trim();
-
         const notifId = `temp_${pharmacyDocId}_${pid}`;
         const notifRef = doc(db, "notifications", notifId);
 
-        // إذا فيه إشعار سابق لنفس الوصفة، لا تكرر
         const existsSnap = await getDoc(notifRef);
         if (!existsSnap.exists()) {
           await setDoc(notifRef, {
@@ -315,7 +334,7 @@ export default function PharmacyNotifications() {
             toPharmacyDocId: pharmacyDocId,
             type: "TEMP_OUT_OF_RANGE",
             title: "Temperature alert",
-            message: `Prescription ${pid} — Invalid (temperature out of range). Redispensing required.`,
+            message: `Prescription ${pid} is marked invalid due to unsafe temperature and has been returned to Delivery Orders.`,
             orderId: pid,
             prescriptionID: pid,
             deviceId,
@@ -324,31 +343,24 @@ export default function PharmacyNotifications() {
           });
         }
 
-        // ✅ بعد الإشعار: reset للوصفة
-        /*try {
-          await resetPrescriptionForOutOfRange(pid);
+        try {
+          const resetDone = await resetPrescriptionForOutOfRange(pid);
+
+          if (resetDone) {
+            await logEvent(
+              `Pharmacy reset prescription ${pid} after temperature out of range`,
+              "pharmacy",
+              "prescription_reset_out_of_range"
+            );
+          }
         } catch (e) {
           console.error("resetPrescriptionForOutOfRange failed:", e);
-        }*/
-       try {
-  const resetDone = await resetPrescriptionForOutOfRange(pid);
-
-  if (resetDone) {
-    await logEvent(
-      `Pharmacy reset prescription ${pid} after temperature out of range`,
-      "pharmacy",
-      "prescription_reset_out_of_range"
-    );
-  }
-} catch (e) {
-  console.error("resetPrescriptionForOutOfRange failed:", e);
-
-  await logEvent(
-    `Pharmacy failed to reset prescription ${pid} after temperature out of range: ${e?.message || "unknown error"}`,
-    "pharmacy",
-    "prescription_reset_out_of_range_error"
-  );
-}
+          await logEvent(
+            `Pharmacy failed to reset prescription ${pid} after temperature out of range: ${e?.message || "unknown error"}`,
+            "pharmacy",
+            "prescription_reset_out_of_range_error"
+          );
+        }
       }
     };
 
@@ -376,7 +388,6 @@ export default function PharmacyNotifications() {
               if (unsub) unsub();
             } catch {}
             attach(qPlain, "plain");
-            return;
           }
         }
       );
@@ -391,7 +402,120 @@ export default function PharmacyNotifications() {
     };
   }, [pharmacyDocId]);
 
-  // ✅ Reader for pharmacy notifications
+  React.useEffect(() => {
+    if (!pharmacyDocId) return;
+
+    let unsub = null;
+    let canceled = false;
+
+    const qRx = query(
+      collection(db, "prescriptions"),
+      where("deliveryConfirmed", "==", false)
+    );
+
+    unsub = onSnapshot(
+      qRx,
+      async (snap) => {
+        if (canceled) return;
+
+        const now = Date.now();
+        const cutoff48 = now - 48 * 60 * 60 * 1000;
+
+        const tasks = [];
+        const seenPrescriptionIds = new Set();
+
+        snap.forEach((d) => {
+          const rx = d.data() || {};
+          const orderId = d.id;
+
+          if (rx.deliveryConfirmed === true) return;
+          if (rx.logisticsAccepted !== true) return;
+
+          const acceptedMs = toMs(rx.logisticsAcceptedAt);
+          if (!acceptedMs) return;
+          if (acceptedMs > cutoff48) return;
+
+          const prescriptionId =
+            rx.prescriptionID ||
+            rx.prescriptionId ||
+            rx.prescriptionNum ||
+            rx.prescriptionNumber ||
+            orderId;
+
+          const pid = String(prescriptionId);
+
+          if (seenPrescriptionIds.has(pid)) return;
+          seenPrescriptionIds.add(pid);
+
+          const notifId = `ph48_${pharmacyDocId}_${pid}`;
+          const notifRef = doc(db, "notifications", notifId);
+
+          if (processed48WriterRef.current.has(notifId)) return;
+          processed48WriterRef.current.add(notifId);
+
+          tasks.push(
+            (async () => {
+              try {
+                const existsSnap = await getDoc(notifRef);
+                if (!existsSnap.exists()) {
+                  await setDoc(notifRef, {
+                    toRole: "pharmacy",
+                    toPharmacyDocId: pharmacyDocId,
+                    type: "DELIVERY_OVERDUE_48H",
+                    title: "Delivery overdue (48h)",
+                    message: `Prescription ${pid} has not been completed within 48 hours and has been returned to Delivery Orders.`,
+                    orderId,
+                    prescriptionID: pid,
+                    read: false,
+                    createdAt: serverTimestamp(),
+                  });
+                }
+
+                await resetPrescriptionFor48h(pid);
+
+                const patientDocId = String(rx.patientDocId || "");
+                if (patientDocId) {
+                  const patientNotifId = `pt48_${patientDocId}_${pid}`;
+                  const patientNotifRef = doc(db, "notifications", patientNotifId);
+                  const patientExists = await getDoc(patientNotifRef);
+
+                  if (!patientExists.exists()) {
+                    await setDoc(patientNotifRef, {
+                      toRole: "patient",
+                      toPatientDocId: patientDocId,
+                      type: "PRESCRIPTION_REDISPENSED_48H",
+                      title: "Prescription Returned",
+                      message: `Your prescription ${pid} has been returned for redispensing because delivery was not completed within 48 hours.`,
+                      orderId,
+                      prescriptionID: pid,
+                      read: false,
+                      createdAt: serverTimestamp(),
+                    });
+                  }
+                }
+              } catch (e) {
+                console.error("Create pharmacy 48h notification failed:", e);
+              }
+            })()
+          );
+        });
+
+        if (tasks.length) await Promise.all(tasks);
+      },
+      (err) => {
+        console.error("prescriptions listen error (48h writer):", err);
+        setListenErr("Missing or insufficient permissions (rules).");
+      }
+    );
+
+    return () => {
+      canceled = true;
+      try {
+        if (unsub) unsub();
+      } catch {}
+    };
+  }, [pharmacyDocId]);
+
   React.useEffect(() => {
     if (!pharmacyDocId) return;
 
@@ -400,10 +524,7 @@ export default function PharmacyNotifications() {
 
     let unsub = null;
 
-    const base = [
-      where("toRole", "==", "pharmacy"),
-      where("toPharmacyDocId", "==", pharmacyDocId),
-    ];
+    const base = [where("toRole", "==", "pharmacy")];
 
     const orderedQ = query(
       collection(db, "notifications"),
@@ -504,7 +625,6 @@ export default function PharmacyNotifications() {
       const qAll = query(
         collection(db, "notifications"),
         where("toRole", "==", "pharmacy"),
-        where("toPharmacyDocId", "==", pharmacyDocId),
         where("type", "==", typ),
         where("prescriptionID", "==", pid)
       );
