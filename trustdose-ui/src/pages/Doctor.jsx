@@ -835,7 +835,7 @@ export default function Doctor() {
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="font-semibold" style={{ color: C.ink }}>
-                        Prescription #{idx + 1}
+                        Medication #{idx + 1}
                       </div>
 
                       {idx > 0 && (
@@ -1044,7 +1044,7 @@ export default function Doctor() {
                         className="px-5 py-2.5 rounded-xl font-medium"
                         style={{ background: "#F3F4F6", color: "#374151" }}
                       >
-                        {`Clear Prescription #${idx + 1}`}
+                        {`Clear Medication #${idx + 1}`}
                       </button>
                     </div>
                   </div>
@@ -1074,7 +1074,7 @@ export default function Doctor() {
                       background: "rgba(176,140,193,0.12)",
                     }}
                   >
-                    Add other prescription
+                    Add Medication
                   </button>
                 </div>
               </div>
