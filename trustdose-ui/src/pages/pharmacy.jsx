@@ -26,8 +26,8 @@ import PRESCRIPTION from "../contracts/Prescription.json";
 import DISPENSE from "../contracts/Dispense.json";
 import { logEvent } from "../utils/logEvent";
 
-const PRESCRIPTION_ADDRESS = "0x7105DfDa356EAB2D522939a7a89A7e9d37A576b2";
-const DISPENSE_ADDRESS = "0x99A22Ed157221c7Dcfac7cfb5E9e9Af683E4C277";
+const PRESCRIPTION_ADDRESS = "0x200d45cB7715b6f347d977f629FbA7DF6d7fEa50";
+const DISPENSE_ADDRESS = "0x75B2c813cD382975e257dA59b382b8BD69664aF5";
 
 
 const PAGE_SIZE = 6;

@@ -23,7 +23,7 @@ import PRESCRIPTION from "../contracts/Prescription.json";
 import { Loader2, FileText, CheckCircle2 } from "lucide-react";
 import { logEvent } from "../utils/logEvent";
 
-const LOGISTICS_RECEIVE_ADDRESS = "0xd78a48cBC1c3F77a5e59a149CFEdbc11AfB1b666";
+const LOGISTICS_RECEIVE_ADDRESS = "0x9e8633eE0FcAE8ecD69b0A27B44C97A0bfe7814f";
 const DEFAULT_IOT_DEVICE_ID = "esp8266_1";
 
 const C = {
