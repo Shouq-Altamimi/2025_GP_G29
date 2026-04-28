@@ -881,7 +881,7 @@ export default function Logistics() {
         )}
 
         {total === 0 && (
-          <p className="text-gray-600 mt-4">No active delivery orders.</p>
+          <p className="text-gray-600 mt-4">No delivery orders found.</p>
         )}
 
         {total > 0 && (
