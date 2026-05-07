@@ -207,7 +207,6 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
     onNav?.(path);
   };
 
-  
   const isActive = (path) => (location.pathname + location.search) === path;
 
   return (
@@ -218,6 +217,7 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
           open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
       />
+
       <aside
         className="fixed top-0 left-0 z-50 h-full w-[290px] shadow-2xl"
         style={{
@@ -228,7 +228,12 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
         }}
       >
         <div className="flex items-center justify-between px-4 py-4">
-          <img src="/Images/TrustDose_logo.png" alt="TrustDose" className="h-7 w-auto" />
+          <img
+            src="/Images/TrustDose_logo.png"
+            alt="TrustDose"
+            className="h-7 w-auto"
+          />
+
           <button
             onClick={() => setOpen(false)}
             className="h-9 w-9 grid place-items-center rounded-lg hover:bg-white/20 text-white"
@@ -239,18 +244,34 @@ function TDAdminSidebar({ open, setOpen, onNav, onLogout }) {
         </div>
 
         <nav className="px-3">
-          <SidebarItem active={isActive("/admin/dashboard")} onClick={() => go("/admin/dashboard")}>
+          <SidebarItem
+            active={isActive("/admin/dashboard")}
+            onClick={() => go("/admin/dashboard")}
+          >
             <LayoutDashboard size={18} />
             <span>Dashboard</span>
           </SidebarItem>
 
-          <SidebarItem active={isActive("/admin")} onClick={() => go("/admin")}>
+          <SidebarItem
+            active={isActive("/admin")}
+            onClick={() => go("/admin")}
+          >
             <UserPlus size={18} />
             <span>Add Doctor</span>
           </SidebarItem>
 
- 
-          <SidebarItem active={isActive("/admin/analytics")} onClick={() => go("/admin/analytics")}>
+          <SidebarItem
+            active={isActive("/admin/medicines")}
+            onClick={() => go("/admin/medicines")}
+             >
+            <Pill size={18} />
+            <span>Add Medicine</span>
+          </SidebarItem>
+
+          <SidebarItem
+            active={isActive("/admin/analytics")}
+            onClick={() => go("/admin/analytics")}
+          >
             <BarChart3 size={18} />
             <span>Analytics</span>
           </SidebarItem>

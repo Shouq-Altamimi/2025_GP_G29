@@ -9,8 +9,8 @@ import {
   UserPlus,
   LogOut,
   X,
-    Pill,
-      Search,
+  Pill,
+  Search,
 } from "lucide-react";
 import Header from "../components/Header.jsx";
 import Footer from "../components/Footer.jsx";
@@ -24,7 +24,7 @@ const C = {
   teal: "#52B9C4",
   ink: "#4A2C59",
 
-   success: "#166534",
+  success: "#166534",
   successBg: "#DCFCE7",
   successBorder: "#86EFAC",
 
@@ -50,23 +50,29 @@ function startOfHour(d) {
   x.setMinutes(0, 0, 0);
   return x;
 }
+
 function startOfDay(d) {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
   return x;
 }
+
 function monthStart(d) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
+
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
+
 function labelHour(d) {
   return `${pad2(d.getHours())}:00`;
 }
+
 function labelDay(d) {
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`;
 }
+
 function labelMonth(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 }
@@ -85,6 +91,7 @@ function formatDateTime(ts) {
 
 function buildAxis(period) {
   const now = new Date();
+
   if (period === "day") {
     const end = startOfHour(now);
     const arr = [];
@@ -95,6 +102,7 @@ function buildAxis(period) {
     }
     return arr;
   }
+
   if (period === "month") {
     const end = startOfDay(now);
     const arr = [];
@@ -105,6 +113,7 @@ function buildAxis(period) {
     }
     return arr;
   }
+
   const end = monthStart(now);
   const arr = [];
   for (let i = 11; i >= 0; i--) {
@@ -123,6 +132,7 @@ function inSameBucket(period, dt, bucketDate) {
       dt.getHours() === bucketDate.getHours()
     );
   }
+
   if (period === "month") {
     return (
       dt.getFullYear() === bucketDate.getFullYear() &&
@@ -130,6 +140,7 @@ function inSameBucket(period, dt, bucketDate) {
       dt.getDate() === bucketDate.getDate()
     );
   }
+
   return (
     dt.getFullYear() === bucketDate.getFullYear() &&
     dt.getMonth() === bucketDate.getMonth()
@@ -164,6 +175,7 @@ function Sidebar({ open, setOpen, onNav, onLogout }) {
             alt="TrustDose"
             className="h-7 w-auto"
           />
+
           <button
             onClick={() => setOpen(false)}
             className="h-9 w-9 grid place-items-center rounded-lg hover:bg-white/20 text-white"
@@ -201,19 +213,19 @@ function Sidebar({ open, setOpen, onNav, onLogout }) {
           </button>
 
           <button
-  onClick={() => {
-    setOpen(false);
-    onNav("/admin/medicines");
-  }}
-  className={`w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium ${
-    isActive("/admin/medicines")
-      ? "bg-white text-[#5B3A70]"
-      : "bg-white/25 text-white hover:bg-white/35"
-  }`}
->
-  <Pill size={18} />
-  <span>Add Medicine</span>
-</button>
+            onClick={() => {
+              setOpen(false);
+              onNav("/admin/medicines");
+            }}
+            className={`w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium ${
+              isActive("/admin/medicines")
+                ? "bg-white text-[#5B3A70]"
+                : "bg-white/25 text-white hover:bg-white/35"
+            }`}
+          >
+            <Pill size={18} />
+            <span>Add Medicine</span>
+          </button>
 
           <button
             onClick={() => {
@@ -235,7 +247,7 @@ function Sidebar({ open, setOpen, onNav, onLogout }) {
               setOpen(false);
               onLogout?.();
             }}
-            className="w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded- xl font-medium text-white/90 hover:bg-white/10"
+            className="w-full mb-3 inline-flex items-center gap-3 px-3 py-3 rounded-xl font-medium text-white/90 hover:bg-white/10"
           >
             <LogOut size={18} />
             <span>Sign out</span>
@@ -252,10 +264,12 @@ function PeriodTabs({ value, onChange }) {
     { k: "month", label: "Monthly" },
     { k: "year", label: "Yearly" },
   ];
+
   return (
     <div className="inline-flex rounded-2xl border border-gray-200 bg-white/70 p-1 shadow-sm">
       {items.map((it) => {
         const active = value === it.k;
+
         return (
           <button
             key={it.k}
@@ -284,6 +298,7 @@ function Kpi({ title, value, icon: Icon, accent, hint }) {
         </div>
         {hint ? <div className="text-xs text-gray-500 mt-1">{hint}</div> : null}
       </div>
+
       <div
         className="h-12 w-12 rounded-2xl grid place-items-center"
         style={{ background: `${accent}18`, color: accent }}
@@ -298,11 +313,14 @@ function Card({ title, subtitle, children }) {
   return (
     <div className="rounded-3xl border border-gray-200 bg-white shadow-sm p-6">
       <div className="mb-4">
-        <div className="text-[13px] font-extrabold text-[#2A1E36]">{title}</div>
+        <div className="text-[13px] font-extrabold text-[#2A1E36]">
+          {title}
+        </div>
         {subtitle ? (
           <div className="text-xs text-gray-500 mt-0.5">{subtitle}</div>
         ) : null}
       </div>
+
       {children}
     </div>
   );
@@ -327,6 +345,7 @@ function SvgAreaLineChart({ data, color, height = 260 }) {
   const linePath = points
     .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
     .join(" ");
+
   const areaPath =
     `${linePath} L ${points[points.length - 1].x.toFixed(
       2
@@ -337,6 +356,7 @@ function SvgAreaLineChart({ data, color, height = 260 }) {
   const yTicks = Array.from({ length: ticks + 1 }, (_, i) =>
     Math.round((max * i) / ticks)
   );
+
   const [hover, setHover] = useState(null);
 
   return (
@@ -357,6 +377,7 @@ function SvgAreaLineChart({ data, color, height = 260 }) {
 
         {yTicks.map((t, i) => {
           const y = pad.t + plotH - (t / max) * plotH;
+
           return (
             <g key={i}>
               <line
@@ -381,6 +402,7 @@ function SvgAreaLineChart({ data, color, height = 260 }) {
         })}
 
         <path d={areaPath} fill={`url(#grad-${color.replace("#", "")})`} />
+
         <path
           d={linePath}
           fill="none"
@@ -407,6 +429,7 @@ function SvgAreaLineChart({ data, color, height = 260 }) {
         {points.map((p, i) => {
           const show = data.length <= 12 || i % Math.ceil(data.length / 10) === 0;
           if (!show) return null;
+
           return (
             <text
               key={`x-${i}`}
@@ -431,6 +454,7 @@ function SvgAreaLineChart({ data, color, height = 260 }) {
               stroke="#111827"
               strokeOpacity="0.08"
             />
+
             <rect
               x={hover.x - 46}
               y={hover.y - 40}
@@ -440,6 +464,7 @@ function SvgAreaLineChart({ data, color, height = 260 }) {
               fill="#111827"
               opacity="0.92"
             />
+
             <text
               x={hover.x}
               y={hover.y - 22}
@@ -457,9 +482,6 @@ function SvgAreaLineChart({ data, color, height = 260 }) {
   );
 }
 
-/* =======================
-   Page
-======================= */
 export default function AdminAnalytics() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -469,22 +491,28 @@ export default function AdminAnalytics() {
 
   const [loading, setLoading] = useState(true);
   const [rx, setRx] = useState([]);
+
   const [iotLoading, setIotLoading] = useState(true);
-const [readings, setReadings] = useState([]);
-const [statusTab, setStatusTab] = useState("all");
-const [search, setSearch] = useState("");
-const [page, setPage] = useState(1);
-const PAGE_SIZE = 10;
-useEffect(() => {
-  setPage(1);
-}, [statusTab, search]);
+  const [readings, setReadings] = useState([]);
+
+  const [statusTab, setStatusTab] = useState("all");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+
+  const PAGE_SIZE = 10;
+
   useEffect(() => {
-  logEvent("Admin opened analytics page", "admin", "analytics_open");
-}, []);
+    setPage(1);
+  }, [statusTab, search]);
+
+  useEffect(() => {
+    logEvent("Admin opened analytics page", "admin", "analytics_open");
+  }, []);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
+
       try {
         const rxSnap = await getDocs(collection(db, "prescriptions"));
         const rows = [];
@@ -497,28 +525,31 @@ useEffect(() => {
   }, []);
 
   useEffect(() => {
-  (async () => {
-    setIotLoading(true);
-    try {
-      const snap = await getDocs(collection(db, "iotReadings"));
-      const rows = [];
-      snap.forEach((s) => rows.push({ id: s.id, ...(s.data() || {}) }));
-      setReadings(rows);
-    } finally {
-      setIotLoading(false);
-    }
-  })();
-}, []);
+    (async () => {
+      setIotLoading(true);
+
+      try {
+        const snap = await getDocs(collection(db, "iotReadings"));
+        const rows = [];
+        snap.forEach((s) => rows.push({ id: s.id, ...(s.data() || {}) }));
+        setReadings(rows);
+      } finally {
+        setIotLoading(false);
+      }
+    })();
+  }, []);
 
   const { dispSeries, delSeries, totals } = useMemo(() => {
     const dispBuckets = Object.fromEntries(axis.map((b) => [b.key, 0]));
     const delBuckets = Object.fromEntries(axis.map((b) => [b.key, 0]));
+
     let totalDisp = 0;
     let totalDel = 0;
 
     for (const r of rx) {
       if (r.dispensed === true) {
         const dt = toDateSafe(r.updatedAt || r.createdAt);
+
         if (dt) {
           for (const b of axis) {
             if (inSameBucket(period, dt, b.date)) {
@@ -534,6 +565,7 @@ useEffect(() => {
         const dt = toDateSafe(
           r.acceptDeliveryAt || r.logisticsAcceptedAt || r.updatedAt
         );
+
         if (dt) {
           for (const b of axis) {
             if (inSameBucket(period, dt, b.date)) {
@@ -560,42 +592,44 @@ useEffect(() => {
   }, [rx, axis, period]);
 
   const filteredReadings = useMemo(() => {
-  let data = [...readings];
+    let data = [...readings];
 
-  if (statusTab === "successful") {
-    data = data.filter((item) => item.outOfRange === false);
-  } else if (statusTab === "failed") {
-    data = data.filter((item) => item.outOfRange === true);
-  }
+    if (statusTab === "successful") {
+      data = data.filter((item) => item.outOfRange === false);
+    } else if (statusTab === "failed") {
+      data = data.filter((item) => item.outOfRange === true);
+    }
 
-  if (search.trim()) {
-    const q = search.toLowerCase();
-    data = data.filter(
-      (item) =>
-        String(item.prescriptionId || "").toLowerCase().includes(q) ||
-        String(item.deviceId || "").toLowerCase().includes(q) ||
-        String(item.orderId || "").toLowerCase().includes(q)
-    );
-  }
+    if (search.trim()) {
+      const q = search.toLowerCase();
 
-  data.sort((a, b) => {
-    const da = toDateSafe(a.createdAt)?.getTime?.() || 0;
-    const dbb = toDateSafe(b.createdAt)?.getTime?.() || 0;
-    return dbb - da;
-  });
+      data = data.filter(
+        (item) =>
+          String(item.prescriptionId || "").toLowerCase().includes(q) ||
+          String(item.deviceId || "").toLowerCase().includes(q)
+      );
+    }
 
-  return data;
-}, [readings, statusTab, search]);
+    data.sort((a, b) => {
+      const da = toDateSafe(a.createdAt)?.getTime?.() || 0;
+      const dbb = toDateSafe(b.createdAt)?.getTime?.() || 0;
+      return dbb - da;
+    });
 
-const pageCount = Math.max(1, Math.ceil(filteredReadings.length / PAGE_SIZE));
+    return data;
+  }, [readings, statusTab, search]);
 
-const pagedReadings = useMemo(() => {
-  const start = (page - 1) * PAGE_SIZE;
-  return filteredReadings.slice(start, start + PAGE_SIZE);
-}, [filteredReadings, page]);
+  const pageCount = Math.max(1, Math.ceil(filteredReadings.length / PAGE_SIZE));
 
-const startItem = filteredReadings.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-const endItem = Math.min(page * PAGE_SIZE, filteredReadings.length);
+  const pagedReadings = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredReadings.slice(start, start + PAGE_SIZE);
+  }, [filteredReadings, page]);
+
+  const startItem =
+    filteredReadings.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+
+  const endItem = Math.min(page * PAGE_SIZE, filteredReadings.length);
 
   const periodLabel =
     period === "day"
@@ -606,7 +640,6 @@ const endItem = Math.min(page * PAGE_SIZE, filteredReadings.length);
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-
       <Header hideMenu={false} onMenuClick={() => setOpen(true)} />
 
       <main className="flex-1">
@@ -616,7 +649,9 @@ const endItem = Math.min(page * PAGE_SIZE, filteredReadings.length);
               <h1 className="text-[26px] leading-tight font-extrabold tracking-tight text-[#2A1E36]">
                 Analytics
               </h1>
+
               <div className="mt-3 pt-3 border-t border-gray-200"></div>
+
               <p className="text-sm text-gray-500">{periodLabel}</p>
             </div>
 
@@ -630,6 +665,7 @@ const endItem = Math.min(page * PAGE_SIZE, filteredReadings.length);
               icon={Building2}
               accent={C.primary}
             />
+
             <Kpi
               title="Delivered"
               value={loading ? "…" : totals.delivered}
@@ -639,7 +675,10 @@ const endItem = Math.min(page * PAGE_SIZE, filteredReadings.length);
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
-            <Card title="Dispensed timeline" subtitle="Pharmacy activity over time">
+            <Card
+              title="Dispensed timeline"
+              subtitle="Pharmacy activity over time"
+            >
               {loading ? (
                 <div className="text-sm text-gray-400">Loading…</div>
               ) : (
@@ -647,7 +686,10 @@ const endItem = Math.min(page * PAGE_SIZE, filteredReadings.length);
               )}
             </Card>
 
-            <Card title="Delivered timeline" subtitle="Logistics deliveries over time">
+            <Card
+              title="Delivered timeline"
+              subtitle="Logistics deliveries over time"
+            >
               {loading ? (
                 <div className="text-sm text-gray-400">Loading…</div>
               ) : (
@@ -655,170 +697,202 @@ const endItem = Math.min(page * PAGE_SIZE, filteredReadings.length);
               )}
             </Card>
           </div>
-<div className="mt-6 rounded-2xl border border-gray-200 bg-white shadow-sm p-4">  <div className="flex flex-col gap-4">
-    <div className="flex items-center justify-between gap-4 flex-wrap">
-      <div>
-       <h2 className="text-lg font-semibold text-[#2A1E36]">
-  Prescription Status
-</h2>
-<p className="text-sm text-gray-500 mt-1">
-  Track all, successful, and failed prescriptions
-</p>
-      </div>
 
-     <div className="relative w-full sm:w-[240px]">
-  <Search
-    size={16}
-    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-  />
-  <input
-    value={search}
-    onChange={(e) => setSearch(e.target.value)}
-    placeholder="Search..."
-    className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:ring-2 focus:ring-[#B08CC1]"
-  />
-</div>
-    </div>
+          <div className="mt-6 rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#2A1E36]">
+                    Prescription Status
+                  </h2>
 
-    <div className="flex gap-3 flex-wrap">
-      <button
-        onClick={() => setStatusTab("all")}
-        className={`px-5 py-3 rounded-2xl border text-sm font-semibold transition ${
-          statusTab === "all"
-            ? "text-white border-transparent"
-            : "bg-white text-[#4A2C59] border-gray-200 hover:bg-gray-50"
-        }`}
-        style={statusTab === "all" ? { backgroundColor: C.primary } : {}}
-      >
-        All Prescriptions
-      </button>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Track all, successful, and failed prescriptions
+                  </p>
+                </div>
 
-      <button
-        onClick={() => setStatusTab("successful")}
-        className={`px-5 py-3 rounded-2xl border text-sm font-semibold transition ${
-          statusTab === "successful"
-            ? "text-white border-transparent"
-            : "bg-white text-[#4A2C59] border-gray-200 hover:bg-gray-50"
-        }`}
-        style={statusTab === "successful" ? { backgroundColor: C.primary } : {}}
-      >
-        Successful
-      </button>
+                <div className="relative w-full sm:w-[240px]">
+                  <Search
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  />
 
-      <button
-        onClick={() => setStatusTab("failed")}
-        className={`px-5 py-3 rounded-2xl border text-sm font-semibold transition ${
-          statusTab === "failed"
-            ? "text-white border-transparent"
-            : "bg-white text-[#4A2C59] border-gray-200 hover:bg-gray-50"
-        }`}
-        style={statusTab === "failed" ? { backgroundColor: C.primary } : {}}
-      >
-        Failed
-      </button>
-    </div>
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search..."
+                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:ring-2 focus:ring-[#B08CC1]"
+                  />
+                </div>
+              </div>
 
-<div className="overflow-auto">
-        <table className="min-w-full text-sm">
-        <thead className="bg-gray-50 text-gray-600">
-  <tr>
-    <th className="text-left px-4 py-3">Prescription ID</th>
-    <th className="text-left px-4 py-3">Device ID</th>
-    <th className="text-left px-4 py-3">Order ID</th>
-    <th className="text-left px-4 py-3">Temp</th>
-    <th className="text-left px-4 py-3">Humidity</th>
-    <th className="text-left px-4 py-3">Status</th>
-    <th className="text-left px-4 py-3">Created</th>
-  </tr>
-</thead>
+              <div className="flex gap-3 flex-wrap">
+                <button
+                  onClick={() => setStatusTab("all")}
+                  className={`px-5 py-3 rounded-2xl border text-sm font-semibold transition ${
+                    statusTab === "all"
+                      ? "text-white border-transparent"
+                      : "bg-white text-[#4A2C59] border-gray-200 hover:bg-gray-50"
+                  }`}
+                  style={statusTab === "all" ? { backgroundColor: C.primary } : {}}
+                >
+                  All Prescriptions
+                </button>
 
-        <tbody>
-          {iotLoading ? (
-            <tr>
-              <td colSpan="7" className="px-4 py-6 text-center text-gray-500">
-                Loading...
-              </td>
-            </tr>
-          ) : filteredReadings.length === 0 ? (
-            <tr>
-              <td colSpan="7" className="px-4 py-6 text-center text-gray-500">
-                No readings found
-              </td>
-            </tr>
-          ) : (
-            pagedReadings.map((item) => (
-              <tr key={item.id} className="border-t border-gray-100">
-                <td className="px-4 py-3 font-medium text-[#2A1E36]">
-                  {item.prescriptionId || "—"}
-                </td>
-                <td className="px-4 py-3">{item.deviceId || "—"}</td>
-                <td className="px-4 py-3">{item.orderId || "—"}</td>
-                <td className="px-4 py-3">
-                  {item.temp !== undefined ? `${item.temp}°C` : "—"}
-                </td>
-                <td className="px-4 py-3">
-                  {item.humidity !== undefined ? `${item.humidity}%` : "—"}
-                </td>
-                <td className="px-4 py-3">
-                  <span
-  className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold"
-  style={{
-    backgroundColor: item.outOfRange ? C.dangerBg : C.successBg,
-    color: item.outOfRange ? C.danger : C.success,
-    border: `1px solid ${
-      item.outOfRange ? C.dangerBorder : C.successBorder
-    }`,
-  }}
->
-  {item.outOfRange ? "Failed" : "Successful"}
-</span>
-                </td>
-                <td className="px-4 py-3">{formatDateTime(item.createdAt)}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-    <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
-  <div>
-    {filteredReadings.length > 0
-      ? `Showing ${startItem}–${endItem} of ${filteredReadings.length}`
-      : "No records"}
-  </div>
+                <button
+                  onClick={() => setStatusTab("successful")}
+                  className={`px-5 py-3 rounded-2xl border text-sm font-semibold transition ${
+                    statusTab === "successful"
+                      ? "text-white border-transparent"
+                      : "bg-white text-[#4A2C59] border-gray-200 hover:bg-gray-50"
+                  }`}
+                  style={
+                    statusTab === "successful"
+                      ? { backgroundColor: C.primary }
+                      : {}
+                  }
+                >
+                  Successful
+                </button>
 
-  <div className="flex items-center gap-2">
-    <button
-      onClick={() => setPage((p) => Math.max(1, p - 1))}
-      disabled={page <= 1}
-      className={`px-3 py-1 rounded-lg border ${
-        page <= 1
-          ? "text-gray-400 border-gray-200"
-          : "text-[#4A2C59] border-gray-300 hover:bg-gray-50"
-      }`}
-    >
-      Prev
-    </button>
+                <button
+                  onClick={() => setStatusTab("failed")}
+                  className={`px-5 py-3 rounded-2xl border text-sm font-semibold transition ${
+                    statusTab === "failed"
+                      ? "text-white border-transparent"
+                      : "bg-white text-[#4A2C59] border-gray-200 hover:bg-gray-50"
+                  }`}
+                  style={
+                    statusTab === "failed" ? { backgroundColor: C.primary } : {}
+                  }
+                >
+                  Failed
+                </button>
+              </div>
 
-    <span>
-      Page {page} / {pageCount}
-    </span>
+              <div className="overflow-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="text-left px-4 py-3">Prescription ID</th>
+                      <th className="text-left px-4 py-3">Device ID</th>
+                      <th className="text-left px-4 py-3">Temp</th>
+                      <th className="text-left px-4 py-3">Humidity</th>
+                      <th className="text-left px-4 py-3">Status</th>
+                      <th className="text-left px-4 py-3">Created</th>
+                    </tr>
+                  </thead>
 
-    <button
-      onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-      disabled={page >= pageCount}
-      className={`px-3 py-1 rounded-lg border ${
-        page >= pageCount
-          ? "text-gray-400 border-gray-200"
-          : "text-[#4A2C59] border-gray-300 hover:bg-gray-50"
-      }`}
-    >
-      Next
-    </button>
-  </div>
-</div>
-  </div>
-</div>
+                  <tbody>
+                    {iotLoading ? (
+                      <tr>
+                        <td
+                          colSpan="6"
+                          className="px-4 py-6 text-center text-gray-500"
+                        >
+                          Loading...
+                        </td>
+                      </tr>
+                    ) : filteredReadings.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan="6"
+                          className="px-4 py-6 text-center text-gray-500"
+                        >
+                          No readings found
+                        </td>
+                      </tr>
+                    ) : (
+                      pagedReadings.map((item) => (
+                        <tr key={item.id} className="border-t border-gray-100">
+                          <td className="px-4 py-3 font-medium text-[#2A1E36]">
+                            {item.prescriptionId || "—"}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            {item.deviceId || "—"}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            {item.temp !== undefined ? `${item.temp}°C` : "—"}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            {item.humidity !== undefined
+                              ? `${item.humidity}%`
+                              : "—"}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <span
+                              className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold"
+                              style={{
+                                backgroundColor: item.outOfRange
+                                  ? C.dangerBg
+                                  : C.successBg,
+                                color: item.outOfRange
+                                  ? C.danger
+                                  : C.success,
+                                border: `1px solid ${
+                                  item.outOfRange
+                                    ? C.dangerBorder
+                                    : C.successBorder
+                                }`,
+                              }}
+                            >
+                              {item.outOfRange ? "Failed" : "Successful"}
+                            </span>
+                          </td>
+
+                          <td className="px-4 py-3">
+                            {formatDateTime(item.createdAt)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
+                <div>
+                  {filteredReadings.length > 0
+                    ? `Showing ${startItem}–${endItem} of ${filteredReadings.length}`
+                    : "No records"}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                    className={`px-3 py-1 rounded-lg border ${
+                      page <= 1
+                        ? "text-gray-400 border-gray-200"
+                        : "text-[#4A2C59] border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    Prev
+                  </button>
+
+                  <span>
+                    Page {page} / {pageCount}
+                  </span>
+
+                  <button
+                    onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                    disabled={page >= pageCount}
+                    className={`px-3 py-1 rounded-lg border ${
+                      page >= pageCount
+                        ? "text-gray-400 border-gray-200"
+                        : "text-[#4A2C59] border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
       </main>
 
@@ -828,10 +902,11 @@ const endItem = Math.min(page * PAGE_SIZE, filteredReadings.length);
         open={open}
         setOpen={setOpen}
         onNav={(p) => navigate(p)}
-  onLogout={async () => {
-    await logEvent("Admin signed out", "admin", "logout");
-    navigate("/auth", { replace: true });
-  }}      />
+        onLogout={async () => {
+          await logEvent("Admin signed out", "admin", "logout");
+          navigate("/auth", { replace: true });
+        }}
+      />
     </div>
   );
 }
