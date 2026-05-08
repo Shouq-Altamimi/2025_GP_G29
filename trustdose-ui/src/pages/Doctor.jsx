@@ -1045,7 +1045,6 @@ export default function Doctor() {
                         style={{ background: "#F3F4F6", color: "#374151" }}
                       >
                         {`Clear Medication #${idx + 1}`}
-                        {`Clear Medication #${idx + 1}`}
                       </button>
                     </div>
                   </div>
@@ -1075,7 +1074,6 @@ export default function Doctor() {
                       background: "rgba(176,140,193,0.12)",
                     }}
                   >
-                    Add Medication
                     Add Medication
                   </button>
                 </div>
